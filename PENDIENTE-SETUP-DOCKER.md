@@ -157,3 +157,45 @@ hayas levantado el stack).
 campos `encrypted`, etc.), regenerarla invalida esas sesiones y esos datos
 dejan de poder descifrarse. En un entorno nuevo sin datos previos, no hay
 ningún problema en generarla sin más.
+
+## 11. Configurar Laravel Sanctum (API tokens + SPA)
+
+```bash
+# Instala Sanctum y el scaffolding de API (routes/api.php, migración de tokens)
+docker compose exec app php artisan install:api
+docker compose exec app php artisan migrate
+
+# Publicar config/cors.php (Laravel 11+ no lo trae por defecto)
+docker compose exec app php artisan config:publish cors
+```
+
+Después, editar a mano:
+
+- **`app/Models/User.php`** — añadir `use Laravel\Sanctum\HasApiTokens;` y el trait `HasApiTokens` en la clase.
+- **`bootstrap/app.php`** — anteponer el middleware de Sanctum al grupo `api`:
+  ```php
+  use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
+
+  ->withMiddleware(function (Middleware $middleware) {
+      $middleware->api(prepend: [
+          EnsureFrontendRequestsAreStateful::class,
+      ]);
+  })
+  ```
+- **`config/cors.php`** — `paths` con `api/*` y `sanctum/csrf-cookie`, `allowed_origins` con tu `APP_URL` (y el puerto de Vite en desarrollo si aplica), `supports_credentials => true`.
+- **`routes/api.php`** — agrupar todo bajo `Route::prefix('v1')->group(...)` desde ya, para no tener que reestructurar cuando exista `v2`.
+
+**Probar:**
+```bash
+docker compose exec app php artisan tinker
+```
+```php
+$user = App\Models\User::first();
+$token = $user->createToken('test-token')->plainTextToken;
+```
+```bash
+curl -H "Authorization: Bearer TOKEN_AQUI" http://localhost:8080/api/v1/user
+```
+
+Pendiente para Fase 2 (no ahora): middleware de tenant que aísle tokens/sesiones por empresa.
+
