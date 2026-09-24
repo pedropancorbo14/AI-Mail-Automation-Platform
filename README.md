@@ -1,58 +1,103 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# AI Mail Automation Platform
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Plataforma SaaS multi-tenant que recibe emails de empresas, los clasifica
+mediante IA, consulta sistemas internos (CRM/ERP/pedidos/facturación/tickets/
+documentación) mediante tool calling, genera una respuesta y decide si
+enviarla automáticamente, dejarla como borrador para un trabajador, o
+escalar el caso a una persona. Todo queda auditado, con métricas visibles en
+Grafana.
 
-## About Laravel
+> Estado actual: **Fase 1 completada** (base del proyecto). Las fases 2 en
+> adelante (tenants, conexiones de email, AI Engine, RAG, tools, agente,
+> automatización, panel de administración...) están descritas en la hoja de
+> ruta interna del proyecto y se irán implementando de forma incremental.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Stack
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Backend:** PHP 8.4, Laravel 13, PostgreSQL 16 + pgvector, Redis, Laravel
+  Horizon, Laravel Sanctum
+- **Infraestructura:** Docker, Docker Compose, Nginx
+- **Observabilidad:** Prometheus, Grafana, Loki, Promtail
+- **Testing:** Pest
+- **CI:** GitHub Actions
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Requisitos
 
-## Learning Laravel
+- Docker y Docker Compose (`docker compose version`)
+- Composer (solo si vas a ejecutar comandos fuera del contenedor)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Puesta en marcha (entorno local)
 
 ```bash
-composer require laravel/boost --dev
+git clone <URL-del-repo>
+cd "AI Mail Automation Platform"
 
-php artisan boost:install
+cp .env.docker.example .env
+cp .env.example .env        # si aún no tienes tu .env de Laravel local
+
+docker compose up -d --build
+
+docker compose exec app php artisan key:generate
+docker compose exec app php artisan migrate
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+La app queda disponible en `http://localhost:8080`.
 
-## Contributing
+| Servicio | URL |
+|---|---|
+| App (Nginx) | http://localhost:8080 |
+| Horizon (colas) | http://localhost:8080/horizon |
+| Grafana | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Entornos
 
-## Code of Conduct
+El proyecto soporta `local`, `staging` y `producción` mediante `.env`
+distintos y un override de Docker Compose para los dos últimos:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+# staging o producción
+cp .env.production.example .env.production   # o .env.staging.example
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
 
-## Security Vulnerabilities
+Detalle completo de cada entorno en `PENDIENTE-SETUP-DOCKER.md`.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Tests
 
-## License
+```bash
+docker compose exec app php artisan test
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Los tests corren contra una base de datos Postgres separada (`app_testing`,
+con pgvector habilitado), no contra SQLite — necesario por las columnas
+`vector` que se usarán a partir de la Fase 6 (RAG).
+
+## CI
+
+Cada `push`/Pull Request a `main` ejecuta automáticamente los tests contra
+Postgres+pgvector y Redis reales (ver `.github/workflows/tests.yml`). El
+estado se ve en la pestaña **Actions** del repositorio.
+
+## Colas / Horizon
+
+Los jobs se procesan con Redis + Laravel Horizon (`docker compose logs -f
+horizon`, dashboard en `/horizon`, protegido por Gate en
+`HorizonServiceProvider`).
+
+## API
+
+Versionada bajo `/api/v1` (ver `routes/api/v1.php`). Autenticación con
+Laravel Sanctum: tokens para integraciones externas, cookies para el panel
+de administración (SPA).
+
+```bash
+curl http://localhost:8080/api/v1/health
+```
+
+## Documentación adicional
+
+- `PENDIENTE-SETUP-DOCKER.md` — checklist detallado de la Fase 1: Docker,
+  PostgreSQL, Redis, entornos, Sanctum, Queue, Horizon, logging, API base,
+  Pest y CI, con los comandos exactos de cada paso.
+- `README-docker.md` — referencia rápida de los servicios del stack Docker.
