@@ -14,4 +14,19 @@
 -- Extensiones útiles habitualmente en proyectos Laravel:
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Necesaria para RAG con embeddings (requiere la imagen pgvector/pgvector,
+-- ver el cambio de imagen en docker-compose.yml):
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Base de datos separada para tests (Pest/PHPUnit), para no mezclar datos
+-- de test con los de desarrollo en la misma BD "app":
+CREATE DATABASE app_testing OWNER app;
+
+-- Las extensiones son por base de datos, no globales: hay que crearlas
+-- también dentro de app_testing (si no, las migraciones que usen columnas
+-- vector fallarán solo en el entorno de test).
+\c app_testing
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS vector;

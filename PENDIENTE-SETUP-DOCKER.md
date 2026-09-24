@@ -318,3 +318,45 @@ Debería aparecer un archivo con la fecha de hoy.
 docker compose exec app php artisan route:list --path=api
 curl http://localhost:8080/api/v1/health
 ```
+
+
+## 16. Configurar Pest/PHPUnit
+
+```bash
+docker compose exec app composer require pestphp/pest pestphp/pest-plugin-laravel --dev --with-all-dependencies
+docker compose exec app php artisan pest:install
+```
+
+Base de datos de test separada (necesaria porque SQLite no soporta pgvector):
+```bash
+docker compose exec postgres psql -U app -d app -c "CREATE DATABASE app_testing OWNER app;"
+docker compose exec postgres psql -U app -d app_testing -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+(también añadido a `docker/postgres/init/01-init.sql` para volúmenes nuevos)
+
+`.env.testing`:
+```env
+APP_ENV=testing
+DB_CONNECTION=pgsql
+DB_HOST=postgres
+DB_DATABASE=app_testing
+DB_USERNAME=app
+DB_PASSWORD=secret
+CACHE_STORE=array
+SESSION_DRIVER=array
+QUEUE_CONNECTION=sync
+MAIL_MAILER=array
+```
+```bash
+docker compose exec app php artisan key:generate --env=testing
+```
+
+`tests/Pest.php`: `uses(Tests\TestCase::class, RefreshDatabase::class)->in('Feature');`
+
+Tests de ejemplo: `tests/Feature/HealthCheckTest.php` (GET /api/v1/health) y
+`tests/Feature/AuthTest.php` (auth:sanctum en /api/v1/user, con y sin token).
+
+**Ejecutar:**
+```bash
+docker compose exec app php artisan test
+```
