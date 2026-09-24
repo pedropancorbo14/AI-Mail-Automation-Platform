@@ -101,3 +101,7 @@ Debería aparecer `vector` en el listado.
 ## 8. Cambiar password REDIS
 
 - Cambiar la password de redis en el env de producción por una password segura
+
+## 9. Lanzar php artisan key:generate para crear key en el env
+
+- Si estoy en un dispositivo nuevo, tengo que lanzar php artisan key:generate para generar la key
