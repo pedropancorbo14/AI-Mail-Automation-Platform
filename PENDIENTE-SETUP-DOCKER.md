@@ -97,3 +97,7 @@ Debería aparecer `vector` en el listado.
 - Proteger la ruta `/horizon` con una Gate en `app/Providers/HorizonServiceProvider.php`
   (por defecto solo es accesible en entorno `local`).
 - Ajustar `config/horizon.php` (número de procesos, colas, balanceo) según carga esperada.
+
+## 8. Cambiar password REDIS
+
+- Cambiar la password de redis en el env de producción por una password segura
