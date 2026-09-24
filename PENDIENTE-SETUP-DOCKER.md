@@ -199,3 +199,37 @@ curl -H "Authorization: Bearer TOKEN_AQUI" http://localhost:8080/api/v1/user
 
 Pendiente para Fase 2 (no ahora): middleware de tenant que aísle tokens/sesiones por empresa.
 
+## 12. Configurar Laravel Queue (Redis)
+
+```bash
+docker compose exec app php artisan migrate   # confirma la tabla failed_jobs
+```
+
+Editar a mano **`config/queue.php`**, bloque `redis`:
+```php
+'redis' => [
+    'driver' => 'redis',
+    'connection' => 'default',
+    'queue' => env('REDIS_QUEUE', 'default'),
+    'retry_after' => 300, // antes 90: las llamadas a IA pueden tardar más
+    'block_for' => null,
+    'after_commit' => false,
+],
+```
+
+Colas por nombre a usar al despachar jobs (sin archivo de config nuevo, solo
+convención): `emails-ingestion`, `ai-processing`, `emails-sending`. Luego se
+priorizan en `config/horizon.php`.
+
+**Probar:**
+```bash
+docker compose exec app php artisan make:job TestQueueJob
+# dentro de handle(): Log::info('TestQueueJob ejecutado correctamente');
+docker compose exec app php artisan tinker
+```
+```php
+App\Jobs\TestQueueJob::dispatch();
+```
+```bash
+docker compose logs -f horizon
+```
