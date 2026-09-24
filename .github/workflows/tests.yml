@@ -1,0 +1,80 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: app_testing
+      DB_USERNAME: app
+      DB_PASSWORD: secret
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: app_testing
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U app -d app_testing"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: pdo_pgsql, pgsql, redis, bcmath, mbstring, zip, intl
+          coverage: none
+
+      - name: Cachear dependencias de Composer
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+
+      - name: Instalar dependencias
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Generar APP_KEY para el entorno de test
+        run: php artisan key:generate --env=testing
+
+      - name: Crear extensión vector en app_testing
+        run: |
+          PGPASSWORD=secret psql -h 127.0.0.1 -U app -d app_testing -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          PGPASSWORD=secret psql -h 127.0.0.1 -U app -d app_testing -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Ejecutar migraciones
+        run: php artisan migrate --force --env=testing
+
+      - name: Ejecutar tests (Pest)
+        run: ./vendor/bin/pest
