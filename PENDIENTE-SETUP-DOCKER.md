@@ -304,3 +304,17 @@ docker compose exec app php artisan tinker
 docker compose exec app ls storage/logs/
 ```
 Debería aparecer un archivo con la fecha de hoy.
+
+## 15. Crear estructura base de API /api/v1
+
+- `routes/api.php` hace `require` de `routes/api/v1.php` bajo `prefix('v1')`
+- Nuevo `routes/api/v1.php`: rutas versionadas (health check, /user con auth:sanctum, y el resto se añade fase a fase)
+- Nuevo `app/Http/Controllers/Api/V1/HealthController.php`: GET /api/v1/health
+- `bootstrap/app.php`: withExceptions devuelve JSON en vez de HTML para rutas api/* (validación 422, auth 401, 404, 500 solo si APP_DEBUG=false)
+- `AppServiceProvider::boot()`: RateLimiter::for('api', 60 req/min por usuario o IP)
+
+**Probar:**
+```bash
+docker compose exec app php artisan route:list --path=api
+curl http://localhost:8080/api/v1/health
+```
