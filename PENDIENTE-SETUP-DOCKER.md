@@ -1,20 +1,5 @@
 # Pendiente: terminar configuración de Docker (Horizon + pgvector)
 
-Contexto: en esta máquina no tengo permisos para instalar Docker. Los archivos
-ya están editados y subidos al repo. Falta ejecutar todo esto desde casa,
-donde sí puedo instalar Docker.
-
-## 0. Antes de nada: subir lo que ya está editado
-
-```bash
-git add docker-compose.yml docker/php/Dockerfile docker/postgres/init/01-init.sql
-git commit -m "Migrar a PHP 8.4, Postgres con pgvector y Horizon" -m "- Dockerfile: base php:8.3-fpm-alpine -> php:8.4-fpm-alpine
-- docker-compose.yml: imagen de postgres -> pgvector/pgvector:pg16
-- docker-compose.yml: sustituido el servicio queue-worker (queue:work manual) por horizon (php artisan horizon)
-- docker/postgres/init/01-init.sql: añadida CREATE EXTENSION IF NOT EXISTS vector;"
-git push
-```
-
 ## 1. Instalar Docker (Ubuntu 24.04)
 
 ```bash
@@ -233,3 +218,57 @@ App\Jobs\TestQueueJob::dispatch();
 ```bash
 docker compose logs -f horizon
 ```
+
+## 13. Configurar Laravel Horizon (Fase 1: un supervisor genérico + Gate)
+
+Editar **`config/horizon.php`**, sección `environments` — un solo supervisor
+sobre la cola `default`, sin colas específicas todavía (esas llegan en
+Fase 4/5, cuando existan jobs reales que las necesiten):
+```php
+'environments' => [
+    'production' => [
+        'supervisor-1' => [
+            'connection' => 'redis',
+            'queue' => ['default'],
+            'balance' => 'auto',
+            'minProcesses' => 1,
+            'maxProcesses' => 3,
+            'tries' => 3,
+        ],
+    ],
+
+    'local' => [
+        'supervisor-1' => [
+            'connection' => 'redis',
+            'queue' => ['default'],
+            'balance' => 'auto',
+            'minProcesses' => 1,
+            'maxProcesses' => 2,
+            'tries' => 3,
+        ],
+    ],
+],
+```
+
+Proteger el dashboard en **`app/Providers/HorizonServiceProvider.php`** (esto
+sí es de seguridad, no depende de que existan colas):
+```php
+protected function gate(): void
+{
+    Gate::define('viewHorizon', function ($user) {
+        return in_array($user->email, ['tu-email@dominio.com']);
+    });
+}
+```
+
+**Aplicar y comprobar:**
+```bash
+docker compose exec app php artisan config:clear
+docker compose restart horizon
+docker compose logs -f horizon
+```
+Entrar a `http://localhost:8080/horizon` y verificar que `supervisor-1` está activo.
+
+**Pendiente para Fase 4/5:** separar supervisors por tipo de cola
+(`emails-ingestion`, `ai-processing`, `emails-sending`) una vez existan jobs
+reales y datos de cuánto tarda cada uno.
