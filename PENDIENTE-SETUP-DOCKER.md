@@ -98,10 +98,62 @@ Debería aparecer `vector` en el listado.
   (por defecto solo es accesible en entorno `local`).
 - Ajustar `config/horizon.php` (número de procesos, colas, balanceo) según carga esperada.
 
-## 8. Cambiar password REDIS
+## 8. Usar cada entorno (local / staging / producción)
 
-- Cambiar la password de redis en el env de producción por una password segura
+Tres `.env` distintos, mismo `docker-compose.yml` base:
 
-## 9. Lanzar php artisan key:generate para crear key en el env
+**Local (por defecto, sin nada especial):**
+```bash
+docker compose up -d --build
+```
 
-- Si estoy en un dispositivo nuevo, tengo que lanzar php artisan key:generate para generar la key
+**Staging:**
+```bash
+cp .env.staging.example .env.staging
+# rellenar con valores/secretos reales de staging
+docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+**Producción:**
+```bash
+cp .env.production.example .env.production
+# rellenar con valores/secretos reales de producción (contraseñas fuertes, dominio real)
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+`docker-compose.prod.yml` es el override que quita el bind-mount del código fuente
+(usa el código ya horneado en la imagen) y pone `restart: always`. Ni `.env.staging`
+ni `.env.production` (los reales, con secretos) se suben a git — están en el
+`.gitignore`, solo sus `.example` sí.
+
+## 9. Cambiar la password de Redis en producción
+
+La plantilla `.env.production.example` trae `REDIS_PASSWORD=usa-un-secreto-real-aqui`
+como recordatorio de que hay que cambiarlo, no como valor válido.
+
+```bash
+# generar una contraseña aleatoria fuerte:
+openssl rand -base64 32
+```
+Copia el resultado y ponlo como valor de `REDIS_PASSWORD` en tu `.env.production`
+real (no en el `.example`). Si el stack ya estaba levantado con la contraseña
+antigua, reinicia Redis y la app para que cojan el nuevo valor:
+```bash
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate redis app horizon scheduler
+```
+
+## 10. Generar APP_KEY en un dispositivo nuevo
+
+Cada máquina/entorno que no tenga ya un `.env` con `APP_KEY` rellena necesita
+generar una:
+```bash
+docker compose exec app php artisan key:generate
+```
+Esto escribe la clave directamente en el `.env` que esté usando el contenedor
+`app` en ese momento (local, staging o producción, según con qué `--env-file`
+hayas levantado el stack).
+
+⚠️ Si el entorno YA tenía datos cifrados con una `APP_KEY` anterior (sesiones,
+campos `encrypted`, etc.), regenerarla invalida esas sesiones y esos datos
+dejan de poder descifrarse. En un entorno nuevo sin datos previos, no hay
+ningún problema en generarla sin más.
