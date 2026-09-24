@@ -22,4 +22,30 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn(Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+        $exceptions->render(function (Illuminate\Validation\ValidationException $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'message' => 'Los datos proporcionados no son válidos.',
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (Illuminate\Auth\AuthenticationException $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json(['message' => 'No autenticado.'], 401);
+            }
+        });
+
+        $exceptions->render(function (Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json(['message' => 'Recurso no encontrado.'], 404);
+            }
+        });
+
+        $exceptions->render(function (Throwable $e, $request) {
+            if ($request->is('api/*') && ! app()->hasDebugModeEnabled()) {
+                return response()->json(['message' => 'Error interno del servidor.'], 500);
+            }
+        });
     })->create();
