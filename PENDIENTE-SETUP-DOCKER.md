@@ -272,3 +272,35 @@ Entrar a `http://localhost:8080/horizon` y verificar que `supervisor-1` está ac
 **Pendiente para Fase 4/5:** separar supervisors por tipo de cola
 (`emails-ingestion`, `ai-processing`, `emails-sending`) una vez existan jobs
 reales y datos de cuánto tarda cada uno.
+
+
+
+
+## 14. Configurar logging (rotación diaria)
+
+Añadir al `.env` de cada entorno (ya aplicado en `.env.staging.example` y
+`.env.production.example`; añádelo también a tu `.env` local real):
+```env
+LOG_CHANNEL=stack
+LOG_STACK=daily
+LOG_LEVEL=debug        # staging: warning · producción: error
+LOG_DAILY_DAYS=14      # producción: 30
+```
+
+`LOG_STACK=daily` cambia el canal `stack` de `single` (un archivo que crece
+sin límite) a `daily` (un archivo por día, ej. `laravel-2026-09-24.log`),
+que además es justo el patrón que ya lee Promtail en
+`docker/promtail/promtail-config.yaml` (`storage/logs/*.log`). No hace falta
+tocar `config/logging.php`.
+
+**Comprobar:**
+```bash
+docker compose exec app php artisan tinker
+```
+```php
+\Illuminate\Support\Facades\Log::info('Prueba de logging diario');
+```
+```bash
+docker compose exec app ls storage/logs/
+```
+Debería aparecer un archivo con la fecha de hoy.
