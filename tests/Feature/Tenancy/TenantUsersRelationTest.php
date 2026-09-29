@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
 
@@ -25,7 +26,8 @@ it('knows the tenant of a user', function () {
 it('creates users through the tenant relation', function () {
     $tenant = Tenant::factory()->create();
 
-    $user = $tenant->users()->create([
+    $user = $tenant->users()->forceCreate([
+        'role_id' => Role::where('name', Role::AGENT)->value('id'),
         'name' => 'Ana',
         'email' => 'ana@example.com',
         'password' => 'secret-password',

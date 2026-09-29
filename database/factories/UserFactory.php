@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -27,6 +28,8 @@ class UserFactory extends Factory
     {
         return [
             'tenant_id' => Tenant::factory(),
+            // Los roles son un catálogo fijo (RolesAndPermissionsSeeder), no se fabrican.
+            'role_id' => fn () => Role::where('name', Role::AGENT)->value('id'),
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
@@ -42,6 +45,28 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+        ]);
+    }
+
+    public function owner(): static
+    {
+        return $this->withRole(Role::OWNER);
+    }
+
+    public function admin(): static
+    {
+        return $this->withRole(Role::ADMIN);
+    }
+
+    public function agent(): static
+    {
+        return $this->withRole(Role::AGENT);
+    }
+
+    private function withRole(string $name): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role_id' => Role::where('name', $name)->value('id'),
         ]);
     }
 }
