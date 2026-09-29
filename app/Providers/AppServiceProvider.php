@@ -24,5 +24,10 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api', function ($request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
+
+        // Anti fuerza bruta: 5 intentos/min por combinación email + IP.
+        RateLimiter::for('login', function ($request) {
+            return Limit::perMinute(5)->by(mb_strtolower((string) $request->input('email')) . '|' . $request->ip());
+        });
     }
 }
