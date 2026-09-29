@@ -32,3 +32,6 @@ limits_config:
 compactor:
   working_directory: /loki/compactor
   retention_enabled: true
+  # Loki 3.x exige indicar dónde guardar las peticiones de borrado
+  # cuando la retención está activada.
+  delete_request_store: filesystem

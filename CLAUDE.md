@@ -284,23 +284,28 @@ Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
 OpenAI primero, por presupuesto ajustado ahora mismo. OpenAI/Gemini quedan
 como interfaces intercambiables para el futuro, no implementadas todavía.
 
-### Fase 1 (base del proyecto): completada en código, PENDIENTE DE PROBAR
+### Fase 1 (base del proyecto): VERIFICADA EN LOCAL (2026-09-29)
 
-Todo lo siguiente ya está escrito y commiteado al repo, pero aún no se ha
-ejecutado de extremo a extremo — pendiente de Docker en un ordenador
-disponible:
+Probada de extremo a extremo con Docker Desktop (Windows) en entorno
+`local`. Staging/producción quedan fuera por ahora (ver "Pendiente").
 
 - **Docker Compose:** app (PHP-FPM 8.4), nginx, horizon, scheduler,
   postgres (imagen `pgvector/pgvector:pg16`, init script que crea
   extensiones pgcrypto/uuid-ossp/vector y la BD `app_testing`), redis (AOF
   + requirepass + maxmemory), postgres-exporter, redis-exporter,
   prometheus, loki, promtail, grafana (datasources provisionados).
-- **Entornos** local/staging/producción vía `.env` distintos +
-  `docker-compose.prod.yml` de override.
+  Sin `container_name` fijos (chocaban con contenedores de otros
+  proyectos): nombres `ai-mail-automation-platform-<servicio>-1`; se usa
+  siempre `docker compose exec <servicio>`.
+- **Entornos:** solo `local` en uso. `docker-compose.prod.yml`,
+  `.env.staging.example` y `.env.production.example` NO existen en el
+  repo (nunca se commitearon) aunque el README los mencione.
 - **Sanctum:** tokens de API + cookies SPA
   (`EnsureFrontendRequestsAreStateful`), CORS configurado, estructura
   `/api/v1` con manejo de excepciones en JSON (422/401/404/500) y rate
-  limiting (60 req/min).
+  limiting (60 req/min, aplicado con `$middleware->throttleApi()`;
+  `redirectGuestsTo` devuelve null en `api/*` para dar 401 JSON en vez de
+  500 por la ruta `login` inexistente).
 - **Queue** (Redis, `retry_after=300` para dar margen a llamadas de IA
   futuras) + **Horizon** (supervisor genérico Fase 1 sobre la cola
   `default` — deliberadamente sin colas específicas por tipo todavía; eso
@@ -308,18 +313,42 @@ disponible:
   `/horizon`.
 - **Logging** con rotación diaria (`LOG_STACK=daily`), leído por Promtail.
 - **Pest** configurado con `RefreshDatabase`, BD de test separada
-  (`app_testing`, no SQLite, por pgvector), tests de ejemplo (health
-  check, auth Sanctum).
+  (`app_testing`, no SQLite, por pgvector). En `phpunit.xml` las variables
+  críticas (APP_ENV, DB_*, CACHE/QUEUE/SESSION/MAIL) van como `<server>`,
+  no `<env>`: el contenedor ya las define en `$_SERVER` y con `<env>` los
+  tests corrían contra la BD de desarrollo `app`.
+  `DatabaseConnectionTest` vigila que sea pgsql + `app_testing`. 9 tests
+  en verde: health, auth Sanctum (actingAs, token real, 401 con y sin
+  Accept JSON), rate limit 429, BD de test, ejemplos.
 - **CI** en GitHub Actions: tests contra Postgres+pgvector y Redis reales
   en cada push/PR a `main`.
 - `README.md` y `PENDIENTE-SETUP-DOCKER.md` con el checklist detallado de
   todos los comandos de esta fase.
 
-**Siguiente paso real:** en cuanto haya Docker disponible, probar Fase 1
-completa de principio a fin (levantar el stack, migrar, verificar
-Horizon, Sanctum, tests, CI) **antes** de escribir nada de Fase 2 — regla
-autoimpuesta: no avanzar de fase sin verificar que la actual funciona de
-verdad.
+**Correcciones hechas al probar (2026-09-29):** `postgres`/`redis`
+duplicados en el compose (no parseaba), falta de `pcntl` en el Dockerfile
+(Horizon), `phpunit.xml` usando SQLite/BD de desarrollo, throttle no
+aplicado, 500 en `/api/v1/user` sin token, `redis-exporter` sin
+contraseña, config de Loki 3.x (`delete_request_store`), job de
+Prometheus `laravel-app` eliminado (no hay `/metrics` hasta Fase 11).
+
+**Verificado en local:** stack completo arriba; `migrate`; extensiones
+vector/pgcrypto/uuid-ossp en `app` y `app_testing`; Redis exige
+contraseña y AOF activo; `/api/v1/health` 200, 404/401 en JSON; token
+Sanctum por curl 200; 61ª petición → 429; `TestQueueJob` procesado por
+Horizon (`horizon:status` running, `/horizon` 200); log diario
+`laravel-YYYY-MM-DD.log`; Prometheus targets prometheus/postgres/redis UP;
+datasources Prometheus y Loki OK en Grafana; Loki recibe logs de Laravel
+(`{job="laravel"}`) y de los contenedores.
+
+**Notas de arranque en un equipo nuevo:** tras `docker compose up -d`
+hay que hacer `docker compose exec app composer install` (el bind-mount
+tapa el `vendor` de la imagen) y `php artisan key:generate`, y después
+`docker compose up -d` otra vez para que los contenedores recojan
+`APP_KEY` (el compose la pasa como variable de entorno).
+
+**Pendiente de Fase 1:** comprobar CI en GitHub Actions tras el push de
+estas correcciones. Staging/producción aparcados (solo local por ahora).
 
 ### Fase 2 (tenants y usuarios): NO empezada todavía.
 

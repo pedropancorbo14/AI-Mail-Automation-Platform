@@ -17,6 +17,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(prepend: [
             EnsureFrontendRequestsAreStateful::class,
         ]);
+
+        // Laravel 11+ ya no incluye throttle en el grupo api por defecto;
+        // aplica el RateLimiter 'api' definido en AppServiceProvider.
+        $middleware->throttleApi();
+
+        // En la API no se redirige a 'login' (no existe): sin redirección,
+        // la AuthenticationException se convierte en 401 JSON más abajo.
+        $middleware->redirectGuestsTo(
+            fn(Request $request) => $request->is('api/*') ? null : route('login'),
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
