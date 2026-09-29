@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -47,14 +48,25 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        $exceptions->render(function (Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, $request) {
-            if ($request->is('api/*')) {
-                return response()->json(['message' => 'Recurso no encontrado.'], 404);
+        // Laravel ya ha convertido aquí ModelNotFoundException y
+        // AuthorizationException (incluido denyAsNotFound) en excepciones HTTP.
+        // Mensajes fijos: no exponen nombres de modelos ni detalles internos.
+        $exceptions->render(function (HttpExceptionInterface $e, $request) {
+            if (! $request->is('api/*')) {
+                return null;
             }
+
+            return match ($e->getStatusCode()) {
+                403 => response()->json(['message' => 'No autorizado.'], 403, $e->getHeaders()),
+                404 => response()->json(['message' => 'Recurso no encontrado.'], 404, $e->getHeaders()),
+                default => null,
+            };
         });
 
+        // Solo errores inesperados: las excepciones HTTP (403, 405, 429...)
+        // conservan su código aunque APP_DEBUG=false.
         $exceptions->render(function (Throwable $e, $request) {
-            if ($request->is('api/*') && ! app()->hasDebugModeEnabled()) {
+            if ($request->is('api/*') && ! app()->hasDebugModeEnabled() && ! $e instanceof HttpExceptionInterface) {
                 return response()->json(['message' => 'Error interno del servidor.'], 500);
             }
         });
