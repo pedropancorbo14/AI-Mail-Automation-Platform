@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Tenancy\TenantService;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\RateLimiter;
@@ -13,7 +14,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Una instancia por petición HTTP / job de cola (ver TenantService).
+        $this->app->scoped(TenantService::class);
     }
 
     /**
