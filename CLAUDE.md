@@ -410,8 +410,16 @@ entero) y registrando el avance en este archivo en cada commit.
 - [x] 11. Roles y permisos: `User::hasRole()`/`hasPermission()`, cada
   permiso registrado como Gate (`can:users.create`), permisos en
   `/auth/me`. Catálogo movido a `Role::CATALOG`, `Role::PERMISSIONS` y
-  `Permission::CATALOG` (el seeder solo lo guarda en BD)
-- [ ] 12. Policies (`UserPolicy` + endpoints de usuarios del tenant)
+  `Permission::CATALOG` (el seeder solo lo guarda en BD) (`c4051a0`)
+- [x] 12. Policies: `UserPolicy` y `TenantPolicy` + endpoints
+  `apiResource users` (usuarios de la propia empresa) y `GET/PATCH
+  /tenant` (sin id en la URL). Reglas: otro tenant → 404 (antes que el
+  permiso); solo owner crea/edita/promociona/borra owners; nadie se borra
+  ni cambia su propio rol (siempre queda un owner). Autorización de
+  store/update en `authorize()` del FormRequest (va antes que la
+  validación: un 422 no delata usuarios de otra empresa). El tenant de un
+  usuario nuevo sale de `TenantService`, nunca del body. La empresa solo
+  puede cambiar su `name` (no `slug` ni `is_active`)
 - [ ] 13. Tests de aislamiento entre tenants
 
 Usuario de desarrollo (seeder): `test@example.com` / `password`, owner
