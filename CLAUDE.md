@@ -351,12 +351,25 @@ tapa el `vendor` de la imagen) y `php artisan key:generate`, y después
 (2026-09-29). **Fase 1 CERRADA** en local. Staging/producción aparcados
 (solo local por ahora; se retoman en la Fase 16).
 
-### Fase 2 (tenants y usuarios): COMPLETADA EN LOCAL (2026-09-29), pendiente de CI
+### Fase 2 (tenants y usuarios): CERRADA (2026-09-29)
 
-100 tests en verde (Pest, Postgres `app_testing`) y prueba de humo con
+100 tests en verde (Pest, Postgres `app_testing`), prueba de humo con
 curl contra el stack Docker (login, `/auth/me`, crear/listar usuarios,
-404 a usuario de otra empresa, 422 credenciales, logout → 401). Falta:
-push a GitHub y comprobar Actions en verde para darla por cerrada.
+404 a usuario de otra empresa, 422 credenciales, logout → 401) y GitHub
+Actions en verde (push hecho por el usuario).
+
+**Después del cierre:**
+- Fix nginx (`20d5d34`): `fastcgi_pass` con variable + `resolver
+  127.0.0.11` para que resuelva `app` en cada petición. Antes, recrear el
+  contenedor `app` (p. ej. tras `key:generate` + `up -d`) dejaba nginx
+  apuntando a la IP antigua → 502. Detectado al probar el arranque desde
+  cero con un clon limpio (`docker compose -p readmecheck`).
+- README reescrito para alguien nuevo en el proyecto: arranque desde cero
+  (comandos verificados en un clon limpio), arquitectura, cómo funciona
+  el multi-tenant y reglas para código nuevo, roles/permisos, estructura,
+  API y errores, tests (aviso `<server>` en phpunit.xml), problemas
+  frecuentes. `PENDIENTE-SETUP-DOCKER.md` y `README-docker.md` quedan
+  como notas históricas (parcialmente desactualizadas).
 
 **Endpoints `/api/v1` actuales:** `GET /health` · `POST /auth/login` ·
 (con `auth:sanctum` + `tenant`) `GET /auth/me`, `POST /auth/logout`,
@@ -365,6 +378,8 @@ push a GitHub y comprobar Actions en verde para darla por cerrada.
 Forma de trabajo pedida por el usuario: **un commit por tarea**, cada
 una probada con tests (solo se commitea si `php artisan test` pasa
 entero) y registrando el avance en este archivo en cada commit.
+**Nunca hacer `git push`** (ni a `main` ni a otra rama): solo crear los
+commits; el push y la revisión del CI los hace el usuario.
 
 **Decisiones tomadas:**
 - Aislamiento: **una BD con `tenant_id`** (no schema/BD por tenant).
@@ -439,6 +454,8 @@ entero) y registrando el avance en este archivo en cada commit.
 
 Usuario de desarrollo (seeder): `test@example.com` / `password`, owner
 de "Empresa Demo" (`php artisan migrate:fresh --seed`).
+
+### Fase 3 (conexiones de email): SIGUIENTE, no empezada.
 
 ### Reglas de trabajo que aplican en TODO momento
 
