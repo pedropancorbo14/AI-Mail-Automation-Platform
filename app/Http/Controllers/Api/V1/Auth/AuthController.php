@@ -30,6 +30,11 @@ class AuthController extends Controller
         ]);
     }
 
+    public function me(Request $request): UserResource
+    {
+        return new UserResource($request->user()->load(['tenant', 'role']));
+    }
+
     /**
      * Revoca solo el token usado en esta petición: el resto de tokens del
      * usuario (otros dispositivos, integraciones) siguen siendo válidos.

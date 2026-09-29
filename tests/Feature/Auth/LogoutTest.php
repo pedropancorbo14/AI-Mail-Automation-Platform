@@ -13,7 +13,7 @@ it('revokes the token used in the request', function () {
     // Sin esto el guard reutiliza el usuario ya resuelto en la petición anterior.
     $this->app['auth']->forgetGuards();
 
-    $this->withToken($token)->getJson('/api/v1/user')->assertUnauthorized();
+    $this->withToken($token)->getJson('/api/v1/auth/me')->assertUnauthorized();
 });
 
 it('keeps the other tokens of the user valid', function () {
@@ -26,7 +26,7 @@ it('keeps the other tokens of the user valid', function () {
 
     expect($user->tokens()->pluck('name')->all())->toBe(['integracion-crm']);
 
-    $this->withToken($crm)->getJson('/api/v1/user')->assertOk();
+    $this->withToken($crm)->getJson('/api/v1/auth/me')->assertOk();
 });
 
 it('requires authentication', function () {

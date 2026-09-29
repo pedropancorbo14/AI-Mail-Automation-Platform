@@ -22,7 +22,7 @@ it('logs in with valid credentials and returns a usable token', function () {
     expect($user->tokens()->first()->name)->toBe('panel');
 
     $this->withToken($response->json('token'))
-        ->getJson('/api/v1/user')
+        ->getJson('/api/v1/auth/me')
         ->assertOk();
 });
 

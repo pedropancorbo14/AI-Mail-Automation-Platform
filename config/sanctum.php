@@ -50,7 +50,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Minutos de vida de los tokens de API (por defecto 7 días). Los tokens
+    // caducados se borran a diario con sanctum:prune-expired (routes/console.php).
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 60 * 24 * 7),
 
     /*
     |--------------------------------------------------------------------------
