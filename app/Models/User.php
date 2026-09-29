@@ -44,4 +44,18 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Role::class);
     }
+
+    public function hasRole(string ...$roles): bool
+    {
+        return in_array($this->role->name, $roles, true);
+    }
+
+    /**
+     * Los permisos se cargan una vez por instancia (role.permissions) y se
+     * reutilizan en el resto de comprobaciones de la petición.
+     */
+    public function hasPermission(string $permission): bool
+    {
+        return $this->role->permissions->contains('name', $permission);
+    }
 }

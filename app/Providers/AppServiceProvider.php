@@ -2,9 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\Permission;
+use App\Models\User;
 use App\Tenancy\TenantService;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 
 class AppServiceProvider extends ServiceProvider
@@ -31,5 +34,12 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('login', function ($request) {
             return Limit::perMinute(5)->by(mb_strtolower((string) $request->input('email')) . '|' . $request->ip());
         });
+
+        // Cada permiso del catálogo es una Gate: $user->can('users.create'),
+        // middleware can:users.create, @can en vistas. Las policies lo usan
+        // además de comprobar que el recurso es del mismo tenant.
+        foreach (array_keys(Permission::CATALOG) as $permission) {
+            Gate::define($permission, fn (User $user) => $user->hasPermission($permission));
+        }
     }
 }

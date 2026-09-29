@@ -15,6 +15,12 @@ class UserResource extends JsonResource
             'name' => $this->name,
             'email' => $this->email,
             'role' => $this->whenLoaded('role', fn () => $this->role->name),
+            // Solo en /auth/me (carga role.permissions): para que el panel
+            // muestre u oculte acciones. La autorización real va en backend.
+            'permissions' => $this->when(
+                $this->relationLoaded('role') && $this->role->relationLoaded('permissions'),
+                fn () => $this->role->permissions->pluck('name')->sort()->values()->all(),
+            ),
             'tenant' => $this->whenLoaded('tenant', fn () => [
                 'id' => $this->tenant->id,
                 'name' => $this->tenant->name,

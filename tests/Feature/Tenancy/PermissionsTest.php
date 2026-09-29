@@ -11,7 +11,7 @@ function permissionsOf(string $role): array
 }
 
 it('seeds the permission catalog', function () {
-    expect(Permission::count())->toBe(count(RolesAndPermissionsSeeder::PERMISSIONS));
+    expect(Permission::count())->toBe(count(Permission::CATALOG));
 });
 
 it('gives the owner every permission', function () {
@@ -33,6 +33,6 @@ it('gives the agent read only permissions', function () {
 it('can run the seeder twice without duplicating permissions', function () {
     $this->seed(RolesAndPermissionsSeeder::class);
 
-    expect(Permission::count())->toBe(count(RolesAndPermissionsSeeder::PERMISSIONS))
+    expect(Permission::count())->toBe(count(Permission::CATALOG))
         ->and(permissionsOf(Role::AGENT))->toHaveCount(2);
 });

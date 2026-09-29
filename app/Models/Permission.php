@@ -21,6 +21,19 @@ class Permission extends Model
 
     public const string TENANT_UPDATE = 'tenant.update';
 
+    /**
+     * Catálogo completo (nombre => descripción). Cada permiso se registra
+     * como Gate en AppServiceProvider y se guarda en BD con el seeder.
+     */
+    public const array CATALOG = [
+        self::USERS_VIEW => 'Ver usuarios de la empresa',
+        self::USERS_CREATE => 'Crear usuarios',
+        self::USERS_UPDATE => 'Editar usuarios',
+        self::USERS_DELETE => 'Eliminar usuarios',
+        self::TENANT_VIEW => 'Ver datos de la empresa',
+        self::TENANT_UPDATE => 'Editar datos de la empresa',
+    ];
+
     /** @return BelongsToMany<Role, $this> */
     public function roles(): BelongsToMany
     {

@@ -406,8 +406,11 @@ entero) y registrando el avance en este archivo en cada commit.
 - [x] 8. Auth Sanctum: `GET /api/v1/auth/me` (sustituye a `/user`), rutas
   protegidas agrupadas, caducidad y limpieza de tokens (`9e4acd4`)
 - [x] 9. `TenantService` + `BelongsToTenant` (`2f8a8ec`)
-- [x] 10. Middleware de tenant (este commit)
-- [ ] 11. Roles y permisos en el modelo (`hasRole`/`hasPermission`)
+- [x] 10. Middleware de tenant (`99b81fd`)
+- [x] 11. Roles y permisos: `User::hasRole()`/`hasPermission()`, cada
+  permiso registrado como Gate (`can:users.create`), permisos en
+  `/auth/me`. Catálogo movido a `Role::CATALOG`, `Role::PERMISSIONS` y
+  `Permission::CATALOG` (el seeder solo lo guarda en BD)
 - [ ] 12. Policies (`UserPolicy` + endpoints de usuarios del tenant)
 - [ ] 13. Tests de aislamiento entre tenants
 

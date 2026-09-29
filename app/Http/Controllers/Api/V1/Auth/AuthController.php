@@ -32,7 +32,7 @@ class AuthController extends Controller
 
     public function me(Request $request): UserResource
     {
-        return new UserResource($request->user()->load(['tenant', 'role']));
+        return new UserResource($request->user()->load(['tenant', 'role.permissions']));
     }
 
     /**
