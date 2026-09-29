@@ -351,7 +351,16 @@ tapa el `vendor` de la imagen) y `php artisan key:generate`, y después
 (2026-09-29). **Fase 1 CERRADA** en local. Staging/producción aparcados
 (solo local por ahora; se retoman en la Fase 16).
 
-### Fase 2 (tenants y usuarios): EN CURSO (iniciada 2026-09-29)
+### Fase 2 (tenants y usuarios): COMPLETADA EN LOCAL (2026-09-29), pendiente de CI
+
+100 tests en verde (Pest, Postgres `app_testing`) y prueba de humo con
+curl contra el stack Docker (login, `/auth/me`, crear/listar usuarios,
+404 a usuario de otra empresa, 422 credenciales, logout → 401). Falta:
+push a GitHub y comprobar Actions en verde para darla por cerrada.
+
+**Endpoints `/api/v1` actuales:** `GET /health` · `POST /auth/login` ·
+(con `auth:sanctum` + `tenant`) `GET /auth/me`, `POST /auth/logout`,
+`GET|PATCH /tenant`, `GET|POST /users`, `GET|PATCH|DELETE /users/{user}`.
 
 Forma de trabajo pedida por el usuario: **un commit por tarea**, cada
 una probada con tests (solo se commitea si `php artisan test` pasa
@@ -419,8 +428,14 @@ entero) y registrando el avance en este archivo en cada commit.
   store/update en `authorize()` del FormRequest (va antes que la
   validación: un 422 no delata usuarios de otra empresa). El tenant de un
   usuario nuevo sale de `TenantService`, nunca del body. La empresa solo
-  puede cambiar su `name` (no `slug` ni `is_active`)
-- [ ] 13. Tests de aislamiento entre tenants
+  puede cambiar su `name` (no `slug` ni `is_active`) (`5853fde`)
+- [x] 13. Tests de aislamiento (`tests/Feature/Tenancy/TenantIsolationTest.php`):
+  owner de Acme con token real de login contra Globex → no lista, no lee
+  (mismo 404 que un id inexistente, sin enumeración), no edita (ni email/
+  password para robar la cuenta; 404 y no 422 con datos inválidos), no
+  borra, no crea usuarios dentro de Globex (tenant_id del body ignorado),
+  no renombra Globex; desactivar una empresa o hacer logout no afecta a
+  la otra
 
 Usuario de desarrollo (seeder): `test@example.com` / `password`, owner
 de "Empresa Demo" (`php artisan migrate:fresh --seed`).
