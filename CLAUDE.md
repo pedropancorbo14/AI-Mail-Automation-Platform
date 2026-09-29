@@ -347,10 +347,11 @@ tapa el `vendor` de la imagen) y `php artisan key:generate`, y después
 `docker compose up -d` otra vez para que los contenedores recojan
 `APP_KEY` (el compose la pasa como variable de entorno).
 
-**Pendiente de Fase 1:** comprobar CI en GitHub Actions tras el push de
-estas correcciones. Staging/producción aparcados (solo local por ahora).
+**CI verificado:** GitHub Actions en verde tras el commit `d20b69b`
+(2026-09-29). **Fase 1 CERRADA** en local. Staging/producción aparcados
+(solo local por ahora; se retoman en la Fase 16).
 
-### Fase 2 (tenants y usuarios): NO empezada todavía.
+### Fase 2 (tenants y usuarios): SIGUIENTE, pendiente de arrancar.
 
 ### Reglas de trabajo que aplican en TODO momento
 
