@@ -7,8 +7,9 @@ enviarla automáticamente, dejarla como borrador para un trabajador, o
 escalar el caso a una persona. Todo queda auditado, con métricas visibles en
 Grafana.
 
-> Estado actual: **Fase 1 completada** (base del proyecto). Las fases 2 en
-> adelante (tenants, conexiones de email, AI Engine, RAG, tools, agente,
+> Estado actual: **Fase 1** (base del proyecto) y **Fase 2** (empresas,
+> usuarios, roles/permisos y aislamiento multi-tenant) completadas. Las
+> fases 3 en adelante (conexiones de email, AI Engine, RAG, tools, agente,
 > automatización, panel de administración...) están descritas en la hoja de
 > ruta interna del proyecto y se irán implementando de forma incremental.
 
@@ -38,7 +39,7 @@ cp .env.example .env        # si aún no tienes tu .env de Laravel local
 docker compose up -d --build
 
 docker compose exec app php artisan key:generate
-docker compose exec app php artisan migrate
+docker compose exec app php artisan migrate --seed   # roles/permisos + empresa y usuario demo
 ```
 
 La app queda disponible en `http://localhost:8080`.
@@ -93,6 +94,33 @@ de administración (SPA).
 
 ```bash
 curl http://localhost:8080/api/v1/health
+```
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/health` | Estado de la API (público) |
+| POST | `/auth/login` | Devuelve un token Bearer (máx. 5 intentos/min) |
+| GET | `/auth/me` | Usuario actual, su empresa, rol y permisos |
+| POST | `/auth/logout` | Revoca el token usado |
+| GET · PATCH | `/tenant` | Ver / renombrar la empresa del usuario |
+| GET · POST | `/users` | Listar / crear usuarios de la empresa |
+| GET · PATCH · DELETE | `/users/{id}` | Ver / editar / eliminar un usuario de la empresa |
+
+Todo salvo `health` y `login` requiere token. El tenant se obtiene siempre
+del usuario autenticado: un recurso de otra empresa responde `404`. Roles:
+`owner` (todo), `admin` (usuarios, sin editar la empresa) y `agent`
+(solo lectura).
+
+Usuario de desarrollo (tras `php artisan migrate:fresh --seed`):
+`test@example.com` / `password`, owner de "Empresa Demo".
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -d '{"email":"test@example.com","password":"password"}'
+
+curl http://localhost:8080/api/v1/auth/me \
+  -H "Accept: application/json" -H "Authorization: Bearer <TOKEN>"
 ```
 
 ## Documentación adicional
