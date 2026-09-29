@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Middleware\ResolveTenant;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -22,6 +24,15 @@ return Application::configure(basePath: dirname(__DIR__))
         // Laravel 11+ ya no incluye throttle en el grupo api por defecto;
         // aplica el RateLimiter 'api' definido en AppServiceProvider.
         $middleware->throttleApi();
+
+        $middleware->alias(['tenant' => ResolveTenant::class]);
+
+        // El tenant debe estar fijado antes del route model binding: los
+        // modelos con BelongsToTenant no se pueden consultar sin tenant.
+        $middleware->prependToPriorityList(
+            before: SubstituteBindings::class,
+            prepend: ResolveTenant::class,
+        );
 
         // En la API no se redirige a 'login' (no existe): sin redirección,
         // la AuthenticationException se convierte en 401 JSON más abajo.

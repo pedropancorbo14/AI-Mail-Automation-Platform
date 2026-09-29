@@ -8,8 +8,9 @@ Route::get('/health', [HealthController::class, 'index']);
 
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
-// Todo lo que requiere usuario autenticado (token Sanctum o cookie SPA).
-Route::middleware('auth:sanctum')->group(function () {
+// Todo lo que requiere usuario autenticado (token Sanctum o cookie SPA) y
+// se ejecuta dentro de su tenant.
+Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
 

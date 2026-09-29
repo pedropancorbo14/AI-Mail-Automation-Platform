@@ -351,7 +351,68 @@ tapa el `vendor` de la imagen) y `php artisan key:generate`, y después
 (2026-09-29). **Fase 1 CERRADA** en local. Staging/producción aparcados
 (solo local por ahora; se retoman en la Fase 16).
 
-### Fase 2 (tenants y usuarios): SIGUIENTE, pendiente de arrancar.
+### Fase 2 (tenants y usuarios): EN CURSO (iniciada 2026-09-29)
+
+Forma de trabajo pedida por el usuario: **un commit por tarea**, cada
+una probada con tests (solo se commitea si `php artisan test` pasa
+entero) y registrando el avance en este archivo en cada commit.
+
+**Decisiones tomadas:**
+- Aislamiento: **una BD con `tenant_id`** (no schema/BD por tenant).
+- El tenant de una petición sale **siempre del usuario autenticado**,
+  nunca de cabeceras/subdominio/parámetros del cliente.
+- Email de usuario **único global** (login solo con email+password; un
+  usuario pertenece a una única empresa).
+- FKs `tenant_id`/`role_id` con `restrictOnDelete` (no se borra un tenant
+  con usuarios ni un rol en uso; borrado de datos explícito en Fase 12).
+- Roles y permisos: **tablas propias** (sin Spatie) como **catálogo
+  global** (owner/admin/agent), un rol por usuario (`users.role_id`),
+  pivote `permission_role`. Catálogo y asignación en
+  `RolesAndPermissionsSeeder` (idempotente, se ejecuta en cada test vía
+  `$seed` en `tests/TestCase.php`). `role_id`/`tenant_id` no son
+  asignables en masa.
+- Permisos actuales: `users.view/create/update/delete`,
+  `tenant.view/update`. owner: todos · admin: todos menos
+  `tenant.update` · agent: `users.view`, `tenant.view`.
+- Tokens Sanctum caducan a los 7 días (`SANCTUM_TOKEN_EXPIRATION`),
+  limpieza diaria `sanctum:prune-expired` en el scheduler.
+- `TenantService` registrado como `scoped` (se reinicia por petición y
+  por job). Trait `BelongsToTenant` + `TenantScope` para todos los
+  modelos futuros con `tenant_id`: filtra por tenant y **falla cerrado**
+  (`MissingTenantException` si no hay tenant en contexto). `User` NO lo
+  usa (Sanctum resuelve el usuario antes de conocer el tenant): los
+  usuarios se protegen con policies. Consultas globales deliberadas:
+  `withoutGlobalScope(TenantScope::class)`.
+- Middleware `tenant` (`ResolveTenant`) va tras `auth:sanctum` y **antes
+  de `SubstituteBindings`** (prioridad configurada en `bootstrap/app.php`);
+  bloquea con 403 tokens de empresas desactivadas y añade `tenant_id` al
+  `Context` (logs + jobs).
+- Excepciones API: handler único por código HTTP (403 "No autorizado.",
+  404 "Recurso no encontrado." sin nombre de modelo); el 500 genérico ya
+  no tapa 403/404/405/429 con `APP_DEBUG=false` (bug de Fase 1 corregido).
+
+**Tareas (commit):**
+- [x] 1. Tabla `tenants` (`f5f6f16`)
+- [x] 2. `tenant_id` en `users` (`2a0363e`)
+- [x] 3. Relación tenant → users (`5bbb516`)
+- [x] 4. Tabla `roles` + `users.role_id` (`5fa0431`)
+- [x] 5. Tabla `permissions` + `permission_role` (`438bb39`)
+- [x] Fix excepciones API con debug desactivado (`250a95e`)
+- [x] 6. Login `POST /api/v1/auth/login` (throttle 5/min email+IP, mismo
+  error para email inexistente y password incorrecta, 403 si empresa
+  desactivada) (`63c3da3`)
+- [x] 7. Logout `POST /api/v1/auth/logout` (revoca solo el token actual)
+  (`43d0dd6`)
+- [x] 8. Auth Sanctum: `GET /api/v1/auth/me` (sustituye a `/user`), rutas
+  protegidas agrupadas, caducidad y limpieza de tokens (`9e4acd4`)
+- [x] 9. `TenantService` + `BelongsToTenant` (`2f8a8ec`)
+- [x] 10. Middleware de tenant (este commit)
+- [ ] 11. Roles y permisos en el modelo (`hasRole`/`hasPermission`)
+- [ ] 12. Policies (`UserPolicy` + endpoints de usuarios del tenant)
+- [ ] 13. Tests de aislamiento entre tenants
+
+Usuario de desarrollo (seeder): `test@example.com` / `password`, owner
+de "Empresa Demo" (`php artisan migrate:fresh --seed`).
 
 ### Reglas de trabajo que aplican en TODO momento
 
