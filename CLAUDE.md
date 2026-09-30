@@ -735,6 +735,34 @@ Base disponible: `MailProvider::newMessages()` con cursor por carpeta
 `MailConnectionService`, `OAuthTokenManager` (renueva tokens en jobs) y
 `TenantService::runAs()` para ejecutar jobs dentro de la empresa.
 
+### Pendientes anotados para más adelante
+
+- **Autodetección de configuración IMAP/SMTP (Fase 10, panel)** — pedido
+  por el usuario (2026-09-30). Que el cliente solo escriba email y
+  contraseña y la app proponga servidores/puertos/cifrado, como
+  Thunderbird: 1) base de datos pública de autoconfig de Thunderbird
+  (ISPDB, `autoconfig.thunderbird.net/v1.1/{dominio}`), 2) autoconfig del
+  propio dominio (`autoconfig.{dominio}/mail/config-v1.1.xml`), 3)
+  registros DNS SRV (`_imaps._tcp`, `_submission._tcp`, RFC 6186), 4)
+  heurística `imap.`/`smtp.`/`mail.{dominio}`. Probar la propuesta con
+  `testConnection()` antes de guardar y dejar corregir a mano si falla.
+  Detectar dominios de Microsoft 365/Google (MX) para ofrecer OAuth en
+  vez de IMAP. Cuidado anti-SSRF: las URLs/hosts detectados pasan por
+  `MailHostGuard` igual que los introducidos a mano.
+- **Registrar apps OAuth y probar con cuentas reales**: Microsoft (Entra
+  ID, gratis; en empresas cliente puede requerir consentimiento del
+  admin) y Google (modo pruebas: máx. 100 usuarios de prueba y refresh
+  token que caduca a los 7 días; producción exige verificación +
+  auditoría CASA anual por `gmail.readonly`). Mientras tanto, Gmail puede
+  conectarse por IMAP con contraseña de aplicación; Microsoft 365 no
+  (Microsoft desactivó usuario/contraseña en IMAP/SMTP de empresa).
+- Microsoft: envío de adjuntos > 3 MB (upload session) y detección de
+  correos movidos entre carpetas (delta query) si hace falta.
+- Copia en "Enviados" de lo enviado por SMTP (Fase 9).
+- "Iniciar sesión con Microsoft/Google" para los usuarios de la app: NO
+  existe (el OAuth de la Fase 3 es solo para conectar buzones). Valorar
+  si interesa.
+
 ### Reglas de trabajo que aplican en TODO momento
 
 Ver secciones 18 y 19 de este documento: paso a paso, tareas pequeñas,
