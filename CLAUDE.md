@@ -788,7 +788,16 @@ privado), registra los errores y reintenta los fallos temporales.
   `recordSuccess($cursor, $resynced)` avanza el cursor y limpia el error;
   `recordFailure($error)` NO avanza el cursor. Cascade con la conexión.
   `MailConnection::syncStates()`
-- [ ] 7. `EmailIngestionService` (guardar sin duplicados)
+- [x] 7. `App\Mail\Ingestion\EmailIngestionService::ingest($connection,
+  MailMessage)`: guarda email + destinatarios (to/cc/reply_to en orden) +
+  metadatos de adjuntos (pending) en una transacción; idempotente
+  (`dedupHash()`: `mid:`+Message-ID o huella `fp:` de remitente/fecha/
+  asunto/cuerpo); devuelve el existente si ya estaba
+  (`wasRecentlyCreated=false`). Carrera entre workers → captura la
+  violación del único **fuera** de la transacción (en Postgres un error la
+  aborta). Exige estar en el tenant de la conexión (`LogicException`).
+  Texto saneado (`mb_scrub` + sin `\0`: Postgres rechaza NUL/UTF-8
+  inválido) y recortado al tamaño de columna en vez de fallar
 - [ ] 8. Adjuntos en disco privado + marca de ingesta completa
 - [ ] 9. `MailSyncService` (sincronización de una carpeta con cursor)
 - [ ] 10. `FetchEmailsJob` (reintentos, backoff, errores)
