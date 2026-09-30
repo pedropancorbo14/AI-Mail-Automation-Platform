@@ -550,8 +550,16 @@ cada commit, este archivo actualizado en cada commit, sin push.
   por atributos RFC 6154 (`\Sent`, `\Drafts`, `\Trash`, `\Junk`,
   `\Archive`). Wrapper `call()` traduce cualquier excepción de ImapEngine.
   Helpers `GreenMail::imapClient()`/`provider()` (en Pest las funciones de
-  un test son globales: no redeclarar helpers entre archivos)
-- [ ] 10–12. IMAP: mensajes, adjuntos, nuevos emails
+  un test son globales: no redeclarar helpers entre archivos) (`2ef2c6d`)
+- [x] 10. Lectura de mensajes IMAP: `messages($folder, $limit)` (más
+  recientes primero: `newest()` + orden explícito por UID desc, porque la
+  colección vuelve ascendente) y `message($folder, $uid)`.
+  `ImapMessageMapper` → `MailMessage` (Message-ID/In-Reply-To/References
+  sin `< >`, from/to/cc/reply-to, fecha, texto/HTML, flag `\Seen`).
+  **Leer no marca como leído** (BODY.PEEK por defecto en ImapEngine).
+  Carpeta/UID inexistente o id no numérico → `MailNotFoundException`.
+  Helper `GreenMail::append()` (IMAP APPEND de un `Symfony\Mime\Email`)
+- [ ] 11–12. IMAP: adjuntos, nuevos emails
 - [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío

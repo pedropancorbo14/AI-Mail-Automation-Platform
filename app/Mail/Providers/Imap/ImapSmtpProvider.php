@@ -11,11 +11,14 @@ use App\Mail\Data\NewMessages;
 use App\Mail\Data\OutgoingMessage;
 use App\Mail\Data\SentMessage;
 use App\Mail\Exceptions\MailConnectionException;
+use App\Mail\Exceptions\MailNotFoundException;
 use App\Mail\Exceptions\MailProviderException;
 use Closure;
 use DirectoryTree\ImapEngine\Exceptions\Exception as ImapEngineException;
 use DirectoryTree\ImapEngine\Exceptions\ImapConnectionException;
 use DirectoryTree\ImapEngine\FolderInterface;
+use DirectoryTree\ImapEngine\MessageInterface;
+use DirectoryTree\ImapEngine\MessageQueryInterface;
 
 /**
  * Proveedor para cualquier servidor de correo estándar: IMAP para leer y
@@ -60,14 +63,31 @@ class ImapSmtpProvider implements MailProvider
         });
     }
 
+    /**
+     * Lectura con BODY.PEEK (por defecto en ImapEngine): leer NO marca el
+     * mensaje como leído en el buzón del cliente.
+     */
     public function messages(string $folder, int $limit = 50): array
     {
-        throw new MailProviderException('Lectura de mensajes IMAP todavía no implementada.');
+        return $this->call(function () use ($folder, $limit) {
+            // newest() elige los últimos UIDs, pero la colección llega en orden
+            // ascendente: se ordena explícitamente (UID crece con cada llegada).
+            return $this->query($folder)
+                ->newest()
+                ->limit($limit)
+                ->get()
+                ->sortByDesc(fn (MessageInterface $message) => $message->uid())
+                ->map(fn (MessageInterface $message) => ImapMessageMapper::toMailMessage($message, $folder))
+                ->values()
+                ->all();
+        });
     }
 
     public function message(string $folder, string $id): MailMessage
     {
-        throw new MailProviderException('Lectura de mensajes IMAP todavía no implementada.');
+        return $this->call(function () use ($folder, $id) {
+            return ImapMessageMapper::toMailMessage($this->findMessage($folder, $id), $folder);
+        });
     }
 
     public function downloadAttachment(string $folder, string $messageId, string $attachmentId): AttachmentContent
@@ -83,6 +103,31 @@ class ImapSmtpProvider implements MailProvider
     public function send(OutgoingMessage $message): SentMessage
     {
         throw new MailProviderException('Envío SMTP todavía no implementado.');
+    }
+
+    /**
+     * @throws MailNotFoundException
+     */
+    private function folder(string $folder): FolderInterface
+    {
+        return $this->imap->mailbox()->folders()->find($folder)
+            ?? throw new MailNotFoundException("La carpeta {$folder} no existe.");
+    }
+
+    /** Consulta de mensajes con todo lo necesario para construir MailMessage. */
+    private function query(string $folder): MessageQueryInterface
+    {
+        return $this->folder($folder)->messages()->withHeaders()->withBody()->withFlags();
+    }
+
+    /**
+     * @throws MailNotFoundException
+     */
+    private function findMessage(string $folder, string $id): MessageInterface
+    {
+        $message = ctype_digit($id) ? $this->query($folder)->find((int) $id) : null;
+
+        return $message ?? throw new MailNotFoundException("El mensaje {$id} no existe en {$folder}.");
     }
 
     /** INBOX es especial por nombre (RFC 9051); el resto por atributos de uso especial. */

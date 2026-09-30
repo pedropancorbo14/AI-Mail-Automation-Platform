@@ -9,6 +9,7 @@ use App\Mail\Providers\Imap\ImapSmtpProvider;
 use App\Mail\Security\MailHostGuard;
 use GuzzleHttp\Client;
 use Illuminate\Support\Str;
+use Symfony\Component\Mime\Email;
 
 /**
  * Acceso al servidor GreenMail (IMAP 3143 / SMTP 3025 sin TLS, API REST
@@ -57,5 +58,22 @@ class GreenMail
     public static function provider(string $email, string $password = 'secret'): ImapSmtpProvider
     {
         return new ImapSmtpProvider(self::imapClient($email, $password));
+    }
+
+    /**
+     * Mete un email en un buzón con IMAP APPEND (como si hubiera llegado),
+     * sin depender del SMTP. Devuelve el UID asignado.
+     *
+     * @param  list<string>  $flags  p. ej. ['\Seen']
+     */
+    public static function append(string $email, Email $message, string $folder = 'INBOX', array $flags = []): int
+    {
+        $client = self::imapClient($email);
+
+        try {
+            return $client->mailbox()->folders()->firstOrCreate($folder)->messages()->append($message->toString(), $flags ?: null);
+        } finally {
+            $client->disconnect();
+        }
     }
 }
