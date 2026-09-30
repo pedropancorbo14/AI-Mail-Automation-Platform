@@ -455,7 +455,47 @@ commits; el push y la revisión del CI los hace el usuario.
 Usuario de desarrollo (seeder): `test@example.com` / `password`, owner
 de "Empresa Demo" (`php artisan migrate:fresh --seed`).
 
-### Fase 3 (conexiones de email): SIGUIENTE, no empezada.
+### Fase 3 (conexiones de correo): EN CURSO (iniciada 2026-09-30)
+
+Misma forma de trabajo que la Fase 2: un commit por tarea, tests antes de
+cada commit, este archivo actualizado en cada commit, sin push.
+
+**Decisiones tomadas:**
+- Todo en `app/Mail/` (contratos en `Contracts/`, DTOs `readonly` en
+  `Data/`, excepciones en `Exceptions/`). El resto de la app solo usa la
+  interfaz `MailProvider` y los DTOs, nunca clases de librerías/APIs.
+- Interfaz única `MailProvider`: `testConnection()` (no lanza; resultado
+  separado recepción/envío), `folders()`, `messages()`, `message()`,
+  `downloadAttachment()` (contenido aparte de los metadatos),
+  `newMessages($folder, ?$cursor)` (cursor opaco por proveedor: UID+
+  UIDVALIDITY en IMAP, deltaLink en Graph, historyId en Gmail; `null` =
+  fijar punto de partida sin traer histórico) y `send()`.
+- `OutgoingMessage` no permite elegir remitente (siempre la cuenta de la
+  conexión: evita suplantación). Exige destinatario y cuerpo.
+- Errores: los proveedores traducen todo a `MailProviderException` y
+  subclases (`MailAuthenticationException`, `MailConnectionException`,
+  `MailNotFoundException`) con mensajes aptos para el usuario, sin
+  credenciales.
+- IMAP con **directorytree/imapengine** (PHP puro; `ext-imap` ya no viene
+  en PHP 8.4). SMTP con **Symfony Mailer** (incluido en Laravel).
+  Tests de IMAP/SMTP contra **GreenMail** real en Docker (local y CI).
+  OAuth Microsoft/Google **manual con `Http`** (sin Socialite), probado
+  con `Http::fake` (pendiente de probar con apps reales registradas).
+- `tests/Fakes/FakeMailProvider`: proveedor en memoria para testear el
+  código que usa proveedores sin servidor.
+
+**Tareas (commit)** — Arquitectura reordenada por dependencias
+(interfaz → tabla → credenciales → modelo → factory) + API de conexiones:
+- [x] 1. Interfaz `MailProvider` + DTOs + excepciones (este commit)
+- [ ] 2. Tabla `mail_connections`
+- [ ] 3. Sistema de credenciales cifradas
+- [ ] 4. Modelo `MailConnection`
+- [ ] 5. `MailProviderFactory`
+- [ ] 6. API de conexiones (CRUD + policy + permisos) — añadida
+- [ ] 7–12. IMAP: conexión, autenticación, carpetas, mensajes, adjuntos, nuevos emails
+- [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
+- [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
+- [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 
 ### Reglas de trabajo que aplican en TODO momento
 
