@@ -98,6 +98,7 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:mail' => 120,
     ],
 
     /*
@@ -210,6 +211,23 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+
+        // Sincronización de buzones (FetchEmailsJob): supervisor propio para que
+        // un servidor de correo lento no retrase el resto de jobs. El job define
+        // sus propios tries/backoff/timeout (240 s, < retry_after 300).
+        'supervisor-mail' => [
+            'connection' => 'redis',
+            'queue' => ['mail'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'size',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 3,
+            'timeout' => 250,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -222,6 +240,10 @@ return [
                 'maxProcesses' => 3,
                 'tries' => 3,
             ],
+            'supervisor-mail' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 5,
+            ],
         ],
 
         'local' => [
@@ -232,6 +254,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
                 'tries' => 3,
+            ],
+            'supervisor-mail' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
             ],
         ],
     ],

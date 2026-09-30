@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Borra los tokens de Sanctum caducados hace más de 24 h (config sanctum.expiration).
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
+
+// Sincroniza los buzones activos (un FetchEmailsJob único por buzón en la cola "mail").
+Schedule::command('mail:sync')->everyMinute()->withoutOverlapping();

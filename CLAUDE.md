@@ -842,7 +842,18 @@ privado), registra los errores y reintenta los fallos temporales.
   desactivado o empresa desactivada mientras esperaba → termina sin hacer
   nada. `failed()` deja un warning en el log. Tests con
   `withFakeQueueInteractions()`
-- [ ] 11. Scheduler + cola `mail` en Horizon
+- [x] 11. Comando `php artisan mail:sync {connection?}`
+  (`app/Console/Commands/SyncMailboxes.php`): encola un `FetchEmailsJob`
+  por buzón **`active` de empresa activa** (`pending` = sin verificar;
+  `failing` = credenciales mal, reintentarlo cada minuto podría bloquear la
+  cuenta: vuelve a `active` al probarlo de nuevo). Consulta global
+  deliberada (`withoutGlobalScope`) con `chunkById`. Scheduler: **cada
+  minuto** con `withoutOverlapping` (el job único evita acumular). Horizon:
+  **supervisor propio `supervisor-mail`** para la cola `mail` (un servidor
+  de correo lento no retrasa `default`; timeout 250 > 240 del job; local 2
+  procesos, producción hasta 5) + `waits.redis:mail` 120 s. Verificado en
+  el stack: `schedule:list` lo muestra y `horizon:supervisors` levanta
+  `supervisor-mail` (tras `horizon:terminate`)
 - [ ] 12. Test end-to-end con GreenMail, prueba de humo y README
 
 Base usada de fases anteriores: `MailProvider::newMessages()` con cursor
