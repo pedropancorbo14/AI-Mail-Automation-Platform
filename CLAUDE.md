@@ -829,7 +829,19 @@ privado), registra los errores y reintenta los fallos temporales.
   fallar. `FakeMailProvider` con lotes (`batchSize`), resync (cursor no
   numérico) y `failNewMessagesWith`; helper de tests `incomingMessage()`
   movido a `tests/Pest.php`
-- [ ] 10. `FetchEmailsJob` (reintentos, backoff, errores)
+- [x] 10. `App\Mail\Ingestion\FetchEmailsJob($mailConnectionId)` en la cola
+  **`mail`**. Recibe el **id**, no el modelo (al deserializar no hay
+  tenant y `BelongsToTenant` fallaría): carga la conexión con
+  `withoutGlobalScope(TenantScope)` y `MailSyncService` entra en su tenant.
+  `ShouldBeUnique` por conexión (`uniqueFor` 900 s): no se apilan syncs del
+  mismo buzón (en cola, ejecutándose o esperando reintento). **Reintentos:**
+  `tries=3`, `backoff [30, 120]`, `timeout 240` (< `retry_after` 300);
+  errores temporales se relanzan → la cola reintenta. **Credenciales
+  rechazadas → `fail()` sin reintentar** (repetir logins fallidos puede
+  bloquear la cuenta; la conexión ya queda `failing`). Buzón borrado o
+  desactivado o empresa desactivada mientras esperaba → termina sin hacer
+  nada. `failed()` deja un warning en el log. Tests con
+  `withFakeQueueInteractions()`
 - [ ] 11. Scheduler + cola `mail` en Horizon
 - [ ] 12. Test end-to-end con GreenMail, prueba de humo y README
 
