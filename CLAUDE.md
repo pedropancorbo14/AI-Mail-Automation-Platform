@@ -761,7 +761,10 @@ privado), registra los errores y reintenta los fallos temporales.
   asunto, cuerpos texto/HTML (longText), `sent_at` (cabecera Date),
   `status` (default received), `ingested_at`. Índices por tenant+status,
   tenant+sent_at, tenant+message_id (hilos)
-- [ ] 2. Tabla `email_recipients`
+- [x] 2. Tabla `email_recipients`: tipo to/cc/bcc/reply_to, email, nombre,
+  posición en la cabecera; `tenant_id` redundante a propósito (consultas
+  directas también filtradas por empresa); se borran con el email (cascade);
+  índice tenant+email (correos en los que aparece una dirección)
 - [ ] 3. Tabla `email_attachments`
 - [ ] 4. Modelo `Email` + enum `EmailStatus`
 - [ ] 5. Modelos `EmailRecipient` y `EmailAttachment`
