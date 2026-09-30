@@ -14,6 +14,7 @@ use App\Mail\Data\SentMessage;
 use App\Mail\Exceptions\MailConnectionException;
 use App\Mail\Exceptions\MailNotFoundException;
 use App\Mail\Exceptions\MailProviderException;
+use App\Mail\Support\MimeMessageMapper;
 use Closure;
 use DirectoryTree\ImapEngine\Exceptions\Exception as ImapEngineException;
 use DirectoryTree\ImapEngine\Exceptions\ImapConnectionException;
@@ -130,30 +131,16 @@ class ImapSmtpProvider implements MailProvider
 
     /**
      * $attachmentId es la posición del adjunto en el mensaje (ver
-     * ImapMessageMapper), tal como aparece en MailMessage::$attachments.
+     * MimeMessageMapper), tal como aparece en MailMessage::$attachments.
      */
     public function downloadAttachment(string $folder, string $messageId, string $attachmentId): AttachmentContent
     {
-        return $this->call(function () use ($folder, $messageId, $attachmentId) {
-            $attachments = array_values($this->findMessage($folder, $messageId)->attachments());
-            $attachment = ctype_digit($attachmentId) ? ($attachments[(int) $attachmentId] ?? null) : null;
-
-            if ($attachment === null) {
-                throw new MailNotFoundException("El adjunto {$attachmentId} no existe en el mensaje {$messageId}.");
-            }
-
-            $content = $attachment->contents();
-
-            if (strlen($content) > $this->maxAttachmentBytes) {
-                throw new MailProviderException(sprintf(
-                    'El adjunto %s supera el tamaño máximo permitido (%d MB).',
-                    $attachment->filename() ?? $attachmentId,
-                    intdiv($this->maxAttachmentBytes, 1024 * 1024),
-                ));
-            }
-
-            return new AttachmentContent(ImapMessageMapper::attachment($attachment, $attachmentId), $content);
-        });
+        return $this->call(fn () => MimeMessageMapper::download(
+            $this->findMessage($folder, $messageId),
+            $messageId,
+            $attachmentId,
+            $this->maxAttachmentBytes,
+        ));
     }
 
     /**

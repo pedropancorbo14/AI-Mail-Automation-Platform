@@ -682,7 +682,21 @@ cada commit, este archivo actualizado en cada commit, sin push.
   Factory de Google con `OAuthTokenManager`. Config `services.google.*`
   (`GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`). **Producción:**
   `gmail.readonly` es scope restringido → verificación de la app en
-  Google Cloud (en pruebas solo usuarios de prueba)
+  Google Cloud (en pruebas solo usuarios de prueba) (`de05f8b`)
+- [x] 23. Lectura Gmail: refactor → `App\Mail\Support\MimeMessageMapper`
+  (MIME ya parseado → MailMessage con id/seen explícitos, adjuntos por
+  posición, `download()` con límite) usado por IMAP
+  (`ImapMessageMapper` queda como adaptador UID/\Seen) y por Gmail.
+  Gmail pide `format=raw` y parsea con `FileMessage` de ImapEngine
+  (mismo parser que IMAP). Carpetas = etiquetas: sistema INBOX/SENT/
+  DRAFT/TRASH/SPAM con rol + etiquetas de usuario (resto de sistema
+  omitidas). Leído = sin etiqueta `UNREAD`. `newMessages()` con **History
+  API**: cursor `v1:base64(json{history, pending})` (pending = ids
+  detectados que no cupieron en el lote), `null` → historyId actual del
+  perfil, 404 (historyId caducado) o cursor ilegible → `resynced`;
+  mensajes borrados entre detección y lectura se ignoran.
+  `messages()` = 1 petición de lista + 1 por mensaje (sin batch
+  multipart: suficiente con límites de 50)
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 

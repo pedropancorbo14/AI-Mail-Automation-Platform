@@ -90,6 +90,7 @@ class MailProvidersServiceProvider extends ServiceProvider
                 config('mail_connections.timeout'),
             ),
             $connection->credentials->scopes,
+            config('mail_connections.max_attachment_mb') * 1024 * 1024,
         ));
     }
 }
