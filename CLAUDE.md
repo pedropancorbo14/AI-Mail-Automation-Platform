@@ -771,7 +771,11 @@ privado), registra los errores y reintenta los fallos temporales.
   contenido va a disco privado, no a la BD. El nombre del remitente nunca
   se usa como ruta. Cascade con el email (borra la fila, no el fichero:
   limpieza en Fase 12). Único email+id de adjunto
-- [ ] 4. Modelo `Email` + enum `EmailStatus`
+- [x] 4. Modelo `Email` (`BelongsToTenant`, factory) + enum `EmailStatus`
+  (estados de la sección 12). `status`/`ingested_at`/`tenant_id` no son
+  asignables en masa. `MailConnection::emails()`. Borrar por la API una
+  conexión con correos → **409** "desactívala en lugar de borrarla"
+  (antes daría 500 por el `restrictOnDelete`)
 - [ ] 5. Modelos `EmailRecipient` y `EmailAttachment`
 - [ ] 6. Tabla y modelo `mail_sync_states` (cursor + errores de sincronización)
 - [ ] 7. `EmailIngestionService` (guardar sin duplicados)

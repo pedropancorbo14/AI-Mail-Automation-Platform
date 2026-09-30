@@ -97,6 +97,12 @@ class MailConnectionController extends Controller
     {
         Gate::authorize('delete', $mailConnection);
 
+        // Los correos guardados dependen del buzón (restrictOnDelete): no se
+        // pierden en silencio. Se puede desactivar para dejar de sincronizar.
+        if ($mailConnection->emails()->exists()) {
+            abort(409, 'La conexión tiene correos guardados: desactívala en lugar de borrarla.');
+        }
+
         $mailConnection->delete();
 
         return response()->noContent();

@@ -200,3 +200,15 @@ it('cannot see, edit or delete connections of another company', function () {
 
     expect(inTenant($foreign->tenant, fn () => MailConnection::find($foreign->id)))->not->toBeNull();
 });
+
+it('does not delete a connection that has stored emails', function () {
+    $connection = connectionOf($this->tenant);
+    inTenant($this->tenant, fn () => \App\Models\Email::factory()->for($connection)->create());
+
+    $this->actingAs($this->admin, 'sanctum')
+        ->deleteJson("/api/v1/mail-connections/{$connection->id}")
+        ->assertStatus(409)
+        ->assertJsonPath('message', 'La conexión tiene correos guardados: desactívala en lugar de borrarla.');
+
+    expect(inTenant($this->tenant, fn () => MailConnection::count()))->toBe(1);
+});
