@@ -37,6 +37,7 @@ class MailProvidersServiceProvider extends ServiceProvider
                 $this->app->make(MailHostGuard::class),
                 config('mail_connections.timeout'),
             ),
+            config('mail_connections.max_attachment_mb') * 1024 * 1024,
         ));
     }
 }

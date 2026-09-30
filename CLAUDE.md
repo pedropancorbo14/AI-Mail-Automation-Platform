@@ -558,8 +558,14 @@ cada commit, este archivo actualizado en cada commit, sin push.
   sin `< >`, from/to/cc/reply-to, fecha, texto/HTML, flag `\Seen`).
   **Leer no marca como leído** (BODY.PEEK por defecto en ImapEngine).
   Carpeta/UID inexistente o id no numérico → `MailNotFoundException`.
-  Helper `GreenMail::append()` (IMAP APPEND de un `Symfony\Mime\Email`)
-- [ ] 11–12. IMAP: adjuntos, nuevos emails
+  Helper `GreenMail::append()` (IMAP APPEND de un `Symfony\Mime\Email`) (`cb29142`)
+- [x] 11. Adjuntos IMAP: metadatos en `MailMessage::$attachments` (id =
+  posición en el orden de la estructura MIME, no el de `attach()`;
+  nombre, tipo, tamaño, inline, Content-ID) y
+  `downloadAttachment($folder, $uid, $id)` byte a byte (probado con
+  binario). Límite `mail_connections.max_attachment_mb` (25 MB,
+  `MAIL_CONNECTIONS_MAX_ATTACHMENT_MB`) → `MailProviderException`
+- [ ] 12. IMAP: nuevos emails
 - [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío

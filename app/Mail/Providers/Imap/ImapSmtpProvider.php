@@ -37,6 +37,7 @@ class ImapSmtpProvider implements MailProvider
 
     public function __construct(
         private readonly ImapClient $imap,
+        private readonly int $maxAttachmentBytes = 25 * 1024 * 1024,
     ) {
     }
 
@@ -90,9 +91,32 @@ class ImapSmtpProvider implements MailProvider
         });
     }
 
+    /**
+     * $attachmentId es la posición del adjunto en el mensaje (ver
+     * ImapMessageMapper), tal como aparece en MailMessage::$attachments.
+     */
     public function downloadAttachment(string $folder, string $messageId, string $attachmentId): AttachmentContent
     {
-        throw new MailProviderException('Descarga de adjuntos IMAP todavía no implementada.');
+        return $this->call(function () use ($folder, $messageId, $attachmentId) {
+            $attachments = array_values($this->findMessage($folder, $messageId)->attachments());
+            $attachment = ctype_digit($attachmentId) ? ($attachments[(int) $attachmentId] ?? null) : null;
+
+            if ($attachment === null) {
+                throw new MailNotFoundException("El adjunto {$attachmentId} no existe en el mensaje {$messageId}.");
+            }
+
+            $content = $attachment->contents();
+
+            if (strlen($content) > $this->maxAttachmentBytes) {
+                throw new MailProviderException(sprintf(
+                    'El adjunto %s supera el tamaño máximo permitido (%d MB).',
+                    $attachment->filename() ?? $attachmentId,
+                    intdiv($this->maxAttachmentBytes, 1024 * 1024),
+                ));
+            }
+
+            return new AttachmentContent(ImapMessageMapper::attachment($attachment, $attachmentId), $content);
+        });
     }
 
     public function newMessages(string $folder, ?string $cursor): NewMessages

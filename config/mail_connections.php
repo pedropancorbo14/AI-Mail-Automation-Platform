@@ -13,4 +13,7 @@ return [
     // Segundos de espera al conectar con un servidor IMAP/SMTP.
     'timeout' => (int) env('MAIL_CONNECTIONS_TIMEOUT', 15),
 
+    // Tamaño máximo de un adjunto descargado (MB): protege la memoria de los workers.
+    'max_attachment_mb' => (int) env('MAIL_CONNECTIONS_MAX_ATTACHMENT_MB', 25),
+
 ];
