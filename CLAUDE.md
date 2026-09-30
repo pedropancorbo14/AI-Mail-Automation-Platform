@@ -572,8 +572,15 @@ cada commit, este archivo actualizado en cada commit, sin push.
   `uid > último` (IMAP `UID n:*` siempre devuelve el último mensaje) y
   trae contenido solo del lote (`newMessagesBatch`, 100) con
   `NewMessages::$hasMore` (DTO ampliado). Probado: sin duplicados, lotes
-  sin pérdidas, carpetas independientes, no marca como leído
-- [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
+  sin pérdidas, carpetas independientes, no marca como leído (`1181c22`)
+- [x] 13. Conexión SMTP (incluye autenticación): `SmtpClient` con
+  `EsmtpTransport` de Symfony Mailer por conexión (no el mailer global).
+  ssl → TLS directo; starttls → `setRequireTls(true)` (nunca en claro si
+  el servidor no ofrece STARTTLS); none → `setAutoTls(false)`. Timeout,
+  re-chequeo anti-SSRF, código 535/"Failed to authenticate" →
+  `MailAuthenticationException`, resto → `MailConnectionException`.
+  GreenMail sí valida la contraseña SMTP (verificado)
+- [ ] 14–16. SMTP: envío, sistema de prueba de conexión, tests IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 
