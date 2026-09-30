@@ -673,7 +673,16 @@ cada commit, este archivo actualizado en cada commit, sin push.
   (de momento con `StaticTokenSource`): `testConnection()` lee `/profile`
   (recepción) y comprueba el scope `gmail.send` (envío). Scopes mínimos
   previstos: `gmail.readonly` + `gmail.send` (no `gmail.modify`: no se
-  marca ni mueve nada)
+  marca ni mueve nada) (`8555909`)
+- [x] 22. OAuth Google: `GoogleOAuthClient` (mismo flujo común que
+  Microsoft: state, PKCE, reconexión, lock). `access_type=offline` +
+  `prompt=consent select_account` (sin ellos Google no da refresh token
+  al reconectar); email desde Gmail `/profile` (sin scopes de identidad);
+  al renovar Google no devuelve refresh token nuevo → se conserva.
+  Factory de Google con `OAuthTokenManager`. Config `services.google.*`
+  (`GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`). **Producción:**
+  `gmail.readonly` es scope restringido → verificación de la app en
+  Google Cloud (en pruebas solo usuarios de prueba)
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 

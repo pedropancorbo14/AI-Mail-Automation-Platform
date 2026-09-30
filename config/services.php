@@ -38,6 +38,14 @@ return [
         'redirect_uri' => env('MICROSOFT_REDIRECT_URI', rtrim((string) env('APP_URL'), '/') . '/api/v1/mail-connections/oauth/microsoft/callback'),
     ],
 
+    // Registro de la app en Google Cloud (OAuth client "Web application"):
+    // redirect URI = APP_URL/api/v1/mail-connections/oauth/google/callback.
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect_uri' => env('GOOGLE_REDIRECT_URI', rtrim((string) env('APP_URL'), '/') . '/api/v1/mail-connections/oauth/google/callback'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

@@ -7,9 +7,9 @@ use App\Mail\Enums\MailProviderType;
 use App\Mail\MailProviderFactory;
 use App\Mail\OAuth\OAuthClients;
 use App\Mail\OAuth\OAuthTokenManager;
-use App\Mail\OAuth\StaticTokenSource;
 use App\Mail\Providers\Google\GmailClient;
 use App\Mail\Providers\Google\GmailProvider;
+use App\Mail\Providers\Google\GoogleOAuthClient;
 use App\Mail\Providers\Imap\ImapClient;
 use App\Mail\Providers\Imap\ImapSmtpProvider;
 use App\Mail\Providers\Imap\SmtpClient;
@@ -40,6 +40,13 @@ class MailProvidersServiceProvider extends ServiceProvider
                 config('services.microsoft.client_secret'),
                 config('services.microsoft.tenant'),
                 config('services.microsoft.redirect_uri'),
+                config('mail_connections.timeout'),
+            ));
+
+            $clients->register(new GoogleOAuthClient(
+                config('services.google.client_id'),
+                config('services.google.client_secret'),
+                config('services.google.redirect_uri'),
                 config('mail_connections.timeout'),
             ));
 
@@ -78,7 +85,10 @@ class MailProvidersServiceProvider extends ServiceProvider
         ));
 
         $factory->extend(MailProviderType::Google, fn (MailConnection $connection) => new GmailProvider(
-            new GmailClient(new StaticTokenSource($connection->credentials), config('mail_connections.timeout')),
+            new GmailClient(
+                new OAuthTokenManager($connection, $this->app->make(OAuthClients::class)->for(MailProviderType::Google)),
+                config('mail_connections.timeout'),
+            ),
             $connection->credentials->scopes,
         ));
     }
