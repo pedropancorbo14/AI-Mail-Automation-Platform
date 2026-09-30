@@ -619,7 +619,29 @@ cada commit, este archivo actualizado en cada commit, sin push.
   límite). `MicrosoftGraphProvider` registrado en la factory:
   `testConnection()` lee la bandeja (recepción) y comprueba el scope
   `Mail.Send` (envío, sin mandar nada); resto de operaciones pendientes.
-  Tests con `Http::fake` + `preventStrayRequests` + `Sleep::fake`
+  Tests con `Http::fake` + `preventStrayRequests` + `Sleep::fake` (`bc26c69`)
+- [x] 18. OAuth Microsoft: interfaz `OAuthClient` (`configured()`,
+  `authorizationUrl($state, $challenge)`, `exchangeCode()`, `refresh()`),
+  `OAuthTokenEndpoint` (común: canje/renovación, `invalid_grant` →
+  autenticación, conserva el refresh token si no llega uno nuevo),
+  `MicrosoftOAuthClient` (scopes mínimos `offline_access User.Read
+  Mail.ReadWrite Mail.Send`, `prompt=select_account`, email de Graph
+  `/me`: `mail` o `userPrincipalName`), registro `OAuthClients`.
+  `MailOAuthService`: `start()` genera **state** (40 chars, un solo uso,
+  caché 10 min con hash como clave) + **PKCE S256**; `complete()` saca
+  empresa/usuario del state, **revalida** empresa activa y permiso
+  manage, canjea el código y crea la conexión en esa empresa (runAs) o
+  **reconecta** la existente (mismo email) sin duplicar; si el email ya
+  está con otro proveedor → error. `OAuthTokenManager` (TokenSource real
+  en la factory de Microsoft): renueva al caducar, guarda cifrado, **lock
+  por conexión** (`Cache::lock`, Microsoft rota refresh tokens) y reusa
+  el token si otro worker ya renovó; revocado → conexión `failing` +
+  "vuelve a conectarla". Rutas: `POST /mail-connections/oauth/{provider}/
+  start` (auth, manage; solo proveedores OAuth, resto 404) y `GET
+  .../oauth/{provider}/callback` (**público**, throttle 30/min). Config
+  `services.microsoft.*` (`MICROSOFT_CLIENT_ID/SECRET/TENANT/
+  REDIRECT_URI`), `mail_connections.oauth_redirect_to` (vuelve al panel
+  con `?status=`; vacío = JSON) y `oauth_state_ttl`
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 

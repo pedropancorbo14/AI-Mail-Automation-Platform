@@ -16,4 +16,14 @@ return [
     // Tamaño máximo de un adjunto descargado (MB): protege la memoria de los workers.
     'max_attachment_mb' => (int) env('MAIL_CONNECTIONS_MAX_ATTACHMENT_MB', 25),
 
+    /*
+    | OAuth (Microsoft/Google): URL del panel a la que volver tras autorizar
+    | (se añade ?status=connected&connection_id=... o ?status=error&message=...).
+    | Vacío = el callback responde JSON (útil mientras no existe el panel).
+    */
+    'oauth_redirect_to' => env('MAIL_CONNECTIONS_OAUTH_REDIRECT_TO'),
+
+    // Minutos de validez del "state" de un flujo OAuth iniciado.
+    'oauth_state_ttl' => (int) env('MAIL_CONNECTIONS_OAUTH_STATE_TTL', 10),
+
 ];

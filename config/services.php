@@ -28,6 +28,16 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Conexiones de correo con OAuth (Fase 3). Registro de la app en Azure:
+    // redirect URI = APP_URL/api/v1/mail-connections/oauth/microsoft/callback.
+    'microsoft' => [
+        'client_id' => env('MICROSOFT_CLIENT_ID'),
+        'client_secret' => env('MICROSOFT_CLIENT_SECRET'),
+        // "common" = cuentas de cualquier organización y personales.
+        'tenant' => env('MICROSOFT_TENANT', 'common'),
+        'redirect_uri' => env('MICROSOFT_REDIRECT_URI', rtrim((string) env('APP_URL'), '/') . '/api/v1/mail-connections/oauth/microsoft/callback'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
