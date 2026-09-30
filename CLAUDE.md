@@ -798,7 +798,20 @@ privado), registra los errores y reintenta los fallos temporales.
   aborta). Exige estar en el tenant de la conexión (`LogicException`).
   Texto saneado (`mb_scrub` + sin `\0`: Postgres rechaza NUL/UTF-8
   inválido) y recortado al tamaño de columna en vez de fallar
-- [ ] 8. Adjuntos en disco privado + marca de ingesta completa
+- [x] 8. `EmailIngestionService::complete($provider, $email)`: descarga los
+  adjuntos `pending` al disco privado (`mail_connections.attachments_disk`,
+  `MAIL_ATTACHMENTS_DISK`, por defecto `local` = storage/app/private) en
+  `tenants/{tenant}/emails/{email}/{adjunto}` (nunca el nombre del
+  remitente), con sha256 y tamaño real. Más grande que
+  `max_attachment_mb` → `skipped` sin descargar; error del proveedor no
+  reintentable → `failed` (+ `error`) y sigue; `MailConnectionException`/
+  `MailAuthenticationException` → se propagan (reintento) y el email queda
+  a medias (`ingested_at` null). Un reintento continúa sin duplicar. Sin
+  pendientes → `Email::markIngested()` + evento
+  `App\Mail\Ingestion\Events\EmailIngested(tenantId, emailId)` **una sola
+  vez** (ids, no el modelo: un listener en cola lo recarga con `runAs`).
+  `FakeMailProvider` registra descargas y puede simular fallos
+  (`failDownloadsWith`)
 - [ ] 9. `MailSyncService` (sincronización de una carpeta con cursor)
 - [ ] 10. `FetchEmailsJob` (reintentos, backoff, errores)
 - [ ] 11. Scheduler + cola `mail` en Horizon

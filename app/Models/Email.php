@@ -42,6 +42,12 @@ class Email extends Model
         ];
     }
 
+    /** Correo y adjuntos guardados: listo para procesar. */
+    public function markIngested(): void
+    {
+        $this->forceFill(['ingested_at' => now()])->save();
+    }
+
     /** @return BelongsTo<MailConnection, $this> */
     public function mailConnection(): BelongsTo
     {

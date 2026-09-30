@@ -2,21 +2,31 @@
 
 namespace App\Mail\Ingestion;
 
+use App\Mail\Contracts\MailProvider;
 use App\Mail\Data\MailAddress;
 use App\Mail\Data\MailAttachment;
 use App\Mail\Data\MailMessage;
+use App\Mail\Enums\AttachmentStatus;
 use App\Mail\Enums\RecipientType;
+use App\Mail\Exceptions\MailAuthenticationException;
+use App\Mail\Exceptions\MailConnectionException;
+use App\Mail\Exceptions\MailProviderException;
+use App\Mail\Ingestion\Events\EmailIngested;
 use App\Models\Email;
+use App\Models\EmailAttachment;
 use App\Models\MailConnection;
 use App\Tenancy\TenantService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use LogicException;
+use RuntimeException;
 
 /**
- * Guarda en la BD los correos que devuelve un MailProvider. Idempotente:
- * el mismo correo del mismo buzón se guarda una sola vez (dedup_hash).
- * Se ejecuta dentro del tenant de la conexión (TenantService::runAs).
+ * Guarda en la BD los correos que devuelve un MailProvider, en dos pasos:
+ * ingest() guarda el correo (una sola vez por buzón, dedup_hash) y
+ * complete() descarga sus adjuntos y lo marca como ingerido. Se ejecuta
+ * dentro del tenant de la conexión (TenantService::runAs).
  */
 class EmailIngestionService
 {
@@ -47,6 +57,65 @@ class EmailIngestionService
             // transacción: en PostgreSQL un error la deja abortada.
             return $this->find($connection, $hash) ?? throw new LogicException('Email duplicado no encontrado.');
         }
+    }
+
+    /**
+     * Termina la ingesta: descarga los adjuntos pendientes al disco privado
+     * y, cuando no queda ninguno, marca el email como ingerido y lanza
+     * EmailIngested (una sola vez). Idempotente: si falla a medias, volver
+     * a llamarlo continúa donde se quedó.
+     *
+     * @throws MailConnectionException|MailAuthenticationException errores temporales o de la
+     *         cuenta: se propagan para reintentar la sincronización más tarde.
+     */
+    public function complete(MailProvider $provider, Email $email): void
+    {
+        if ($email->ingested_at !== null) {
+            return;
+        }
+
+        $pending = $email->attachments()->where('status', AttachmentStatus::Pending)->get();
+
+        foreach ($pending as $attachment) {
+            $this->storeAttachment($provider, $email, $attachment);
+        }
+
+        $email->markIngested();
+
+        EmailIngested::dispatch($email->tenant_id, $email->id);
+    }
+
+    private function storeAttachment(MailProvider $provider, Email $email, EmailAttachment $attachment): void
+    {
+        $maxBytes = config('mail_connections.max_attachment_mb') * 1024 * 1024;
+
+        if ($attachment->size > $maxBytes) {
+            $attachment->markNotStored(AttachmentStatus::Skipped, 'Supera el tamaño máximo de adjunto (' . config('mail_connections.max_attachment_mb') . ' MB).');
+
+            return;
+        }
+
+        try {
+            $content = $provider->downloadAttachment($email->folder, $email->provider_message_id, $attachment->provider_attachment_id)->content;
+        } catch (MailConnectionException|MailAuthenticationException $e) {
+            throw $e;
+        } catch (MailProviderException $e) {
+            // Borrado del buzón, tipo no soportado, demasiado grande al descargar...:
+            // reintentar no lo arreglaría. Se registra y se sigue con el resto.
+            $attachment->markNotStored(AttachmentStatus::Failed, $e->getMessage());
+
+            return;
+        }
+
+        // La ruta la decide la app (nunca el nombre que puso el remitente).
+        $disk = config('mail_connections.attachments_disk');
+        $path = "tenants/{$email->tenant_id}/emails/{$email->id}/{$attachment->id}";
+
+        if (! Storage::disk($disk)->put($path, $content)) {
+            throw new RuntimeException("No se pudo guardar el adjunto {$attachment->id} en el disco {$disk}.");
+        }
+
+        $attachment->markStored($disk, $path, hash('sha256', $content), strlen($content));
     }
 
     /**

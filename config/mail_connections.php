@@ -16,6 +16,10 @@ return [
     // Tamaño máximo de un adjunto descargado (MB): protege la memoria de los workers.
     'max_attachment_mb' => (int) env('MAIL_CONNECTIONS_MAX_ATTACHMENT_MB', 25),
 
+    // Disco (config/filesystems.php) donde se guardan los adjuntos recibidos.
+    // Debe ser PRIVADO: "local" (storage/app/private) o un bucket S3 sin acceso público.
+    'attachments_disk' => env('MAIL_ATTACHMENTS_DISK', 'local'),
+
     /*
     | OAuth (Microsoft/Google): URL del panel a la que volver tras autorizar
     | (se añade ?status=connected&connection_id=... o ?status=error&message=...).

@@ -21,6 +21,12 @@ class FakeMailProvider implements MailProvider
     /** @var list<OutgoingMessage> */
     public array $sent = [];
 
+    /** @var list<string> Descargas pedidas: "carpeta/mensaje/adjunto". */
+    public array $downloads = [];
+
+    /** Si se define, downloadAttachment() lanza esta excepción (simular fallos). */
+    public ?\Throwable $failDownloadsWith = null;
+
     /**
      * @param  array<string, list<MailMessage>>  $mailboxes  carpeta => mensajes (más antiguo primero)
      * @param  array<string, string>  $attachments  "carpeta/mensaje/adjunto" => contenido
@@ -63,6 +69,12 @@ class FakeMailProvider implements MailProvider
 
     public function downloadAttachment(string $folder, string $messageId, string $attachmentId): AttachmentContent
     {
+        $this->downloads[] = "{$folder}/{$messageId}/{$attachmentId}";
+
+        if ($this->failDownloadsWith !== null) {
+            throw $this->failDownloadsWith;
+        }
+
         foreach ($this->message($folder, $messageId)->attachments as $attachment) {
             if ($attachment->id === $attachmentId) {
                 return new AttachmentContent($attachment, $this->attachments["{$folder}/{$messageId}/{$attachmentId}"] ?? '');
