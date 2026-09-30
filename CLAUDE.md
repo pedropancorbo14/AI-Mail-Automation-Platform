@@ -491,8 +491,16 @@ cada commit, este archivo actualizado en cada commit, sin push.
   (nullOnDelete), `name`, `provider`, `email`, `credentials` (text, JSON
   cifrado), `status` pending/active/failing/disabled, `last_tested_at`,
   `last_error`. Único (`tenant_id`, `email`); la misma cuenta sí puede
-  estar en empresas distintas
-- [ ] 3. Sistema de credenciales cifradas
+  estar en empresas distintas (`f80e830`)
+- [x] 3. Credenciales cifradas (`app/Mail/Credentials/`): objetos tipados
+  `ImapSmtpCredentials` (IMAP y SMTP por separado; enum `MailEncryption`
+  ssl/starttls/none) y `OAuthCredentials` (tokens, `expiresAt`, scopes,
+  `isExpired()`), interfaz `MailCredentials`. Cast `EncryptedCredentials`:
+  JSON `{type, data}` cifrado con `Crypt` (APP_KEY, AES-256+MAC; rotación
+  con `APP_PREVIOUS_KEYS`); manipular el valor → `DecryptException`.
+  Trait `RedactsSecrets`: `json_encode`/`var_dump`/`print_r`/logs muestran
+  `********`; solo `toArray()` da los secretos. Contraseñas/tokens con
+  `#[SensitiveParameter]` (fuera de las trazas)
 - [ ] 4. Modelo `MailConnection`
 - [ ] 5. `MailProviderFactory`
 - [ ] 6. API de conexiones (CRUD + policy + permisos) — añadida
