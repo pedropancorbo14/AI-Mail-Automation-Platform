@@ -2,8 +2,12 @@
 
 namespace App\Providers;
 
+use App\Mail\Enums\MailProviderType;
 use App\Mail\MailProviderFactory;
+use App\Mail\Providers\Imap\ImapClient;
+use App\Mail\Providers\Imap\ImapSmtpProvider;
 use App\Mail\Security\MailHostGuard;
+use App\Models\MailConnection;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -21,5 +25,18 @@ class MailProvidersServiceProvider extends ServiceProvider
         $this->app->bind(MailHostGuard::class, function () {
             return new MailHostGuard(config('mail_connections.allow_private_hosts'));
         });
+    }
+
+    public function boot(): void
+    {
+        $factory = $this->app->make(MailProviderFactory::class);
+
+        $factory->extend(MailProviderType::Imap, fn (MailConnection $connection) => new ImapSmtpProvider(
+            new ImapClient(
+                $connection->credentials,
+                $this->app->make(MailHostGuard::class),
+                config('mail_connections.timeout'),
+            ),
+        ));
     }
 }

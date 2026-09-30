@@ -543,8 +543,15 @@ cada commit, este archivo actualizado en cada commit, sin push.
 - [x] 8. Autenticación IMAP: `ImapCommandException` del comando
   LOGIN/AUTHENTICATE → `MailAuthenticationException` ("rechazó el usuario
   o la contraseña de X", sin contraseña); fallo de otros comandos
-  (STARTTLS) → `MailConnectionException`. `ImapClient::verify()`
-- [ ] 9–12. IMAP: carpetas, mensajes, adjuntos, nuevos emails
+  (STARTTLS) → `MailConnectionException`. `ImapClient::verify()` (`62de024`)
+- [x] 9. Carpetas IMAP: nace `ImapSmtpProvider` (registrado en la factory
+  para `imap`; operaciones aún no hechas lanzan `MailProviderException`
+  explícita). `folders()` omite `\Noselect`; rol: INBOX por nombre, resto
+  por atributos RFC 6154 (`\Sent`, `\Drafts`, `\Trash`, `\Junk`,
+  `\Archive`). Wrapper `call()` traduce cualquier excepción de ImapEngine.
+  Helpers `GreenMail::imapClient()`/`provider()` (en Pest las funciones de
+  un test son globales: no redeclarar helpers entre archivos)
+- [ ] 10–12. IMAP: mensajes, adjuntos, nuevos emails
 - [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
