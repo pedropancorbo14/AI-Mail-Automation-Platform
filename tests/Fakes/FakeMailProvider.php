@@ -27,6 +27,15 @@ class FakeMailProvider implements MailProvider
     /** Si se define, downloadAttachment() lanza esta excepción (simular fallos). */
     public ?\Throwable $failDownloadsWith = null;
 
+    /** Si se define, newMessages() lanza esta excepción. */
+    public ?\Throwable $failNewMessagesWith = null;
+
+    /** @var list<array{0: string, 1: string|null}> Llamadas a newMessages(): [carpeta, cursor]. */
+    public array $newMessagesCalls = [];
+
+    /** Mensajes por lote en newMessages() (hasMore si quedan más). */
+    public int $batchSize = PHP_INT_MAX;
+
     /**
      * @param  array<string, list<MailMessage>>  $mailboxes  carpeta => mensajes (más antiguo primero)
      * @param  array<string, string>  $attachments  "carpeta/mensaje/adjunto" => contenido
@@ -84,16 +93,28 @@ class FakeMailProvider implements MailProvider
         throw new MailNotFoundException("Adjunto {$attachmentId} no encontrado.");
     }
 
-    /** Cursor = número de mensajes ya vistos en la carpeta. */
+    /**
+     * Cursor = número de mensajes ya vistos en la carpeta. Cursor no
+     * numérico → resync (como un UIDVALIDITY distinto en IMAP).
+     */
     public function newMessages(string $folder, ?string $cursor): NewMessages
     {
-        $messages = $this->folder($folder);
+        $this->newMessagesCalls[] = [$folder, $cursor];
 
-        if ($cursor === null) {
-            return new NewMessages([], (string) count($messages));
+        if ($this->failNewMessagesWith !== null) {
+            throw $this->failNewMessagesWith;
         }
 
-        return new NewMessages(array_slice($messages, (int) $cursor), (string) count($messages));
+        $messages = $this->folder($folder);
+
+        if ($cursor === null || ! ctype_digit($cursor)) {
+            return new NewMessages([], (string) count($messages), resynced: $cursor !== null);
+        }
+
+        $batch = array_slice($messages, (int) $cursor, $this->batchSize);
+        $next = (int) $cursor + count($batch);
+
+        return new NewMessages($batch, (string) $next, hasMore: $next < count($messages));
     }
 
     public function send(OutgoingMessage $message): SentMessage

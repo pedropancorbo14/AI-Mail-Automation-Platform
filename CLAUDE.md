@@ -812,7 +812,23 @@ privado), registra los errores y reintenta los fallos temporales.
   vez** (ids, no el modelo: un listener en cola lo recarga con `runAs`).
   `FakeMailProvider` registra descargas y puede simular fallos
   (`failDownloadsWith`)
-- [ ] 9. `MailSyncService` (sincronización de una carpeta con cursor)
+- [x] 9. `App\Mail\Ingestion\MailSyncService::sync($connection)` →
+  `SyncResult` (stored, duplicates, hasMore, resynced). Se ejecuta con
+  `runAs` del tenant de la conexión (+ `tenant_id` en `Context`); las
+  conexiones `disabled` no se sincronizan. Carpetas: por ahora **solo la
+  bandeja de entrada**, buscada una vez por rol INBOX en `folders()` y
+  guardada en `mail_sync_states`. Bucle por lotes: `newMessages(cursor)` →
+  `ingest` + `complete` de cada mensaje → **solo entonces**
+  `recordSuccess(cursor)`; hasta `mail_connections.sync_max_batches`
+  (`MAIL_SYNC_MAX_BATCHES`, 5) por pasada, el resto en la siguiente. Primera
+  sincronización = punto de partida sin histórico. Error → cursor sin
+  mover, `recordFailure` (mensaje del proveedor, o "Error interno..." si no
+  es `MailProviderException`: el detalle solo al log), auth →
+  conexión `failing` + `last_error`; se relanza para que el job decida.
+  Logs: info por buzón sincronizado, warning si hubo resync, error al
+  fallar. `FakeMailProvider` con lotes (`batchSize`), resync (cursor no
+  numérico) y `failNewMessagesWith`; helper de tests `incomingMessage()`
+  movido a `tests/Pest.php`
 - [ ] 10. `FetchEmailsJob` (reintentos, backoff, errores)
 - [ ] 11. Scheduler + cola `mail` en Horizon
 - [ ] 12. Test end-to-end con GreenMail, prueba de humo y README

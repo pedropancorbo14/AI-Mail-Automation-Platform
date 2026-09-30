@@ -20,6 +20,10 @@ return [
     // Debe ser PRIVADO: "local" (storage/app/private) o un bucket S3 sin acceso público.
     'attachments_disk' => env('MAIL_ATTACHMENTS_DISK', 'local'),
 
+    // Lotes de correos nuevos (newMessages) por carpeta en cada sincronización.
+    // Si quedan más, se siguen trayendo en la siguiente pasada del scheduler.
+    'sync_max_batches' => (int) env('MAIL_SYNC_MAX_BATCHES', 5),
+
     /*
     | OAuth (Microsoft/Google): URL del panel a la que volver tras autorizar
     | (se añade ?status=connected&connection_id=... o ?status=error&message=...).

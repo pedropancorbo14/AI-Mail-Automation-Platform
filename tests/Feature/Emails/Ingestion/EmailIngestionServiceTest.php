@@ -10,36 +10,11 @@ use App\Mail\Ingestion\EmailIngestionService;
 use App\Models\Email;
 use App\Models\MailConnection;
 use App\Models\Tenant;
-use Carbon\CarbonImmutable;
 
 beforeEach(function () {
     $this->tenant = Tenant::factory()->create();
     $this->connection = inTenant($this->tenant, fn () => MailConnection::factory()->create());
 });
-
-/** Mensaje tal como lo devuelve un MailProvider (sobrescribible por campo). */
-function incomingMessage(array $overrides = []): MailMessage
-{
-    return new MailMessage(...array_merge([
-        'id' => '42',
-        'folder' => 'INBOX',
-        'messageId' => 'pedido-45821@cliente.test',
-        'subject' => '¿Dónde está mi pedido #45821?',
-        'from' => new MailAddress('cliente@cliente.test', 'Cliente Pérez'),
-        'to' => [new MailAddress('soporte@empresa.test', 'Soporte'), new MailAddress('ventas@empresa.test')],
-        'cc' => [new MailAddress('jefe@cliente.test')],
-        'replyTo' => [new MailAddress('respuestas@cliente.test')],
-        'date' => CarbonImmutable::parse('2026-09-30 08:15:00', 'UTC'),
-        'textBody' => 'Hola, ¿dónde está mi pedido?',
-        'htmlBody' => '<p>Hola, ¿dónde está mi <b>pedido</b>?</p>',
-        'attachments' => [
-            new MailAttachment('1', 'foto.png', 'image/png', 2048, inline: true, contentId: 'foto1'),
-            new MailAttachment('2', 'ticket.pdf', 'application/pdf', 4096),
-        ],
-        'inReplyTo' => 'anterior@empresa.test',
-        'references' => ['inicio@cliente.test', 'anterior@empresa.test'],
-    ], $overrides));
-}
 
 function ingestMessage(MailMessage $message, ?MailConnection $connection = null): Email
 {
