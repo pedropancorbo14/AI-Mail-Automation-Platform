@@ -46,4 +46,27 @@ class GraphClient extends OAuthApiClient
             $page = $this->get($page['@odata.nextLink']);
         }
     }
+
+    /**
+     * Varias peticiones GET en una sola llamada ($batch, máx. 20).
+     *
+     * @param  array<string, string>  $requests  id => ruta relativa (p. ej. "/me/mailFolders/inbox")
+     * @return array<string, array{status: int, body: array<string, mixed>}> id => respuesta
+     */
+    public function batch(array $requests): array
+    {
+        $payload = [];
+
+        foreach ($requests as $id => $url) {
+            $payload[] = ['id' => (string) $id, 'method' => 'GET', 'url' => $url];
+        }
+
+        $responses = [];
+
+        foreach ($this->post('/$batch', ['requests' => $payload])['responses'] ?? [] as $response) {
+            $responses[$response['id']] = ['status' => (int) $response['status'], 'body' => $response['body'] ?? []];
+        }
+
+        return $responses;
+    }
 }

@@ -641,7 +641,23 @@ cada commit, este archivo actualizado en cada commit, sin push.
   .../oauth/{provider}/callback` (**público**, throttle 30/min). Config
   `services.microsoft.*` (`MICROSOFT_CLIENT_ID/SECRET/TENANT/
   REDIRECT_URI`), `mail_connections.oauth_redirect_to` (vuelve al panel
-  con `?status=`; vacío = JSON) y `oauth_state_ttl`
+  con `?status=`; vacío = JSON) y `oauth_state_ttl` (`106b2a9`)
+- [x] 19. Lectura Microsoft: `folders()` (primer nivel + subcarpetas
+  directas "Padre/Hija"; roles vía nombres conocidos de Graph
+  inbox/sentitems/drafts/deleteditems/junkemail/archive en **una sola
+  petición `$batch`**; como `$folder` se aceptan ids o esos nombres).
+  `messages()`/`message()` con `$select` + `$expand` de adjuntos
+  (`GraphMessageMapper`; In-Reply-To/References desde
+  `internetMessageHeaders`). Graph da el cuerpo en un solo formato:
+  texto derivado del HTML con `App\Mail\Support\HtmlToText`. Adjuntos:
+  solo `fileAttachment` (item/reference → error explícito), tamaño
+  comprobado con una petición de metadatos **antes** de descargar.
+  **Decisión cambiada:** `newMessages()` NO usa delta query (obligaría a
+  recorrer todo el buzón al empezar) sino cursor `v1:base64(json{since,
+  seen})` = `receivedDateTime` del último + ids vistos en ese segundo
+  (`ge` + filtro de vistos: sin pérdidas ni duplicados), lotes con
+  `hasMore`. Limitación: correos **movidos** a la carpeta (fecha antigua)
+  no se detectan; valorar delta en Fase 4 si hace falta
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 
