@@ -589,8 +589,17 @@ cada commit, este archivo actualizado en cada commit, sin push.
   guardar copia en "Enviados" vía IMAP APPEND (Gmail ya la guarda →
   duplicados). `GreenMail::provider()` acepta nombre/lote/límite
   adjuntos. Probado leyendo el buzón del destinatario por IMAP (bcc no
-  expuesto, adjuntos binarios intactos, hilo)
-- [ ] 15–16. SMTP: sistema de prueba de conexión, tests IMAP/SMTP
+  expuesto, adjuntos binarios intactos, hilo) (`7d75da0`)
+- [x] 15. Prueba de conexión: `ImapSmtpProvider::testConnection()` prueba
+  IMAP y SMTP por separado sin lanzar. `App\Mail\MailConnectionService::
+  test()` guarda status active/failing (disabled se mantiene),
+  `last_tested_at`, `last_error` y lo registra en el log (con tenant_id
+  del Context); proveedor no disponible = prueba fallida. Endpoint
+  `POST /api/v1/mail-connections/{id}/test` (permiso manage, 404 otra
+  empresa) con **throttle `mail-connection-test` 10/min** (evita usarlo
+  como escáner de puertos). Respuesta: `data` (conexión) + `result`
+  (ok, incoming_ok/outgoing_ok, errores)
+- [ ] 16. Tests del proveedor IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 

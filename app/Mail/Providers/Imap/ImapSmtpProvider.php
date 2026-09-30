@@ -51,9 +51,36 @@ class ImapSmtpProvider implements MailProvider
     ) {
     }
 
+    /**
+     * Prueba IMAP y SMTP por separado (son servidores y credenciales
+     * distintos) y nunca lanza: el resultado dice qué parte falla y por qué.
+     */
     public function testConnection(): ConnectionTestResult
     {
-        throw new MailProviderException('Prueba de conexión IMAP/SMTP todavía no implementada.');
+        $incomingError = self::errorOf(fn () => $this->imap->verify());
+        $outgoingError = self::errorOf(fn () => $this->smtp->verify());
+
+        $this->imap->disconnect();
+        $this->smtp->disconnect();
+
+        return new ConnectionTestResult(
+            incomingOk: $incomingError === null,
+            outgoingOk: $outgoingError === null,
+            incomingError: $incomingError,
+            outgoingError: $outgoingError,
+        );
+    }
+
+    /** Mensaje de error apto para el usuario, o null si la operación fue bien. */
+    private static function errorOf(Closure $check): ?string
+    {
+        try {
+            $check();
+
+            return null;
+        } catch (MailProviderException $e) {
+            return $e->getMessage();
+        }
     }
 
     public function folders(): array

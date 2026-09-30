@@ -24,4 +24,6 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     Route::apiResource('mail-connections', MailConnectionController::class)
         ->parameters(['mail-connections' => 'mailConnection']);
+    Route::post('/mail-connections/{mailConnection}/test', [MailConnectionController::class, 'test'])
+        ->middleware('throttle:mail-connection-test');
 });

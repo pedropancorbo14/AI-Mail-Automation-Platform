@@ -35,6 +35,12 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by(mb_strtolower((string) $request->input('email')) . '|' . $request->ip());
         });
 
+        // Probar una conexión abre conexiones a servidores externos: límite
+        // bajo para que no se pueda usar como escáner de puertos.
+        RateLimiter::for('mail-connection-test', function ($request) {
+            return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
+        });
+
         // Cada permiso del catálogo es una Gate: $user->can('users.create'),
         // middleware can:users.create, @can en vistas. Las policies lo usan
         // además de comprobar que el recurso es del mismo tenant.

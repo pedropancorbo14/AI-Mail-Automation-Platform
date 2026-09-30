@@ -8,7 +8,9 @@ use App\Http\Requests\MailConnections\UpdateMailConnectionRequest;
 use App\Http\Resources\MailConnectionResource;
 use App\Mail\Enums\MailConnectionStatus;
 use App\Mail\Enums\MailProviderType;
+use App\Mail\MailConnectionService;
 use App\Models\MailConnection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -66,6 +68,29 @@ class MailConnectionController extends Controller
         $mailConnection->save();
 
         return new MailConnectionResource($mailConnection);
+    }
+
+    /**
+     * Prueba recepción y envío con las credenciales guardadas y actualiza el
+     * estado de la conexión. Limitado (throttle:mail-connection-test): cada
+     * prueba abre conexiones hacia servidores externos.
+     */
+    public function test(MailConnection $mailConnection, MailConnectionService $service): JsonResponse
+    {
+        Gate::authorize('update', $mailConnection);
+
+        $result = $service->test($mailConnection);
+
+        return response()->json([
+            'data' => new MailConnectionResource($mailConnection),
+            'result' => [
+                'ok' => $result->ok(),
+                'incoming_ok' => $result->incomingOk,
+                'outgoing_ok' => $result->outgoingOk,
+                'incoming_error' => $result->incomingError,
+                'outgoing_error' => $result->outgoingError,
+            ],
+        ]);
     }
 
     public function destroy(Request $request, MailConnection $mailConnection): Response
