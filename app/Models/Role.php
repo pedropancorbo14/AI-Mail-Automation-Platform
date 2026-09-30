@@ -32,6 +32,8 @@ class Role extends Model
             Permission::USERS_DELETE,
             Permission::TENANT_VIEW,
             Permission::TENANT_UPDATE,
+            Permission::MAIL_CONNECTIONS_VIEW,
+            Permission::MAIL_CONNECTIONS_MANAGE,
         ],
         self::ADMIN => [
             Permission::USERS_VIEW,
@@ -39,10 +41,13 @@ class Role extends Model
             Permission::USERS_UPDATE,
             Permission::USERS_DELETE,
             Permission::TENANT_VIEW,
+            Permission::MAIL_CONNECTIONS_VIEW,
+            Permission::MAIL_CONNECTIONS_MANAGE,
         ],
         self::AGENT => [
             Permission::USERS_VIEW,
             Permission::TENANT_VIEW,
+            Permission::MAIL_CONNECTIONS_VIEW,
         ],
     ];
 

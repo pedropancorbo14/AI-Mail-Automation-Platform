@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\MailConnectionController;
 use App\Http\Controllers\Api\V1\TenantController;
 use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +22,6 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     Route::apiResource('users', UserController::class);
 
-    // Aquí se irán añadiendo, fase a fase:
-    // Route::apiResource('mail-connections', MailConnectionController::class);
+    Route::apiResource('mail-connections', MailConnectionController::class)
+        ->parameters(['mail-connections' => 'mailConnection']);
 });

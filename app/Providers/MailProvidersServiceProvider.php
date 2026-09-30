@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Mail\MailProviderFactory;
+use App\Mail\Security\MailHostGuard;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -15,6 +16,10 @@ class MailProvidersServiceProvider extends ServiceProvider
     {
         $this->app->singleton(MailProviderFactory::class, function () {
             return new MailProviderFactory();
+        });
+
+        $this->app->bind(MailHostGuard::class, function () {
+            return new MailHostGuard(config('mail_connections.allow_private_hosts'));
         });
     }
 }

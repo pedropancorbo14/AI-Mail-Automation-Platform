@@ -27,12 +27,12 @@ it('does not let the admin edit the tenant', function () {
 
 it('gives the agent read only permissions', function () {
     expect(permissionsOf(Role::AGENT))
-        ->toBe([Permission::TENANT_VIEW, Permission::USERS_VIEW]);
+        ->toBe([Permission::MAIL_CONNECTIONS_VIEW, Permission::TENANT_VIEW, Permission::USERS_VIEW]);
 });
 
 it('can run the seeder twice without duplicating permissions', function () {
     $this->seed(RolesAndPermissionsSeeder::class);
 
     expect(Permission::count())->toBe(count(Permission::CATALOG))
-        ->and(permissionsOf(Role::AGENT))->toHaveCount(2);
+        ->and(permissionsOf(Role::AGENT))->toHaveCount(3);
 });

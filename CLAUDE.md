@@ -514,8 +514,20 @@ cada commit, este archivo actualizado en cada commit, sin push.
   por tipo con `extend(MailProviderType, fn (MailConnection) => provider)`
   en `App\Providers\MailProvidersServiceProvider`; `make($connection)`
   lanza `UnsupportedMailProviderException` si el tipo no está registrado.
-  En tests: `extend(tipo, fn () => new FakeMailProvider(...))`
-- [ ] 6. API de conexiones (CRUD + policy + permisos) — añadida
+  En tests: `extend(tipo, fn () => new FakeMailProvider(...))` (`9bd8913`)
+- [x] 6. API de conexiones (añadida): `apiResource mail-connections`
+  (parámetro `{mailConnection}`), `MailConnectionPolicy` (tenant → 404,
+  luego permiso), permisos nuevos `mail_connections.view` (todos los
+  roles) y `mail_connections.manage` (owner, admin). Por la API solo se
+  crean conexiones **IMAP** (Microsoft/Google vía OAuth). Resource sin
+  secretos (muestra host/puerto/cifrado/usuario). Edición: contraseña no
+  enviada se conserva; cambiar credenciales → `pending`; `enabled`
+  true/false → `pending`/`disabled`. **Anti-SSRF** `MailHostGuard` +
+  regla `AllowedMailHost`: rechaza hosts que resuelven a IPs privadas,
+  loopback, reservadas o no resolubles (Redis/Postgres/169.254.169.254);
+  se repetirá al conectar (DNS rebinding). Desactivable solo en local con
+  `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` (config
+  `config/mail_connections.php`, también `timeout`)
 - [ ] 7–12. IMAP: conexión, autenticación, carpetas, mensajes, adjuntos, nuevos emails
 - [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío

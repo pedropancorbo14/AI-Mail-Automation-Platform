@@ -21,6 +21,11 @@ class Permission extends Model
 
     public const string TENANT_UPDATE = 'tenant.update';
 
+    public const string MAIL_CONNECTIONS_VIEW = 'mail_connections.view';
+
+    /** Crear, editar, probar y eliminar conexiones de correo. */
+    public const string MAIL_CONNECTIONS_MANAGE = 'mail_connections.manage';
+
     /**
      * Catálogo completo (nombre => descripción). Cada permiso se registra
      * como Gate en AppServiceProvider y se guarda en BD con el seeder.
@@ -32,6 +37,8 @@ class Permission extends Model
         self::USERS_DELETE => 'Eliminar usuarios',
         self::TENANT_VIEW => 'Ver datos de la empresa',
         self::TENANT_UPDATE => 'Editar datos de la empresa',
+        self::MAIL_CONNECTIONS_VIEW => 'Ver conexiones de correo',
+        self::MAIL_CONNECTIONS_MANAGE => 'Gestionar conexiones de correo',
     ];
 
     /** @return BelongsToMany<Role, $this> */
