@@ -765,7 +765,12 @@ privado), registra los errores y reintenta los fallos temporales.
   posición en la cabecera; `tenant_id` redundante a propósito (consultas
   directas también filtradas por empresa); se borran con el email (cascade);
   índice tenant+email (correos en los que aparece una dirección)
-- [ ] 3. Tabla `email_attachments`
+- [x] 3. Tabla `email_attachments`: metadatos (id en el proveedor, nombre,
+  tipo, tamaño bigint, inline, Content-ID) + `status` pending/stored/
+  skipped/failed, `disk`/`path`/`sha256` del fichero y `error`. El
+  contenido va a disco privado, no a la BD. El nombre del remitente nunca
+  se usa como ruta. Cascade con el email (borra la fila, no el fichero:
+  limpieza en Fase 12). Único email+id de adjunto
 - [ ] 4. Modelo `Email` + enum `EmailStatus`
 - [ ] 5. Modelos `EmailRecipient` y `EmailAttachment`
 - [ ] 6. Tabla y modelo `mail_sync_states` (cursor + errores de sincronización)
