@@ -2,7 +2,6 @@
 
 use App\Mail\Exceptions\MailNotFoundException;
 use App\Mail\Exceptions\MailProviderException;
-use App\Mail\Providers\Imap\ImapSmtpProvider;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Part\DataPart;
 use Tests\Support\GreenMail;
@@ -76,7 +75,7 @@ it('fails with not found for unknown attachments', function (string $attachmentI
 })->group('greenmail')->with(['7', 'abc', '-1'])->throws(MailNotFoundException::class);
 
 it('refuses attachments above the size limit', function () {
-    $provider = new ImapSmtpProvider(GreenMail::imapClient($this->email), maxAttachmentBytes: 1024);
+    $provider = GreenMail::provider($this->email, maxAttachmentBytes: 1024);
 
     $provider->downloadAttachment('INBOX', $this->uid, attachmentIdByName($this->email, $this->uid, 'factura ñ-2026.pdf'));
 })->group('greenmail')->throws(MailProviderException::class, 'supera el tamaño máximo');

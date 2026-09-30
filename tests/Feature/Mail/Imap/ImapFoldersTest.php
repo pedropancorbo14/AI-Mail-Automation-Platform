@@ -15,7 +15,7 @@ it('lists the folders of the account', function () {
     $client->mailbox()->folders()->create('Archivo');
     $client->mailbox()->folders()->create('Ventas');
 
-    $folders = (new ImapSmtpProvider($client))->folders();
+    $folders = GreenMail::provider($email)->folders();
 
     expect(array_map(fn (MailFolder $f) => $f->id, $folders))->toContain('INBOX', 'Archivo', 'Ventas');
 

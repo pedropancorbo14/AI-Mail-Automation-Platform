@@ -579,8 +579,18 @@ cada commit, este archivo actualizado en cada commit, sin push.
   el servidor no ofrece STARTTLS); none → `setAutoTls(false)`. Timeout,
   re-chequeo anti-SSRF, código 535/"Failed to authenticate" →
   `MailAuthenticationException`, resto → `MailConnectionException`.
-  GreenMail sí valida la contraseña SMTP (verificado)
-- [ ] 14–16. SMTP: envío, sistema de prueba de conexión, tests IMAP/SMTP
+  GreenMail sí valida la contraseña SMTP (verificado) (`4366435`)
+- [x] 14. Envío SMTP: `ImapSmtpProvider` recibe `ImapClient`, `SmtpClient`
+  y `MailAddress $from` (email + nombre de la conexión = único remitente).
+  `send()` construye `Symfony\Mime\Email` (to/cc/bcc, texto/HTML,
+  adjuntos, `In-Reply-To`/`References` para hilos) y devuelve el
+  Message-ID asignado. Rechazo al enviar → `MailProviderException` con
+  código SMTP (535 → autenticación). **Pendiente de decidir (Fase 9):**
+  guardar copia en "Enviados" vía IMAP APPEND (Gmail ya la guarda →
+  duplicados). `GreenMail::provider()` acepta nombre/lote/límite
+  adjuntos. Probado leyendo el buzón del destinatario por IMAP (bcc no
+  expuesto, adjuntos binarios intactos, hilo)
+- [ ] 15–16. SMTP: sistema de prueba de conexión, tests IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 

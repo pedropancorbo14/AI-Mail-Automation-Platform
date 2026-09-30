@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Mail\Data\MailAddress;
 use App\Mail\Enums\MailProviderType;
 use App\Mail\MailProviderFactory;
 use App\Mail\Providers\Imap\ImapClient;
 use App\Mail\Providers\Imap\ImapSmtpProvider;
+use App\Mail\Providers\Imap\SmtpClient;
 use App\Mail\Security\MailHostGuard;
 use App\Models\MailConnection;
 use Illuminate\Support\ServiceProvider;
@@ -31,13 +33,16 @@ class MailProvidersServiceProvider extends ServiceProvider
     {
         $factory = $this->app->make(MailProviderFactory::class);
 
-        $factory->extend(MailProviderType::Imap, fn (MailConnection $connection) => new ImapSmtpProvider(
-            new ImapClient(
-                $connection->credentials,
-                $this->app->make(MailHostGuard::class),
-                config('mail_connections.timeout'),
-            ),
-            config('mail_connections.max_attachment_mb') * 1024 * 1024,
-        ));
+        $factory->extend(MailProviderType::Imap, function (MailConnection $connection) {
+            $guard = $this->app->make(MailHostGuard::class);
+            $timeout = config('mail_connections.timeout');
+
+            return new ImapSmtpProvider(
+                new ImapClient($connection->credentials, $guard, $timeout),
+                new SmtpClient($connection->credentials, $guard, $timeout),
+                new MailAddress($connection->email, $connection->name),
+                config('mail_connections.max_attachment_mb') * 1024 * 1024,
+            );
+        });
     }
 }

@@ -3,9 +3,11 @@
 namespace Tests\Support;
 
 use App\Mail\Credentials\ImapSmtpCredentials;
+use App\Mail\Data\MailAddress;
 use App\Mail\Enums\MailEncryption;
 use App\Mail\Providers\Imap\ImapClient;
 use App\Mail\Providers\Imap\ImapSmtpProvider;
+use App\Mail\Providers\Imap\SmtpClient;
 use App\Mail\Security\MailHostGuard;
 use GuzzleHttp\Client;
 use Illuminate\Support\Str;
@@ -54,10 +56,21 @@ class GreenMail
         return new ImapClient(self::credentials($email, $password), new MailHostGuard(true), 5);
     }
 
-    /** Proveedor IMAP/SMTP completo para una cuenta de GreenMail. */
-    public static function provider(string $email, string $password = 'secret'): ImapSmtpProvider
+    public static function smtpClient(string $email, string $password = 'secret'): SmtpClient
     {
-        return new ImapSmtpProvider(self::imapClient($email, $password));
+        return new SmtpClient(self::credentials($email, $password), new MailHostGuard(true), 5);
+    }
+
+    /** Proveedor IMAP/SMTP completo para una cuenta de GreenMail. */
+    public static function provider(string $email, string $password = 'secret', ?string $name = null, int $newMessagesBatch = 100, int $maxAttachmentBytes = 25 * 1024 * 1024): ImapSmtpProvider
+    {
+        return new ImapSmtpProvider(
+            self::imapClient($email, $password),
+            self::smtpClient($email, $password),
+            new MailAddress($email, $name),
+            maxAttachmentBytes: $maxAttachmentBytes,
+            newMessagesBatch: $newMessagesBatch,
+        );
     }
 
     /**

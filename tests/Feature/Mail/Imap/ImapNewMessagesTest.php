@@ -1,7 +1,6 @@
 <?php
 
 use App\Mail\Data\MailMessage;
-use App\Mail\Providers\Imap\ImapSmtpProvider;
 use Symfony\Component\Mime\Email;
 use Tests\Support\GreenMail;
 
@@ -75,7 +74,7 @@ it('works with an empty folder', function () {
 })->group('greenmail');
 
 it('delivers large backlogs in batches without losing or repeating messages', function () {
-    $provider = new ImapSmtpProvider(GreenMail::imapClient($this->email), newMessagesBatch: 2);
+    $provider = GreenMail::provider($this->email, newMessagesBatch: 2);
     $cursor = $provider->newMessages('INBOX', null)->cursor;
 
     foreach (range(1, 5) as $i) {
