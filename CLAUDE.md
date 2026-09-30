@@ -486,8 +486,12 @@ cada commit, este archivo actualizado en cada commit, sin push.
 
 **Tareas (commit)** — Arquitectura reordenada por dependencias
 (interfaz → tabla → credenciales → modelo → factory) + API de conexiones:
-- [x] 1. Interfaz `MailProvider` + DTOs + excepciones (este commit)
-- [ ] 2. Tabla `mail_connections`
+- [x] 1. Interfaz `MailProvider` + DTOs + excepciones (`8494c8e`)
+- [x] 2. Tabla `mail_connections`: `tenant_id` (restrict), `created_by`
+  (nullOnDelete), `name`, `provider`, `email`, `credentials` (text, JSON
+  cifrado), `status` pending/active/failing/disabled, `last_tested_at`,
+  `last_error`. Único (`tenant_id`, `email`); la misma cuenta sí puede
+  estar en empresas distintas
 - [ ] 3. Sistema de credenciales cifradas
 - [ ] 4. Modelo `MailConnection`
 - [ ] 5. `MailProviderFactory`
