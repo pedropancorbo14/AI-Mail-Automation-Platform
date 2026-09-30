@@ -564,8 +564,15 @@ cada commit, este archivo actualizado en cada commit, sin push.
   nombre, tipo, tamaño, inline, Content-ID) y
   `downloadAttachment($folder, $uid, $id)` byte a byte (probado con
   binario). Límite `mail_connections.max_attachment_mb` (25 MB,
-  `MAIL_CONNECTIONS_MAX_ATTACHMENT_MB`) → `MailProviderException`
-- [ ] 12. IMAP: nuevos emails
+  `MAIL_CONNECTIONS_MAX_ATTACHMENT_MB`) → `MailProviderException` (`f443a7b`)
+- [x] 12. Detección de nuevos emails IMAP: cursor `v1:<UIDVALIDITY>:<último
+  UID>` por carpeta. `null` → solo fija punto de partida (UIDNEXT-1, sin
+  histórico). UIDVALIDITY distinta o cursor ilegible → `resynced=true` y
+  punto de partida nuevo. Primero busca solo UIDs (barato), filtra
+  `uid > último` (IMAP `UID n:*` siempre devuelve el último mensaje) y
+  trae contenido solo del lote (`newMessagesBatch`, 100) con
+  `NewMessages::$hasMore` (DTO ampliado). Probado: sin duplicados, lotes
+  sin pérdidas, carpetas independientes, no marca como leído
 - [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío

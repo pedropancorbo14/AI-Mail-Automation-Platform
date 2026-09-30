@@ -10,11 +10,14 @@ final readonly class NewMessages
      * @param  bool  $resynced  El cursor anterior ya no era válido (p. ej. cambió UIDVALIDITY en
      *                          IMAP): se ha fijado un punto de partida nuevo y puede haberse
      *                          perdido correo intermedio que habrá que resincronizar.
+     * @param  bool  $hasMore  Hay más mensajes nuevos que no cabían en este lote: volver a
+     *                         llamar con el cursor devuelto hasta que sea false.
      */
     public function __construct(
         public array $messages,
         public string $cursor,
         public bool $resynced = false,
+        public bool $hasMore = false,
     ) {
     }
 }

@@ -38,6 +38,7 @@ class ImapSmtpProvider implements MailProvider
     public function __construct(
         private readonly ImapClient $imap,
         private readonly int $maxAttachmentBytes = 25 * 1024 * 1024,
+        private readonly int $newMessagesBatch = 100,
     ) {
     }
 
@@ -119,9 +120,55 @@ class ImapSmtpProvider implements MailProvider
         });
     }
 
+    /**
+     * Cursor "v1:<UIDVALIDITY>:<último UID visto>". Los UID solo crecen
+     * dentro de una carpeta mientras UIDVALIDITY no cambie; si cambia, el
+     * servidor ha renumerado la carpeta y el cursor ya no sirve.
+     */
     public function newMessages(string $folder, ?string $cursor): NewMessages
     {
-        throw new MailProviderException('Detección de nuevos emails IMAP todavía no implementada.');
+        return $this->call(function () use ($folder, $cursor) {
+            $status = array_change_key_case($this->folder($folder)->status(), CASE_UPPER);
+            $validity = (int) $status['UIDVALIDITY'];
+            $startingPoint = self::cursor($validity, max(0, (int) $status['UIDNEXT'] - 1));
+
+            // Primera sincronización: solo se fija el punto de partida (sin histórico).
+            if ($cursor === null) {
+                return new NewMessages([], $startingPoint);
+            }
+
+            [$cursorValidity, $lastUid] = self::parseCursor($cursor);
+
+            // Cursor ilegible o carpeta renumerada: nuevo punto de partida.
+            if ($cursorValidity !== $validity) {
+                return new NewMessages([], $startingPoint, resynced: true);
+            }
+
+            // 1) Solo UIDs (sin cuerpos): barato aunque haya miles de mensajes.
+            //    "UID n:*" siempre incluye el último mensaje aunque su UID sea < n:
+            //    por eso se filtra uid > $lastUid.
+            $newUids = $this->folder($folder)->messages()
+                ->uid($lastUid + 1, INF)
+                ->get()
+                ->map(fn (MessageInterface $message) => $message->uid())
+                ->filter(fn (int $uid) => $uid > $lastUid)
+                ->sort()
+                ->values();
+
+            // 2) Contenido completo solo del lote.
+            $batchUids = $newUids->take($this->newMessagesBatch);
+            $messages = $batchUids->isEmpty() ? collect() : $this->query($folder)
+                ->uid($batchUids->all())
+                ->get()
+                ->sortBy(fn (MessageInterface $message) => $message->uid())
+                ->values();
+
+            return new NewMessages(
+                messages: $messages->map(fn (MessageInterface $message) => ImapMessageMapper::toMailMessage($message, $folder))->all(),
+                cursor: self::cursor($validity, $batchUids->last() ?? $lastUid),
+                hasMore: $newUids->count() > $batchUids->count(),
+            );
+        });
     }
 
     public function send(OutgoingMessage $message): SentMessage
@@ -152,6 +199,21 @@ class ImapSmtpProvider implements MailProvider
         $message = ctype_digit($id) ? $this->query($folder)->find((int) $id) : null;
 
         return $message ?? throw new MailNotFoundException("El mensaje {$id} no existe en {$folder}.");
+    }
+
+    private static function cursor(int $validity, int $lastUid): string
+    {
+        return "v1:{$validity}:{$lastUid}";
+    }
+
+    /** @return array{0: ?int, 1: int} [UIDVALIDITY, último UID]; [null, 0] si no es válido. */
+    private static function parseCursor(string $cursor): array
+    {
+        if (! preg_match('/^v1:(\d+):(\d+)$/', $cursor, $matches)) {
+            return [null, 0];
+        }
+
+        return [(int) $matches[1], (int) $matches[2]];
     }
 
     /** INBOX es especial por nombre (RFC 9051); el resto por atributos de uso especial. */
