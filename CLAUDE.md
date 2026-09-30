@@ -605,7 +605,21 @@ cada commit, este archivo actualizado en cada commit, sin push.
   factory → proveedor real: cliente escribe por SMTP con adjunto →
   soporte lo detecta (cursor) → lo lee y descarga el adjunto → responde
   en el hilo → el cliente recibe la respuesta enlazada. Y ninguna
-  operación (ni la cadena de `previous`) revela la contraseña
+  operación (ni la cadena de `previous`) revela la contraseña (`6e4cec7`)
+- [x] 17. Microsoft Graph: `App\Mail\OAuth\Contracts\TokenSource`
+  (`accessToken()`, `refresh()`), `StaticTokenSource` (token guardado, sin
+  renovar; se sustituye en la tarea 18). `App\Mail\OAuth\OAuthApiClient`
+  (base común Graph/Gmail): bearer, 3 intentos en 429/503/504 (en
+  Laravel `retry($n)` cuenta el intento inicial), ante 401 renueva el
+  token **una vez** y reintenta, traduce 401/403 → autenticación, 404 →
+  not found, 429/5xx → conexión, resto → proveedor (sin tokens en
+  mensajes). **Bug evitado:** no pasar `query: []` en GET (Guzzle
+  sustituiría la query de la URL, p. ej. el `$skiptoken` de un nextLink).
+  `GraphClient` (+ `collect()` que sigue `@odata.nextLink` hasta un
+  límite). `MicrosoftGraphProvider` registrado en la factory:
+  `testConnection()` lee la bandeja (recepción) y comprueba el scope
+  `Mail.Send` (envío, sin mandar nada); resto de operaciones pendientes.
+  Tests con `Http::fake` + `preventStrayRequests` + `Sleep::fake`
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 

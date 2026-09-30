@@ -5,9 +5,12 @@ namespace App\Providers;
 use App\Mail\Data\MailAddress;
 use App\Mail\Enums\MailProviderType;
 use App\Mail\MailProviderFactory;
+use App\Mail\OAuth\StaticTokenSource;
 use App\Mail\Providers\Imap\ImapClient;
 use App\Mail\Providers\Imap\ImapSmtpProvider;
 use App\Mail\Providers\Imap\SmtpClient;
+use App\Mail\Providers\Microsoft\GraphClient;
+use App\Mail\Providers\Microsoft\MicrosoftGraphProvider;
 use App\Mail\Security\MailHostGuard;
 use App\Models\MailConnection;
 use Illuminate\Support\ServiceProvider;
@@ -44,5 +47,10 @@ class MailProvidersServiceProvider extends ServiceProvider
                 config('mail_connections.max_attachment_mb') * 1024 * 1024,
             );
         });
+
+        $factory->extend(MailProviderType::Microsoft, fn (MailConnection $connection) => new MicrosoftGraphProvider(
+            new GraphClient(new StaticTokenSource($connection->credentials), config('mail_connections.timeout')),
+            $connection->credentials->scopes,
+        ));
     }
 }
