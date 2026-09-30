@@ -781,7 +781,13 @@ privado), registra los errores y reintenta los fallos temporales.
   `Email::recipients()` (orden tipo+posición) y `attachments()`. En los
   adjuntos `status`/`disk`/`path`/`sha256`/`error` no son asignables en
   masa y `disk`/`path` están ocultos en JSON
-- [ ] 6. Tabla y modelo `mail_sync_states` (cursor + errores de sincronización)
+- [x] 6. Tabla y modelo `mail_sync_states`: una fila por conexión+carpeta
+  (único) con `cursor` (texto, no secreto), `last_synced_at` (intento),
+  `last_success_at`, `last_error`, `consecutive_failures` (base para
+  alertas Fase 11) y `resynced_at` (el proveedor invalidó el cursor).
+  `recordSuccess($cursor, $resynced)` avanza el cursor y limpia el error;
+  `recordFailure($error)` NO avanza el cursor. Cascade con la conexión.
+  `MailConnection::syncStates()`
 - [ ] 7. `EmailIngestionService` (guardar sin duplicados)
 - [ ] 8. Adjuntos en disco privado + marca de ingesta completa
 - [ ] 9. `MailSyncService` (sincronización de una carpeta con cursor)

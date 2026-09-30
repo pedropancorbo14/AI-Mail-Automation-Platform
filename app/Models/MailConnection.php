@@ -71,4 +71,10 @@ class MailConnection extends Model
     {
         return $this->hasMany(Email::class);
     }
+
+    /** @return HasMany<MailSyncState, $this> */
+    public function syncStates(): HasMany
+    {
+        return $this->hasMany(MailSyncState::class);
+    }
 }
