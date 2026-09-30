@@ -5,6 +5,7 @@ namespace App\Mail\Providers\Microsoft;
 use App\Mail\Contracts\MailProvider;
 use App\Mail\Data\AttachmentContent;
 use App\Mail\Data\ConnectionTestResult;
+use App\Mail\Data\MailAddress;
 use App\Mail\Data\MailFolder;
 use App\Mail\Data\MailMessage;
 use App\Mail\Data\NewMessages;
@@ -21,6 +22,9 @@ use Throwable;
  */
 class MicrosoftGraphProvider implements MailProvider
 {
+    /** Graph admite adjuntos de hasta 3 MB en una sola petición. */
+    private const int MAX_SIMPLE_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+
     /** Nombres conocidos de Graph → rol normalizado. */
     private const array WELL_KNOWN = [
         'inbox' => MailFolder::INBOX,
@@ -190,9 +194,79 @@ class MicrosoftGraphProvider implements MailProvider
         );
     }
 
+    /**
+     * sendMail de Graph no devuelve el Message-ID ni permite In-Reply-To,
+     * así que se usa un borrador: createReply si es una respuesta (Outlook
+     * la enlaza en la conversación), se completa, se adjuntan los ficheros
+     * y se envía. Sin campo "from": Graph envía siempre como el dueño del
+     * buzón (no se puede suplantar otra dirección).
+     */
     public function send(OutgoingMessage $message): SentMessage
     {
-        throw new MailProviderException('Envío por Microsoft todavía no implementado.');
+        foreach ($message->attachments as $attachment) {
+            if (strlen($attachment->content) > self::MAX_SIMPLE_ATTACHMENT_BYTES) {
+                // Por encima de 3 MB Graph exige una "upload session" (pendiente).
+                throw new MailProviderException(
+                    "El adjunto {$attachment->filename} supera los 3 MB que admite por ahora el envío con Microsoft.",
+                );
+            }
+        }
+
+        $original = $message->inReplyTo ? $this->findByMessageId($message->inReplyTo) : null;
+
+        $fields = [
+            'subject' => $message->subject,
+            'body' => $message->htmlBody !== null
+                ? ['contentType' => 'HTML', 'content' => $message->htmlBody]
+                : ['contentType' => 'Text', 'content' => (string) $message->textBody],
+            'toRecipients' => self::recipients($message->to),
+            'ccRecipients' => self::recipients($message->cc),
+            'bccRecipients' => self::recipients($message->bcc),
+        ];
+
+        if ($original) {
+            $draft = $this->graph->post('/me/messages/' . rawurlencode($original) . '/createReply');
+            $draft = $this->graph->patch('/me/messages/' . rawurlencode($draft['id']), $fields);
+        } else {
+            $draft = $this->graph->post('/me/messages', $fields);
+        }
+
+        foreach ($message->attachments as $attachment) {
+            $this->graph->post('/me/messages/' . rawurlencode($draft['id']) . '/attachments', [
+                '@odata.type' => '#microsoft.graph.fileAttachment',
+                'name' => $attachment->filename,
+                'contentType' => $attachment->contentType,
+                'contentBytes' => base64_encode($attachment->content),
+            ]);
+        }
+
+        $this->graph->post('/me/messages/' . rawurlencode($draft['id']) . '/send');
+
+        return new SentMessage(isset($draft['internetMessageId']) ? trim($draft['internetMessageId'], '<> ') : null);
+    }
+
+    /** Id de Graph del mensaje con ese Message-ID, o null si no está en el buzón. */
+    private function findByMessageId(string $messageId): ?string
+    {
+        $found = $this->graph->get('/me/messages', [
+            '$filter' => "internetMessageId eq '" . str_replace("'", "''", "<{$messageId}>") . "'",
+            '$select' => 'id',
+            '$top' => 1,
+        ]);
+
+        return $found['value'][0]['id'] ?? null;
+    }
+
+    /**
+     * @param  list<MailAddress>  $addresses
+     * @return list<array{emailAddress: array{address: string, name?: string}}>
+     */
+    private static function recipients(array $addresses): array
+    {
+        return array_map(fn (MailAddress $address) => ['emailAddress' => array_filter([
+            'address' => $address->email,
+            'name' => $address->name,
+        ])], $addresses);
     }
 
     /** Ids de las carpetas especiales → rol, en una sola llamada $batch. */

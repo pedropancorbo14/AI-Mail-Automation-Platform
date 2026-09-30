@@ -657,7 +657,16 @@ cada commit, este archivo actualizado en cada commit, sin push.
   seen})` = `receivedDateTime` del último + ids vistos en ese segundo
   (`ge` + filtro de vistos: sin pérdidas ni duplicados), lotes con
   `hasMore`. Limitación: correos **movidos** a la carpeta (fecha antigua)
-  no se detectan; valorar delta en Fase 4 si hace falta
+  no se detectan; valorar delta en Fase 4 si hace falta (`f50382b`)
+- [x] 20. Envío Microsoft: `sendMail` no devuelve Message-ID ni admite
+  In-Reply-To → flujo de **borrador**: si hay `inReplyTo` busca el
+  original por `internetMessageId` y usa `createReply` + PATCH (Outlook
+  lo enlaza en la conversación; si no está, borrador nuevo), sube
+  adjuntos (`fileAttachment` base64) y `/send`; devuelve el
+  `internetMessageId` del borrador. Sin campo `from` (Graph envía como el
+  dueño del buzón). HTML → `contentType HTML`, si no `Text`.
+  **Pendiente:** adjuntos > 3 MB (requieren upload session): se rechazan
+  con error claro antes de crear nada
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 
