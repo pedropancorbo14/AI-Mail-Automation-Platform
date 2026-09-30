@@ -134,6 +134,11 @@ services:
       POSTGRES_DB: ${DB_DATABASE:-app}
       POSTGRES_USER: ${DB_USERNAME:-app}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    # Solo en 127.0.0.1: para clientes gráficos (HeidiSQL, DBeaver...) desde tu
+    # máquina, nunca abierto a la red. 5433 porque el 5432 suele estar ocupado
+    # por un PostgreSQL local. Los contenedores siguen usando postgres:5432.
+    ports:
+      - "127.0.0.1:${DB_FORWARD_PORT:-5433}:5432"
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     volumes:
       - postgres-data:/var/lib/postgresql/data

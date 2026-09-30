@@ -83,7 +83,15 @@ docker compose exec app php artisan test            # todos los tests en verde
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
 | Grafana | http://localhost:3000 | `admin` / `admin` |
 | Prometheus | http://localhost:9090 | — |
+| PostgreSQL (HeidiSQL, DBeaver…) | `127.0.0.1:5433`, BD `app` | `app` / `secret` |
 | GreenMail (correo de pruebas) | IMAP `127.0.0.1:3143` · SMTP `127.0.0.1:3025` (sin TLS) | `soporte@demo.test` / `secret` |
+
+**Ver la base de datos con un cliente gráfico** (HeidiSQL, DBeaver,
+pgAdmin…): tipo de red **PostgreSQL (TCP/IP)**, host `127.0.0.1`, puerto
+`5433`, usuario `app`, contraseña `secret`, base de datos `app` (la de los
+tests es `app_testing` y se vacía en cada test). El puerto solo escucha en
+tu máquina, no en la red; se cambia con `DB_FORWARD_PORT` en `.env`. Desde
+consola: `docker compose exec postgres psql -U app -d app`.
 
 **Usuario de desarrollo** (lo crea el seeder): `test@example.com` /
 `password`, *owner* de la empresa "Empresa Demo".
@@ -602,7 +610,7 @@ prepararán en la fase de producción.
 |---|---|
 | `horizon` en bucle "Restarting" | Faltan `vendor/` o `APP_KEY`: pasos 3–4 del arranque. |
 | `No application encryption key has been specified` | Se generó la clave pero los contenedores no se recrearon: `docker compose up -d`. |
-| Un puerto ya está en uso (8080, 3000, 9090, 3100) | Cámbialo en `.env`: `APP_PORT`, `GRAFANA_PORT`, `PROMETHEUS_PORT`, `LOKI_PORT`. |
+| Un puerto ya está en uso (8080, 3000, 9090, 3100, 5433) | Cámbialo en `.env`: `APP_PORT`, `GRAFANA_PORT`, `PROMETHEUS_PORT`, `LOKI_PORT`, `DB_FORWARD_PORT`. |
 | Falta la extensión `vector` o la BD `app_testing` | El script de inicio de Postgres solo se ejecuta con un volumen nuevo: `docker compose down -v` (⚠️ borra los datos locales) y volver a levantar. |
 | `429 Too Many Requests` al probar el login | Límite de 5 intentos/min por email+IP; espera un minuto. |
 | Los tests del grupo `greenmail` fallan con "No se pudo conectar" | GreenMail no está levantado: `docker compose up -d greenmail`. |

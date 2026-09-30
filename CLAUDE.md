@@ -880,6 +880,11 @@ privado), registra los errores y reintenta los fallos temporales.
 **Pendiente para dar la Fase 4 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde.
 
+**Después:** PostgreSQL publicado en `127.0.0.1:${DB_FORWARD_PORT:-5433}`
+para verlo con un cliente gráfico (el usuario usa **HeidiSQL**; tipo
+PostgreSQL, `app`/`secret`, BD `app`). 5433 porque en el equipo del
+usuario el 5432 ya lo usa otro PostgreSQL. Solo loopback, nunca la red.
+
 ### Fase 5 (AI Engine con Claude/Anthropic): SIGUIENTE, no empezada.
 
 Base disponible: evento `EmailIngested(tenantId, emailId)` (lanzado una
