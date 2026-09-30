@@ -728,10 +728,21 @@ GitHub Actions en verde (el CI ahora levanta también GreenMail como
 servicio). Probar Microsoft/Google con cuentas reales requiere registrar
 las apps (Azure / Google Cloud) y rellenar `MICROSOFT_*`/`GOOGLE_*`.
 
-### Fase 4 (ingesta de emails): EN CURSO (desde 2026-09-30)
+### Fase 4 (ingesta de emails): COMPLETADA EN LOCAL (2026-09-30), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
+
+**Resumen:** 12 tareas en 12 commits (`d7492dd`..tarea 12), 386 tests en
+verde (incluida ingesta E2E contra IMAP real de GreenMail). **Prueba de
+humo en el stack Docker:** migraciones aplicadas en la BD de desarrollo;
+el scheduler encoló `FetchEmailsJob` para el buzón demo
+`soporte@demo.test` antes de migrar → Horizon lo reintentó con el backoff
+real (fallo 15:43:04, +30 s fallo, +120 s `DONE`) y fijó el cursor sin
+importar histórico; correo enviado por SMTP a GreenMail con adjunto → el
+scheduler lo guardó solo en <1 min (remitente, destinatario, asunto,
+cuerpos, fecha, `ingested_at`, adjunto `stored` en
+`tenants/1/emails/1/1` con contenido idéntico).
 
 **Objetivo:** cada buzón conectado se sincroniza solo. Un job periódico
 pide los correos nuevos al proveedor (`newMessages()` con el cursor
@@ -854,11 +865,26 @@ privado), registra los errores y reintenta los fallos temporales.
   procesos, producción hasta 5) + `waits.redis:mail` 120 s. Verificado en
   el stack: `schedule:list` lo muestra y `horizon:supervisors` levanta
   `supervisor-mail` (tras `horizon:terminate`)
-- [ ] 12. Test end-to-end con GreenMail, prueba de humo y README
+- [x] 12. `ImapIngestionEndToEndTest` (grupo `greenmail`): `mail:sync` →
+  job (cola sync) → IMAP real: correo previo no importado, 2 nuevos
+  guardados con remitente/cc/cuerpos/fecha, adjunto binario idéntico en
+  disco, mismo Message-ID entregado dos veces → 1 fila, 2ª pasada sin
+  nada nuevo, **buzón sin modificar** (siguen sin leer); contraseña
+  cambiada → conexión `failing` (mensaje sin contraseña), error en
+  `mail_sync_states` y el scheduler deja de encolarla. Prueba de humo en
+  el stack (ver resumen). README: sección "5. Ingesta de emails" (cómo
+  funciona, qué se guarda, duplicados, errores y reintentos, probarlo en
+  local), estado, estructura, API (409), tests, problemas frecuentes;
+  secciones siguientes renumeradas (API = #7)
 
-Base usada de fases anteriores: `MailProvider::newMessages()` con cursor
-por carpeta, `MailConnectionService`, `OAuthTokenManager` (renueva tokens
-en jobs) y `TenantService::runAs()` para ejecutar jobs dentro de la empresa.
+**Pendiente para dar la Fase 4 por cerrada:** push (lo hace el usuario) y
+GitHub Actions en verde.
+
+### Fase 5 (AI Engine con Claude/Anthropic): SIGUIENTE, no empezada.
+
+Base disponible: evento `EmailIngested(tenantId, emailId)` (lanzado una
+vez por email con adjuntos ya guardados) como punto de entrada; `Email`
+con `status` (received → processing → …) y cuerpos texto/HTML.
 
 ### Pendientes anotados para más adelante
 
@@ -884,6 +910,20 @@ en jobs) y `TenantService::runAs()` para ejecutar jobs dentro de la empresa.
 - Microsoft: envío de adjuntos > 3 MB (upload session) y detección de
   correos movidos entre carpetas (delta query) si hace falta.
 - Copia en "Enviados" de lo enviado por SMTP (Fase 9).
+- Ingesta (Fase 4), límites conocidos:
+  - Solo se sincroniza la bandeja de entrada (añadir carpetas = más filas
+    en `mail_sync_states`; valorar cuando haga falta).
+  - **Mensaje "envenenado":** si un correo concreto falla siempre con un
+    error no temporal (bug, dato imposible de guardar), el cursor no
+    avanza y el buzón se queda atascado (`consecutive_failures` crece).
+    Alertar en Fase 11 y valorar saltarlo tras N intentos.
+  - Borrar un email borra sus filas (cascade) pero no los ficheros de
+    adjuntos del disco: limpieza con la retención de la Fase 12.
+  - IMAP: si UIDVALIDITY cambia entre guardar un email y descargar sus
+    adjuntos (reintento), el UID guardado puede apuntar a otro mensaje.
+    Muy improbable; revisar si aparece.
+  - Buzones `pending` no se sincronizan hasta probarlos: valorar probar
+    automáticamente al crear la conexión (sobre todo OAuth).
 - "Iniciar sesión con Microsoft/Google" para los usuarios de la app: NO
   existe (el OAuth de la Fase 3 es solo para conectar buzones). Valorar
   si interesa.

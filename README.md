@@ -24,13 +24,15 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 1 | Base: Docker, PostgreSQL + pgvector, Redis, Horizon, Sanctum, API `/api/v1`, logging, Pest, CI | ✅ Hecha |
 | 2 | Empresas (tenants), usuarios, login/logout, roles y permisos, aislamiento entre empresas | ✅ Hecha |
 | 3 | Conexiones de correo: IMAP/SMTP, Microsoft 365 (Graph + OAuth), Gmail (API + OAuth), credenciales cifradas, prueba de conexión | ✅ Hecha |
-| 4 | Ingesta de emails (guardarlos, deduplicar, sincronizar con jobs) | ⏳ Siguiente |
-| 5–17 | AI Engine (Claude/Anthropic), RAG, tools, agente, automatización, panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
+| 4 | Ingesta de emails: sincronización periódica de los buzones, emails + destinatarios + adjuntos guardados sin duplicados, reintentos | ✅ Hecha |
+| 5 | AI Engine con Claude/Anthropic: clasificación, confianza, registro de peticiones | ⏳ Siguiente |
+| 6–17 | RAG, tools, agente, automatización, panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
 
-Ahora mismo existe la **base multi-tenant**, la **API de usuarios** y las
-**conexiones de correo**: la plataforma ya sabe leer, detectar y enviar el
-correo de las cuentas de cada empresa, pero todavía no lo procesa de forma
-automática (eso empieza en la Fase 4). La hoja de ruta completa y las
+Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
+**conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
+los correos nuevos de los buzones conectados y los guarda (con destinatarios
+y adjuntos) listos para procesar. Todavía no los procesa con IA: eso empieza
+en la Fase 5. La hoja de ruta completa y las
 decisiones de arquitectura están en [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -77,7 +79,7 @@ docker compose exec app php artisan test            # todos los tests en verde
 
 | Servicio | URL | Acceso |
 |---|---|---|
-| API | http://localhost:8080/api/v1 | ver [API](#6-api) |
+| API | http://localhost:8080/api/v1 | ver [API](#7-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
 | Grafana | http://localhost:3000 | `admin` / `admin` |
 | Prometheus | http://localhost:9090 | — |
@@ -93,6 +95,7 @@ docker compose exec app php artisan migrate:fresh --seed   # BD de desarrollo de
 docker compose exec app php artisan tinker                 # consola interactiva
 docker compose exec app php artisan route:list --path=api  # rutas de la API
 docker compose logs -f horizon                             # logs de las colas
+docker compose exec app php artisan mail:sync              # sincronizar ya los buzones (si no, cada minuto)
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
 ```
 
@@ -346,7 +349,99 @@ añade el caso a `MailProviderType`. El resto de la aplicación no cambia.
 
 ---
 
-## 5. Estructura del proyecto
+## 5. Ingesta de emails
+
+Cada buzón conectado se sincroniza **solo, cada minuto**: la plataforma trae
+los correos nuevos, los guarda una única vez con todo su contenido y deja
+constancia de cualquier error.
+
+### Cómo funciona
+
+```
+scheduler (cada minuto)
+  └─ php artisan mail:sync ── un FetchEmailsJob por buzón "active" ──► cola "mail" (Horizon)
+        └─ MailSyncService (dentro de la empresa del buzón)
+              ├─ provider->newMessages(carpeta, cursor guardado)
+              ├─ por cada correo: EmailIngestionService
+              │     ├─ ingest():   email + destinatarios + metadatos de adjuntos (sin duplicados)
+              │     └─ complete(): adjuntos → disco privado · ingested_at · evento EmailIngested
+              └─ solo con todo el lote guardado: se avanza el cursor (mail_sync_states)
+```
+
+- **Qué se sincroniza:** los buzones en estado `active` de empresas activas,
+  y por ahora solo su **bandeja de entrada**. Un buzón `pending` (sin
+  probar) o `failing` (credenciales rechazadas) no se toca hasta que se
+  prueba de nuevo con `POST /mail-connections/{id}/test`.
+- **Primera sincronización:** fija el punto de partida y **no importa el
+  correo antiguo**; a partir de ahí se guarda todo lo que llega.
+- **El buzón del cliente no se modifica:** no se marcan correos como leídos
+  ni se mueven (Gmail se conecta con permisos de solo lectura).
+- **Correos grandes o muchos a la vez:** se traen por lotes (hasta
+  `MAIL_SYNC_MAX_BATCHES` lotes por pasada; el resto en la siguiente).
+
+### Qué se guarda
+
+| Tabla | Contenido |
+|---|---|
+| `emails` | Buzón, carpeta e id en el proveedor, `message_id` / `in_reply_to` / `references` (hilos), remitente, asunto, cuerpo de texto y HTML, fecha (`sent_at`), `status` y `ingested_at` |
+| `email_recipients` | Destinatarios `to`, `cc`, `reply_to` (en orden) |
+| `email_attachments` | Nombre, tipo, tamaño y **estado** de cada adjunto: `stored` (fichero en disco, con su SHA-256), `skipped` (supera `MAIL_CONNECTIONS_MAX_ATTACHMENT_MB`), `failed` (el proveedor no lo entregó) o `pending` |
+| `mail_sync_states` | Por buzón y carpeta: cursor, último intento, último éxito, último error y fallos seguidos |
+
+- Los **adjuntos** van a un disco **privado** (`MAIL_ATTACHMENTS_DISK`, por
+  defecto `storage/app/private`), en `tenants/{empresa}/emails/{email}/{adjunto}`.
+  El nombre del fichero que puso el remitente solo se muestra, nunca se usa
+  como ruta.
+- El **HTML** se guarda tal cual llega: hay que **sanearlo antes de
+  mostrarlo** (lo hará el panel).
+- **"Procesado":** `ingested_at` indica que el email y sus adjuntos están
+  guardados; en ese momento se lanza el evento `EmailIngested`, que será la
+  entrada del procesamiento con IA. `status` (`received` → `processing` →
+  `ai_review` → `human_review` → `approved` → `sent` / `failed`) lo moverán
+  las fases de IA y revisión humana.
+- Un buzón con correos guardados **no se puede borrar** (409): se
+  desactiva (`PATCH` con `enabled: false`).
+
+### Duplicados
+
+Cada correo se identifica dentro de su buzón por su cabecera
+**Message-ID** (o, si no la tiene, por una huella de remitente, fecha,
+asunto y cuerpo). Aunque el mismo correo llegue dos veces, se reintente una
+sincronización o el servidor IMAP renumere sus mensajes, se guarda **una
+sola vez** (clave única en la BD, también si dos workers lo intentan a la
+vez). El mismo correo en dos buzones distintos de la empresa sí se guarda en
+cada uno.
+
+### Errores y reintentos
+
+| Qué pasa | Qué hace la plataforma |
+|---|---|
+| Error temporal (red, timeout, servidor caído) | El cursor **no avanza**; el job se reintenta 2 veces más (a los 30 s y 2 min) y, si sigue fallando, en la siguiente pasada del scheduler. Nada se pierde ni se duplica. |
+| El servidor rechaza la contraseña / token revocado | El buzón pasa a `failing` con el motivo en `last_error` y **no se reintenta** (repetir logins fallidos puede bloquear la cuenta). Se reanuda al corregirlo y probarlo. |
+| Un adjunto que el proveedor no puede entregar | Se marca `failed` con el motivo y se sigue con el resto del correo. |
+| El proveedor invalida el cursor (p. ej. cambio de UIDVALIDITY en IMAP) | Nuevo punto de partida, se anota `resynced_at` y un aviso en el log (puede faltar correo intermedio). |
+
+Cada intento queda registrado en `mail_sync_states` (`last_error`,
+`consecutive_failures`) y en el log (`Buzón sincronizado`, `Error al
+sincronizar el buzón`, con `tenant_id`), consultable en Grafana/Loki.
+
+### Probarlo en local
+
+```bash
+docker compose exec app php artisan mail:sync        # 1ª vez: fija el punto de partida
+# Envía un correo al buzón demo (GreenMail, SMTP 127.0.0.1:3025, sin TLS)
+# a soporte@demo.test, p. ej. desde Thunderbird o con swaks.
+# En menos de un minuto aparece en la tabla emails:
+docker compose exec app php artisan tinker --execute 'echo DB::table("emails")->pluck("subject");'
+```
+
+La conexión demo debe estar `active` (se prueba con
+`POST /api/v1/mail-connections/1/test`). El progreso de los jobs se ve en
+Horizon (`http://localhost:8080/horizon`, cola `mail`).
+
+---
+
+## 6. Estructura del proyecto
 
 ```
 app/
@@ -363,9 +458,13 @@ app/
 │   ├── OAuth/                Flujo OAuth, renovación de tokens, cliente HTTP común
 │   ├── Security/             MailHostGuard (anti-SSRF)
 │   ├── Support/              MIME común (parser y builder), HTML → texto
+│   ├── Ingestion/            Ingesta (Fase 4): MailSyncService, EmailIngestionService, FetchEmailsJob
+│   ├── Enums/                Proveedor, estados de conexión/email/adjunto, tipo de destinatario
 │   ├── MailProviderFactory   Conexión → proveedor
 │   └── MailConnectionService Prueba de conexión y su estado
-├── Models/                   Tenant, User, Role, Permission, MailConnection
+├── Console/Commands/         mail:sync (lo lanza el scheduler cada minuto)
+├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
+│                             EmailRecipient, EmailAttachment, MailSyncState
 ├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy
 ├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders
 ├── Tenancy/                  TenantService, BelongsToTenant, TenantScope
@@ -380,12 +479,13 @@ docker/                       Config de nginx, php, postgres, redis, prometheus,
 routes/
 ├── api.php                   Prefijo /api/v1
 ├── api/v1.php                Rutas de la API v1
-└── console.php               Tareas programadas
+└── console.php               Tareas programadas (mail:sync cada minuto, limpieza de tokens)
 tests/
 ├── Feature/Auth/             Login, logout, tokens
 ├── Feature/Tenancy/          Tenants, roles, permisos, aislamiento
 ├── Feature/Users/            Gestión de usuarios y empresa
 ├── Feature/Mail/             Conexiones: Imap/, Smtp/ (GreenMail real), Microsoft/, Google/ (APIs simuladas)
+├── Feature/Emails/           Tablas y modelos de emails; Ingestion/ (servicio, sync, job, comando, E2E con GreenMail)
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
 ├── Support/GreenMail.php     Cuentas y buzones de prueba en GreenMail
 └── Fakes/FakeMailProvider    Proveedor en memoria para probar código que usa MailProvider
@@ -397,7 +497,7 @@ lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 6. API
+## 7. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -419,7 +519,7 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | POST | `/mail-connections` | `mail_connections.manage` | Conectar una cuenta **IMAP/SMTP** |
 | GET | `/mail-connections/{id}` | `mail_connections.view` | Ver una conexión |
 | PATCH | `/mail-connections/{id}` | `mail_connections.manage` | Editar (la contraseña no enviada se conserva; `enabled` true/false) |
-| DELETE | `/mail-connections/{id}` | `mail_connections.manage` | Eliminar |
+| DELETE | `/mail-connections/{id}` | `mail_connections.manage` | Eliminar (409 si ya tiene correos guardados: desactívala) |
 | POST | `/mail-connections/{id}/test` | `mail_connections.manage` | Probar recepción y envío (máx. 10/min) |
 | POST | `/mail-connections/oauth/{microsoft\|google}/start` | `mail_connections.manage` | Iniciar la conexión OAuth: devuelve `authorization_url` |
 | GET | `/mail-connections/oauth/{microsoft\|google}/callback` | público | Vuelta desde Microsoft/Google (la llama el navegador) |
@@ -453,7 +553,7 @@ para el futuro panel de administración (SPA).
 
 ---
 
-## 7. Tests
+## 8. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -475,24 +575,28 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
 - **Microsoft/Google** se prueban con `Http::fake()` y
   `Http::preventStrayRequests()`: si algún código intenta llamar de verdad a
   una API externa, el test falla.
-- Helpers: `inTenant($tenant, fn)` (en `tests/Pest.php`) para crear/leer
-  modelos de una empresa fuera de una petición, y `FakeMailProvider` para
-  probar código que usa `MailProvider` sin servidor.
+- Helpers: `inTenant($tenant, fn)` e `incomingMessage([...])` (en
+  `tests/Pest.php`) para crear/leer modelos de una empresa fuera de una
+  petición y construir correos recibidos, y `FakeMailProvider` para probar
+  código que usa `MailProvider` sin servidor (lotes, resync y fallos
+  simulados).
+- Las funciones de ayuda de los archivos de test son **globales** en Pest:
+  no repitas un nombre ya usado en otro archivo.
 
-## 8. CI
+## 9. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 9. Entornos
+## 10. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 10. Problemas frecuentes
+## 11. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -503,6 +607,8 @@ prepararán en la fase de producción.
 | `429 Too Many Requests` al probar el login | Límite de 5 intentos/min por email+IP; espera un minuto. |
 | Los tests del grupo `greenmail` fallan con "No se pudo conectar" | GreenMail no está levantado: `docker compose up -d greenmail`. |
 | "El servidor X apunta a una dirección interna no permitida" en local | Protección anti-SSRF. Para usar GreenMail u otro servidor local: `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` en `.env` (**nunca en producción**). |
+| Llegan correos al buzón pero no aparecen en `emails` | El buzón no está `active` (pruébalo con `POST /mail-connections/{id}/test`), la 1ª sincronización solo fija el punto de partida (lo anterior no se importa), o Horizon no procesa la cola `mail`: `docker compose exec horizon php artisan horizon:supervisors` debe mostrar `supervisor-mail`. Mira `last_error` en `mail_sync_states`. |
+| Tras cambiar código o `config/horizon.php` los jobs siguen igual | Horizon mantiene el código cargado: `docker compose exec horizon php artisan horizon:terminate` (el contenedor lo vuelve a arrancar). |
 | "La conexión con microsoft/google no está configurada en este servidor" | Faltan `MICROSOFT_CLIENT_ID/SECRET` o `GOOGLE_CLIENT_ID/SECRET` (ver [Conexiones de correo](#4-conexiones-de-correo)). |
 
 ## Documentación adicional
