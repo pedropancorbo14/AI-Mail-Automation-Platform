@@ -728,12 +728,54 @@ GitHub Actions en verde (el CI ahora levanta también GreenMail como
 servicio). Probar Microsoft/Google con cuentas reales requiere registrar
 las apps (Azure / Google Cloud) y rellenar `MICROSOFT_*`/`GOOGLE_*`.
 
-### Fase 4 (ingesta de emails): SIGUIENTE, no empezada.
+### Fase 4 (ingesta de emails): EN CURSO (desde 2026-09-30)
 
-Base disponible: `MailProvider::newMessages()` con cursor por carpeta
-(guardar el cursor por conexión+carpeta será tarea de la Fase 4),
-`MailConnectionService`, `OAuthTokenManager` (renueva tokens en jobs) y
-`TenantService::runAs()` para ejecutar jobs dentro de la empresa.
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit, sin push.
+
+**Objetivo:** cada buzón conectado se sincroniza solo. Un job periódico
+pide los correos nuevos al proveedor (`newMessages()` con el cursor
+guardado por conexión+carpeta), guarda cada correo una sola vez
+(remitente, destinatarios, asunto, cuerpos, fecha, adjuntos en disco
+privado), registra los errores y reintenta los fallos temporales.
+
+**Decisiones tomadas:**
+- Código de la fase en `app/Mail/Ingestion/` (sin módulo nuevo); modelos
+  en `app/Models`, enums en `app/Mail/Enums`.
+- **Deduplicación:** único `(mail_connection_id, dedup_hash)`; el hash es
+  SHA-256 del Message-ID o, si falta, de una huella del correo. No se usa
+  el UID de IMAP (cambia con UIDVALIDITY). El mismo correo en dos buzones
+  de la empresa se guarda en ambos (son buzones distintos).
+- **"Procesado" en esta fase = ingesta completa** (`ingested_at`, con
+  adjuntos). `status` (received → processing → ai_review → human_review →
+  approved → sent | failed, sección 12) existe desde ya pero lo mueve la
+  Fase 9. **No se marca nada en el buzón del cliente** (Gmail con scope de
+  solo lectura; el cliente ve su correo como siempre).
+- `emails.mail_connection_id` con `restrictOnDelete`: un buzón con correos
+  guardados no se borra (se desactiva); borrado/retención en Fase 12.
+- HTML guardado tal cual: sanearlo SIEMPRE antes de mostrarlo (Fase 10).
+
+**Tareas (commit):**
+- [x] 1. Tabla `emails`: tenant, conexión, carpeta + id en el proveedor,
+  Message-ID/In-Reply-To/References (jsonb), `dedup_hash`, remitente,
+  asunto, cuerpos texto/HTML (longText), `sent_at` (cabecera Date),
+  `status` (default received), `ingested_at`. Índices por tenant+status,
+  tenant+sent_at, tenant+message_id (hilos)
+- [ ] 2. Tabla `email_recipients`
+- [ ] 3. Tabla `email_attachments`
+- [ ] 4. Modelo `Email` + enum `EmailStatus`
+- [ ] 5. Modelos `EmailRecipient` y `EmailAttachment`
+- [ ] 6. Tabla y modelo `mail_sync_states` (cursor + errores de sincronización)
+- [ ] 7. `EmailIngestionService` (guardar sin duplicados)
+- [ ] 8. Adjuntos en disco privado + marca de ingesta completa
+- [ ] 9. `MailSyncService` (sincronización de una carpeta con cursor)
+- [ ] 10. `FetchEmailsJob` (reintentos, backoff, errores)
+- [ ] 11. Scheduler + cola `mail` en Horizon
+- [ ] 12. Test end-to-end con GreenMail, prueba de humo y README
+
+Base usada de fases anteriores: `MailProvider::newMessages()` con cursor
+por carpeta, `MailConnectionService`, `OAuthTokenManager` (renueva tokens
+en jobs) y `TenantService::runAs()` para ejecutar jobs dentro de la empresa.
 
 ### Pendientes anotados para más adelante
 
