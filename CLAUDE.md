@@ -455,10 +455,21 @@ commits; el push y la revisión del CI los hace el usuario.
 Usuario de desarrollo (seeder): `test@example.com` / `password`, owner
 de "Empresa Demo" (`php artisan migrate:fresh --seed`).
 
-### Fase 3 (conexiones de correo): EN CURSO (iniciada 2026-09-30)
+### Fase 3 (conexiones de correo): COMPLETADA EN LOCAL (2026-09-30), pendiente de CI
 
 Misma forma de trabajo que la Fase 2: un commit por tarea, tests antes de
 cada commit, este archivo actualizado en cada commit, sin push.
+
+**Resumen:** 24 tareas en 25 commits (`8494c8e`..`d40a157` + docs), 314
+tests en verde (IMAP/SMTP contra GreenMail real; Microsoft/Google con
+APIs simuladas). Prueba de humo con curl contra el stack Docker:
+crear conexión IMAP a GreenMail (respuesta sin contraseña) → test
+`active` → contraseña mala → IMAP falla y SMTP OK por separado → OAuth
+sin configurar → 422 claro. Conexión demo en la BD de desarrollo:
+`soporte@demo.test` (GreenMail). Endpoints nuevos: `apiResource
+/mail-connections`, `POST /mail-connections/{id}/test`, `POST
+/mail-connections/oauth/{provider}/start`, `GET
+/mail-connections/oauth/{provider}/callback` (público).
 
 **Decisiones tomadas:**
 - Todo en `app/Mail/` (contratos en `Contracts/`, DTOs `readonly` en
@@ -706,8 +717,23 @@ cada commit, este archivo actualizado en cada commit, sin push.
   reescribirlo; límite 35 MB. **Bug evitado:** Symfony elimina la
   cabecera `Bcc` al generar el MIME (en SMTP van por el sobre) pero Gmail
   lee los Bcc de esa cabecera → se añade explícitamente solo para Gmail
-- [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
-- [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
+  (`d40a157`)
+- [x] Documentación: README con sección "Conexiones de correo"
+  (proveedores, cómo encaja, seguridad, cómo conectar IMAP y OAuth,
+  limitaciones, cómo añadir un proveedor), API, estructura, tests, CI y
+  problemas frecuentes (este commit)
+
+**Pendiente para dar la Fase 3 por cerrada:** push (lo hace el usuario) y
+GitHub Actions en verde (el CI ahora levanta también GreenMail como
+servicio). Probar Microsoft/Google con cuentas reales requiere registrar
+las apps (Azure / Google Cloud) y rellenar `MICROSOFT_*`/`GOOGLE_*`.
+
+### Fase 4 (ingesta de emails): SIGUIENTE, no empezada.
+
+Base disponible: `MailProvider::newMessages()` con cursor por carpeta
+(guardar el cursor por conexión+carpeta será tarea de la Fase 4),
+`MailConnectionService`, `OAuthTokenManager` (renueva tokens en jobs) y
+`TenantService::runAs()` para ejecutar jobs dentro de la empresa.
 
 ### Reglas de trabajo que aplican en TODO momento
 
