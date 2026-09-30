@@ -539,8 +539,12 @@ cada commit, este archivo actualizado en cada commit, sin push.
   (`GREENMAIL_HOST=127.0.0.1` + espera a la API). Helper
   `tests/Support/GreenMail` (crea una cuenta nueva por test con la API
   REST, vía Guzzle para no chocar con `Http::fake`). Tests de GreenMail
-  en el grupo `greenmail`
-- [ ] 8–12. IMAP: autenticación, carpetas, mensajes, adjuntos, nuevos emails
+  en el grupo `greenmail` (`bed9dac`)
+- [x] 8. Autenticación IMAP: `ImapCommandException` del comando
+  LOGIN/AUTHENTICATE → `MailAuthenticationException` ("rechazó el usuario
+  o la contraseña de X", sin contraseña); fallo de otros comandos
+  (STARTTLS) → `MailConnectionException`. `ImapClient::verify()`
+- [ ] 9–12. IMAP: carpetas, mensajes, adjuntos, nuevos emails
 - [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío

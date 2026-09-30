@@ -4,8 +4,10 @@ namespace App\Mail\Providers\Imap;
 
 use App\Mail\Credentials\ImapSmtpCredentials;
 use App\Mail\Enums\MailEncryption;
+use App\Mail\Exceptions\MailAuthenticationException;
 use App\Mail\Exceptions\MailConnectionException;
 use App\Mail\Security\MailHostGuard;
+use DirectoryTree\ImapEngine\Exceptions\ImapCommandException;
 use DirectoryTree\ImapEngine\Exceptions\ImapConnectionException;
 use DirectoryTree\ImapEngine\Exceptions\ImapStreamException;
 use DirectoryTree\ImapEngine\Mailbox;
@@ -30,7 +32,8 @@ class ImapClient
     /**
      * Conecta (TCP + TLS/STARTTLS + login) si no lo estaba ya.
      *
-     * @throws MailConnectionException
+     * @throws MailConnectionException Servidor inalcanzable, TLS, timeout, host no permitido.
+     * @throws MailAuthenticationException Usuario o contraseña rechazados.
      */
     public function mailbox(): Mailbox
     {
@@ -55,6 +58,8 @@ class ImapClient
             $mailbox->connect();
         } catch (ImapConnectionException|ImapStreamException $e) {
             throw $this->connectionFailed($e);
+        } catch (ImapCommandException $e) {
+            throw $this->isLoginCommand($e) ? $this->authenticationFailed($e) : $this->connectionFailed($e);
         }
 
         return $this->mailbox = $mailbox;
@@ -79,6 +84,33 @@ class ImapClient
             MailEncryption::StartTls => 'starttls',
             MailEncryption::None => '',
         };
+    }
+
+    /**
+     * Comprueba que se puede conectar e iniciar sesión.
+     *
+     * @throws MailConnectionException
+     * @throws MailAuthenticationException
+     */
+    public function verify(): void
+    {
+        $this->mailbox();
+    }
+
+    /** El comando que falló era el login (y no p. ej. STARTTLS). */
+    private function isLoginCommand(ImapCommandException $e): bool
+    {
+        return in_array(strtoupper($e->command()->command()), ['LOGIN', 'AUTHENTICATE'], true);
+    }
+
+    private function authenticationFailed(Throwable $e): MailAuthenticationException
+    {
+        // El mensaje de la librería incluye la respuesta del servidor pero el
+        // comando va redactado (sin contraseña); aun así no lo exponemos.
+        return new MailAuthenticationException(
+            "El servidor IMAP rechazó el usuario o la contraseña de {$this->credentials->imapUsername}.",
+            previous: $e,
+        );
     }
 
     private function connectionFailed(Throwable $e): MailConnectionException
