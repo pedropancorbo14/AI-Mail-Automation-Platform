@@ -26,4 +26,15 @@ class Tenant extends Model
     {
         return $this->hasMany(User::class);
     }
+
+    /**
+     * Sigue aplicando BelongsToTenant: solo funciona con este tenant (u otro)
+     * en contexto, y siempre filtra por el tenant del contexto.
+     *
+     * @return HasMany<MailConnection, $this>
+     */
+    public function mailConnections(): HasMany
+    {
+        return $this->hasMany(MailConnection::class);
+    }
 }

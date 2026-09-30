@@ -500,8 +500,16 @@ cada commit, este archivo actualizado en cada commit, sin push.
   con `APP_PREVIOUS_KEYS`); manipular el valor → `DecryptException`.
   Trait `RedactsSecrets`: `json_encode`/`var_dump`/`print_r`/logs muestran
   `********`; solo `toArray()` da los secretos. Contraseñas/tokens con
-  `#[SensitiveParameter]` (fuera de las trazas)
-- [ ] 4. Modelo `MailConnection`
+  `#[SensitiveParameter]` (fuera de las trazas) (`f9887fc`)
+- [x] 4. Modelo `MailConnection`: primer modelo real con `BelongsToTenant`;
+  enums `MailProviderType` (imap/microsoft/google, `credentialsClass()`,
+  `usesOAuth()`) y `MailConnectionStatus`; `credentials` en `#[Hidden]`;
+  al guardar valida que las credenciales encajan con el proveedor;
+  `creator()`, `Tenant::mailConnections()`. Solo `name`/`email` son
+  fillable (provider y credentials se asignan explícitamente). Factory con
+  estados `microsoft()`/`google()`. Helper global de tests
+  `inTenant($tenant, fn)` en `tests/Pest.php` (crear/leer modelos con
+  tenant fuera de peticiones HTTP)
 - [ ] 5. `MailProviderFactory`
 - [ ] 6. API de conexiones (CRUD + policy + permisos) — añadida
 - [ ] 7–12. IMAP: conexión, autenticación, carpetas, mensajes, adjuntos, nuevos emails
