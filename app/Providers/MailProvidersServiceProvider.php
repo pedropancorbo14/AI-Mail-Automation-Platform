@@ -89,6 +89,7 @@ class MailProvidersServiceProvider extends ServiceProvider
                 new OAuthTokenManager($connection, $this->app->make(OAuthClients::class)->for(MailProviderType::Google)),
                 config('mail_connections.timeout'),
             ),
+            new MailAddress($connection->email, $connection->name),
             $connection->credentials->scopes,
             config('mail_connections.max_attachment_mb') * 1024 * 1024,
         ));

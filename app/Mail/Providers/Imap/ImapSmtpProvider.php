@@ -14,6 +14,7 @@ use App\Mail\Data\SentMessage;
 use App\Mail\Exceptions\MailConnectionException;
 use App\Mail\Exceptions\MailNotFoundException;
 use App\Mail\Exceptions\MailProviderException;
+use App\Mail\Support\MimeMessageBuilder;
 use App\Mail\Support\MimeMessageMapper;
 use Closure;
 use DirectoryTree\ImapEngine\Exceptions\Exception as ImapEngineException;
@@ -22,8 +23,6 @@ use DirectoryTree\ImapEngine\FolderInterface;
 use DirectoryTree\ImapEngine\MessageInterface;
 use DirectoryTree\ImapEngine\MessageQueryInterface;
 use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
-use Symfony\Component\Mime\Address;
-use Symfony\Component\Mime\Email;
 
 /**
  * Proveedor para cualquier servidor de correo estándar: IMAP para leer y
@@ -196,7 +195,7 @@ class ImapSmtpProvider implements MailProvider
 
     public function send(OutgoingMessage $message): SentMessage
     {
-        $email = $this->buildEmail($message);
+        $email = MimeMessageBuilder::build($message, $this->from);
         $transport = $this->smtp->transport();
 
         try {
@@ -213,44 +212,6 @@ class ImapSmtpProvider implements MailProvider
         }
 
         return new SentMessage($sent?->getMessageId());
-    }
-
-    private function buildEmail(OutgoingMessage $message): Email
-    {
-        $email = (new Email())
-            ->from(self::symfonyAddress($this->from))
-            ->to(...array_map(self::symfonyAddress(...), $message->to))
-            ->cc(...array_map(self::symfonyAddress(...), $message->cc))
-            ->bcc(...array_map(self::symfonyAddress(...), $message->bcc))
-            ->subject($message->subject);
-
-        if ($message->textBody !== null) {
-            $email->text($message->textBody);
-        }
-
-        if ($message->htmlBody !== null) {
-            $email->html($message->htmlBody);
-        }
-
-        foreach ($message->attachments as $attachment) {
-            $email->attach($attachment->content, $attachment->filename, $attachment->contentType);
-        }
-
-        // Hilo: el cliente del destinatario agrupa la respuesta con la conversación.
-        if ($message->inReplyTo !== null) {
-            $email->getHeaders()->addIdHeader('In-Reply-To', $message->inReplyTo);
-        }
-
-        if ($message->references !== []) {
-            $email->getHeaders()->addIdHeader('References', $message->references);
-        }
-
-        return $email;
-    }
-
-    private static function symfonyAddress(MailAddress $address): Address
-    {
-        return new Address($address->email, $address->name ?? '');
     }
 
     /**

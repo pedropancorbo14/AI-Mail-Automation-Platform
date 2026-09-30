@@ -5,6 +5,7 @@ namespace App\Mail\Providers\Google;
 use App\Mail\Contracts\MailProvider;
 use App\Mail\Data\AttachmentContent;
 use App\Mail\Data\ConnectionTestResult;
+use App\Mail\Data\MailAddress;
 use App\Mail\Data\MailFolder;
 use App\Mail\Data\MailMessage;
 use App\Mail\Data\NewMessages;
@@ -12,8 +13,10 @@ use App\Mail\Data\OutgoingMessage;
 use App\Mail\Data\SentMessage;
 use App\Mail\Exceptions\MailNotFoundException;
 use App\Mail\Exceptions\MailProviderException;
+use App\Mail\Support\MimeMessageBuilder;
 use App\Mail\Support\MimeMessageMapper;
 use DirectoryTree\ImapEngine\FileMessage;
+use Symfony\Component\Mime\Header\MailboxListHeader;
 
 /**
  * Cuentas de Gmail / Google Workspace a través de la Gmail API (OAuth),
@@ -25,6 +28,9 @@ class GmailProvider implements MailProvider
 
     public const string SCOPE_SEND = 'https://www.googleapis.com/auth/gmail.send';
 
+    /** Tamaño máximo de un email enviado por la Gmail API. */
+    private const int MAX_RAW_BYTES = 35 * 1024 * 1024;
+
     /** Etiquetas de sistema que funcionan como carpeta → rol normalizado. */
     private const array SYSTEM_FOLDERS = [
         'INBOX' => MailFolder::INBOX,
@@ -35,10 +41,12 @@ class GmailProvider implements MailProvider
     ];
 
     /**
+     * @param  MailAddress  $from  La cuenta de la conexión: único remitente posible.
      * @param  list<string>  $scopes  Permisos concedidos al token (de OAuthCredentials).
      */
     public function __construct(
         private readonly GmailClient $gmail,
+        private readonly MailAddress $from,
         private readonly array $scopes = [],
         private readonly int $maxAttachmentBytes = 25 * 1024 * 1024,
         private readonly int $newMessagesBatch = 100,
@@ -245,8 +253,51 @@ class GmailProvider implements MailProvider
         return [(string) $data['history'], array_values(array_filter($data['pending'], 'is_string'))];
     }
 
+    /**
+     * Gmail recibe el email en MIME crudo (el mismo que se enviaría por
+     * SMTP). Si es una respuesta, se envía en el hilo del original
+     * (threadId) además de In-Reply-To/References. Gmail solo acepta como
+     * remitente la propia cuenta o un alias verificado.
+     */
     public function send(OutgoingMessage $message): SentMessage
     {
-        throw new MailProviderException('Envío por Gmail todavía no implementado.');
+        $email = MimeMessageBuilder::build($message, $this->from);
+        $raw = $email->toString();
+
+        // Symfony quita la cabecera Bcc al generar el MIME (por SMTP las copias
+        // ocultas van en el sobre). Gmail en cambio LEE los destinatarios Bcc de
+        // esa cabecera (y la elimina antes de enviar): sin ella no se entregarían.
+        if ($email->getBcc() !== []) {
+            $raw = (new MailboxListHeader('Bcc', $email->getBcc()))->toString() . "\r\n" . $raw;
+        }
+
+        if (strlen($raw) > self::MAX_RAW_BYTES) {
+            throw new MailProviderException('El email supera el tamaño máximo que admite Gmail (35 MB).');
+        }
+
+        $threadId = $message->inReplyTo ? $this->threadOf($message->inReplyTo) : null;
+
+        $sent = $this->gmail->post('/messages/send', array_filter([
+            'raw' => rtrim(strtr(base64_encode($raw), '+/', '-_'), '='),
+            'threadId' => $threadId,
+        ]));
+
+        // Gmail puede reescribir el Message-ID: se lee el definitivo.
+        $headers = $this->gmail->get('/messages/' . rawurlencode($sent['id']), [
+            'format' => 'metadata',
+            'metadataHeaders' => 'Message-ID',
+        ])['payload']['headers'] ?? [];
+
+        $messageId = collect($headers)->first(fn (array $h) => strcasecmp($h['name'], 'Message-ID') === 0)['value'] ?? null;
+
+        return new SentMessage($messageId ? trim($messageId, '<> ') : null);
+    }
+
+    /** Hilo de Gmail del mensaje con ese Message-ID, o null si no está en el buzón. */
+    private function threadOf(string $messageId): ?string
+    {
+        $found = $this->gmail->get('/messages', ['q' => "rfc822msgid:{$messageId}", 'maxResults' => 1]);
+
+        return $found['messages'][0]['threadId'] ?? null;
     }
 }

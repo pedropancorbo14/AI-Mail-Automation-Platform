@@ -1,6 +1,7 @@
 <?php
 
 use App\Mail\Credentials\OAuthCredentials;
+use App\Mail\Data\MailAddress;
 use App\Mail\Data\MailFolder;
 use App\Mail\Exceptions\MailNotFoundException;
 use App\Mail\Exceptions\MailProviderException;
@@ -28,7 +29,7 @@ function gmailProvider(int $maxAttachmentBytes = 25 * 1024 * 1024, int $batch = 
 {
     $token = new StaticTokenSource(new OAuthCredentials('token', 'refresh', CarbonImmutable::now()->addHour(), [GmailProvider::SCOPE_SEND]));
 
-    return new GmailProvider(new GmailClient($token), [GmailProvider::SCOPE_SEND], $maxAttachmentBytes, $batch);
+    return new GmailProvider(new GmailClient($token), new MailAddress('ventas@empresa.test'), [GmailProvider::SCOPE_SEND], $maxAttachmentBytes, $batch);
 }
 
 function gmailRaw(string $subject, array $labels = ['INBOX', 'UNREAD'], ?Closure $customize = null): array

@@ -1,6 +1,7 @@
 <?php
 
 use App\Mail\Credentials\OAuthCredentials;
+use App\Mail\Data\MailAddress;
 use App\Mail\Exceptions\MailAuthenticationException;
 use App\Mail\Exceptions\MailConnectionException;
 use App\Mail\Exceptions\MailNotFoundException;
@@ -67,8 +68,8 @@ it('includes the google error status in the message', function () {
 it('tests the connection reading the profile and checking the send permission', function () {
     Http::fake(['gmail.googleapis.com/gmail/v1/users/me/profile' => Http::response(['emailAddress' => 'ana@empresa.test'])]);
 
-    $ok = (new GmailProvider(gmailClient(), [GmailProvider::SCOPE_READ, GmailProvider::SCOPE_SEND]))->testConnection();
-    $readOnly = (new GmailProvider(gmailClient(), [GmailProvider::SCOPE_READ]))->testConnection();
+    $ok = (new GmailProvider(gmailClient(), new MailAddress('ventas@empresa.test'), [GmailProvider::SCOPE_READ, GmailProvider::SCOPE_SEND]))->testConnection();
+    $readOnly = (new GmailProvider(gmailClient(), new MailAddress('ventas@empresa.test'), [GmailProvider::SCOPE_READ]))->testConnection();
 
     expect($ok->ok())->toBeTrue()
         ->and($readOnly->incomingOk)->toBeTrue()
@@ -79,7 +80,7 @@ it('tests the connection reading the profile and checking the send permission', 
 it('reports gmail being unreachable in the connection test without throwing', function () {
     Http::fake(['*' => Http::response(['error' => ['status' => 'UNAVAILABLE']], 503)]);
 
-    $result = (new GmailProvider(gmailClient(), [GmailProvider::SCOPE_SEND]))->testConnection();
+    $result = (new GmailProvider(gmailClient(), new MailAddress('ventas@empresa.test'), [GmailProvider::SCOPE_SEND]))->testConnection();
 
     expect($result->incomingOk)->toBeFalse()
         ->and($result->incomingError)->toContain('Gmail no está disponible');

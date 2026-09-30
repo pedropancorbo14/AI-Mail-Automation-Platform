@@ -696,7 +696,16 @@ cada commit, este archivo actualizado en cada commit, sin push.
   perfil, 404 (historyId caducado) o cursor ilegible → `resynced`;
   mensajes borrados entre detección y lectura se ignoran.
   `messages()` = 1 petición de lista + 1 por mensaje (sin batch
-  multipart: suficiente con límites de 50)
+  multipart: suficiente con límites de 50) (`cff0bef`)
+- [x] 24. Envío Gmail: refactor → `App\Mail\Support\MimeMessageBuilder`
+  (OutgoingMessage + remitente → `Symfony\Mime\Email`) común a SMTP y
+  Gmail. `GmailProvider` recibe `MailAddress $from` (cuenta de la
+  conexión). `messages/send` con `raw` base64url; si hay `inReplyTo`
+  busca el hilo con `q=rfc822msgid:` y envía con `threadId`; relee el
+  Message-ID definitivo (`format=metadata`) porque Gmail puede
+  reescribirlo; límite 35 MB. **Bug evitado:** Symfony elimina la
+  cabecera `Bcc` al generar el MIME (en SMTP van por el sobre) pero Gmail
+  lee los Bcc de esa cabecera → se añade explícitamente solo para Gmail
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 
