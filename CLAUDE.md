@@ -527,8 +527,20 @@ cada commit, este archivo actualizado en cada commit, sin push.
   loopback, reservadas o no resolubles (Redis/Postgres/169.254.169.254);
   se repetirá al conectar (DNS rebinding). Desactivable solo en local con
   `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` (config
-  `config/mail_connections.php`, también `timeout`)
-- [ ] 7–12. IMAP: conexión, autenticación, carpetas, mensajes, adjuntos, nuevos emails
+  `config/mail_connections.php`, también `timeout`) (`3030bf9`)
+- [x] 7. Conexión IMAP: `composer require directorytree/imapengine`;
+  `App\Mail\Providers\Imap\ImapClient` (envuelve `Mailbox` de ImapEngine,
+  conexión perezosa y reutilizada, ssl/starttls/sin cifrar, timeout,
+  **re-chequeo anti-SSRF antes de conectar**, errores de red →
+  `MailConnectionException` sin contraseña en el mensaje). **GreenMail**
+  (`greenmail/standalone:2.1.5`) añadido a docker-compose (IMAP 3143,
+  SMTP 3025 sin TLS, API 8080 interna; expuesto en 127.0.0.1; cuenta demo
+  `soporte@demo.test`/`secret`) y como servicio en GitHub Actions
+  (`GREENMAIL_HOST=127.0.0.1` + espera a la API). Helper
+  `tests/Support/GreenMail` (crea una cuenta nueva por test con la API
+  REST, vía Guzzle para no chocar con `Http::fake`). Tests de GreenMail
+  en el grupo `greenmail`
+- [ ] 8–12. IMAP: autenticación, carpetas, mensajes, adjuntos, nuevos emails
 - [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío

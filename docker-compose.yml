@@ -165,6 +165,29 @@ services:
       - app-net
 
   # ---------------------------------------------------------------
+  # Servidor de correo de PRUEBAS (IMAP + SMTP) para desarrollo y tests.
+  # No envía nada fuera: todo se queda en memoria. Los tests crean sus
+  # propias cuentas con la API REST (puerto 8080 interno).
+  # Desde tu máquina: IMAP 127.0.0.1:3143, SMTP 127.0.0.1:3025 (sin TLS),
+  # cuenta demo soporte@demo.test / secret.
+  # ---------------------------------------------------------------
+  greenmail:
+    image: greenmail/standalone:2.1.5
+    restart: unless-stopped
+    environment:
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.setup.test.smtp
+        -Dgreenmail.setup.test.imap
+        -Dgreenmail.hostname=0.0.0.0
+        -Dgreenmail.users=soporte:secret@demo.test
+        -Dgreenmail.users.login=email
+    ports:
+      - "127.0.0.1:${GREENMAIL_SMTP_PORT:-3025}:3025"
+      - "127.0.0.1:${GREENMAIL_IMAP_PORT:-3143}:3143"
+    networks:
+      - app-net
+
+  # ---------------------------------------------------------------
   # Metrics exporters
   # ---------------------------------------------------------------
   postgres-exporter:

@@ -19,6 +19,8 @@ jobs:
       DB_PASSWORD: secret
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
+      # Servidor de correo de pruebas (tests de IMAP/SMTP contra servidor real)
+      GREENMAIL_HOST: 127.0.0.1
 
     services:
       postgres:
@@ -44,6 +46,19 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
+
+      greenmail:
+        image: greenmail/standalone:2.1.5
+        env:
+          GREENMAIL_OPTS: >-
+            -Dgreenmail.setup.test.smtp
+            -Dgreenmail.setup.test.imap
+            -Dgreenmail.hostname=0.0.0.0
+            -Dgreenmail.users.login=email
+        ports:
+          - 3025:3025
+          - 3143:3143
+          - 8080:8080
 
     steps:
       - name: Checkout
@@ -75,6 +90,14 @@ jobs:
 
       - name: Ejecutar migraciones
         run: php artisan migrate --force --env=testing
+
+      - name: Esperar a GreenMail
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/api/configuration > /dev/null && exit 0
+            sleep 2
+          done
+          echo "GreenMail no arrancó" && exit 1
 
       - name: Ejecutar tests (Pest)
         run: ./vendor/bin/pest
