@@ -598,8 +598,14 @@ cada commit, este archivo actualizado en cada commit, sin push.
   `POST /api/v1/mail-connections/{id}/test` (permiso manage, 404 otra
   empresa) con **throttle `mail-connection-test` 10/min** (evita usarlo
   como escáner de puertos). Respuesta: `data` (conexión) + `result`
-  (ok, incoming_ok/outgoing_ok, errores)
-- [ ] 16. Tests del proveedor IMAP/SMTP
+  (ok, incoming_ok/outgoing_ok, errores) (`d05a2f1`)
+- [x] 16. Tests IMAP/SMTP: además de los tests por tarea
+  (`tests/Feature/Mail/Imap/`, `.../Smtp/`), `ImapSmtpEndToEndTest`:
+  flujo completo con `MailConnection` en BD (credenciales cifradas) →
+  factory → proveedor real: cliente escribe por SMTP con adjunto →
+  soporte lo detecta (cursor) → lo lee y descarga el adjunto → responde
+  en el hilo → el cliente recibe la respuesta enlazada. Y ninguna
+  operación (ni la cadena de `previous`) revela la contraseña
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 
