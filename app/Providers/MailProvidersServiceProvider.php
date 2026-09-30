@@ -7,6 +7,9 @@ use App\Mail\Enums\MailProviderType;
 use App\Mail\MailProviderFactory;
 use App\Mail\OAuth\OAuthClients;
 use App\Mail\OAuth\OAuthTokenManager;
+use App\Mail\OAuth\StaticTokenSource;
+use App\Mail\Providers\Google\GmailClient;
+use App\Mail\Providers\Google\GmailProvider;
 use App\Mail\Providers\Imap\ImapClient;
 use App\Mail\Providers\Imap\ImapSmtpProvider;
 use App\Mail\Providers\Imap\SmtpClient;
@@ -72,6 +75,11 @@ class MailProvidersServiceProvider extends ServiceProvider
             ),
             $connection->credentials->scopes,
             config('mail_connections.max_attachment_mb') * 1024 * 1024,
+        ));
+
+        $factory->extend(MailProviderType::Google, fn (MailConnection $connection) => new GmailProvider(
+            new GmailClient(new StaticTokenSource($connection->credentials), config('mail_connections.timeout')),
+            $connection->credentials->scopes,
         ));
     }
 }

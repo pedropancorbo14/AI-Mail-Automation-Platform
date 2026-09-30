@@ -666,7 +666,14 @@ cada commit, este archivo actualizado en cada commit, sin push.
   `internetMessageId` del borrador. Sin campo `from` (Graph envía como el
   dueño del buzón). HTML → `contentType HTML`, si no `Text`.
   **Pendiente:** adjuntos > 3 MB (requieren upload session): se rechazan
-  con error claro antes de crear nada
+  con error claro antes de crear nada (`38b0ad6`)
+- [x] 21. Gmail API: `GmailClient` (base `OAuthApiClient`, URL
+  `gmail.googleapis.com/gmail/v1/users/me`, detalle de error =
+  `error.status` de Google). `GmailProvider` registrado en la factory
+  (de momento con `StaticTokenSource`): `testConnection()` lee `/profile`
+  (recepción) y comprueba el scope `gmail.send` (envío). Scopes mínimos
+  previstos: `gmail.readonly` + `gmail.send` (no `gmail.modify`: no se
+  marca ni mueve nada)
 - [ ] 17–20. Microsoft Graph: cliente, OAuth, lectura, envío
 - [ ] 21–24. Google Gmail API: cliente, OAuth, lectura, envío
 
