@@ -776,7 +776,11 @@ privado), registra los errores y reintenta los fallos temporales.
   asignables en masa. `MailConnection::emails()`. Borrar por la API una
   conexión con correos → **409** "desactívala en lugar de borrarla"
   (antes daría 500 por el `restrictOnDelete`)
-- [ ] 5. Modelos `EmailRecipient` y `EmailAttachment`
+- [x] 5. Modelos `EmailRecipient` (sin timestamps) y `EmailAttachment`,
+  ambos con `BelongsToTenant`; enums `RecipientType` y `AttachmentStatus`.
+  `Email::recipients()` (orden tipo+posición) y `attachments()`. En los
+  adjuntos `status`/`disk`/`path`/`sha256`/`error` no son asignables en
+  masa y `disk`/`path` están ocultos en JSON
 - [ ] 6. Tabla y modelo `mail_sync_states` (cursor + errores de sincronización)
 - [ ] 7. `EmailIngestionService` (guardar sin duplicados)
 - [ ] 8. Adjuntos en disco privado + marca de ingesta completa

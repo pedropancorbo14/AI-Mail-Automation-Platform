@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Email recibido en un buzón conectado. Lo crea la ingesta
@@ -45,5 +46,17 @@ class Email extends Model
     public function mailConnection(): BelongsTo
     {
         return $this->belongsTo(MailConnection::class);
+    }
+
+    /** @return HasMany<EmailRecipient, $this> */
+    public function recipients(): HasMany
+    {
+        return $this->hasMany(EmailRecipient::class)->orderBy('type')->orderBy('position');
+    }
+
+    /** @return HasMany<EmailAttachment, $this> */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(EmailAttachment::class)->orderBy('id');
     }
 }
