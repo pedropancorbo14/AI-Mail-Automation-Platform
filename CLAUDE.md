@@ -509,8 +509,12 @@ cada commit, este archivo actualizado en cada commit, sin push.
   fillable (provider y credentials se asignan explícitamente). Factory con
   estados `microsoft()`/`google()`. Helper global de tests
   `inTenant($tenant, fn)` en `tests/Pest.php` (crear/leer modelos con
-  tenant fuera de peticiones HTTP)
-- [ ] 5. `MailProviderFactory`
+  tenant fuera de peticiones HTTP) (`665e078`)
+- [x] 5. `App\Mail\MailProviderFactory` (singleton): registro de resolvers
+  por tipo con `extend(MailProviderType, fn (MailConnection) => provider)`
+  en `App\Providers\MailProvidersServiceProvider`; `make($connection)`
+  lanza `UnsupportedMailProviderException` si el tipo no está registrado.
+  En tests: `extend(tipo, fn () => new FakeMailProvider(...))`
 - [ ] 6. API de conexiones (CRUD + policy + permisos) — añadida
 - [ ] 7–12. IMAP: conexión, autenticación, carpetas, mensajes, adjuntos, nuevos emails
 - [ ] 13–16. SMTP: conexión, envío, sistema de prueba de conexión, tests IMAP/SMTP
