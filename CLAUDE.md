@@ -1054,7 +1054,14 @@ emailId)` de la Fase 4.
   Horizon: **`supervisor-ai`** para la cola `ai` (local 1 proceso,
   producción hasta 3: pocos a propósito para limitar gasto y 429; timeout
   250) + `waits.redis:ai` 300 s
-- [ ] 11. Comando `ai:classify` para pruebas manuales
+- [x] 11. Comando `php artisan ai:classify {email?} {--pending} {--force}
+  {--now}` (`app/Console/Commands/ClassifyEmails.php`): sin API key falla
+  con un mensaje claro; un email → encola `ClassifyEmailJob` o, con
+  `--now`, lo ejecuta al momento y muestra tabla de la petición (estado,
+  modelo, tokens, coste, latencia) y de la clasificación (o el error);
+  `--pending` encola todos los emails **ingeridos** sin clasificar (p. ej.
+  los que llegaron sin API key); `--force` reclasifica. Consultas
+  globales deliberadas (`withoutGlobalScope`), el job entra en el tenant
 - [ ] 12. README, prueba real con la API key
 
 ### Pendientes anotados para más adelante
