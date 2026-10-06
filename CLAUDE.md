@@ -966,7 +966,11 @@ emailId)` de la Fase 4.
   jsonb. Índices tenant+created_at, tenant+status, email_id. Modelo
   `AiRequest` con `BelongsToTenant`, relaciones `email()` y
   `promptVersion()`
-- [ ] 5. Cálculo de costes
+- [x] 5. `App\AI\CostCalculator`: `forResponse()` (suma por modelo de
+  `usageByModel`: con fallback cada modelo factura sus tokens a su tarifa)
+  y `forUsage($model, $usage)`. Entrada, salida, escritura y lectura de
+  caché × precio de `config/ai.php`; USD con 6 decimales (string, columna
+  decimal). Modelo sin precio → **null** (desconocido), nunca 0
 - [ ] 6. `AnthropicProvider` (SDK, structured outputs, fallbacks, uso, latencia, errores)
 - [ ] 7. `AIService` (ejecuta y registra siempre en `ai_requests`)
 - [ ] 8. Clasificador de emails (prompt v1, esquema, anti prompt injection)
