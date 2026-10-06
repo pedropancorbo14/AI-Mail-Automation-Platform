@@ -1029,7 +1029,16 @@ emailId)` de la Fase 4.
   `bodyTruncated` en el resultado; `effort` y `max_tokens` de config;
   `aiRequestId` en el resultado. Helper de tests `classificationData()`
   en `tests/Pest.php`
-- [ ] 9. Clasificación guardada en `emails`
+- [x] 9. Columnas de clasificación **actual** en `emails` (el historial de
+  intentos ya está en `ai_requests`): `intent`, `intent_confidence`
+  decimal(4,3), `language`, `summary`, `needs_human` + reason,
+  `sentiment`, `urgency`, `injection_suspected`, `ai_entities` jsonb,
+  `classification_ai_request_id` (FK nullOnDelete), `classified_at`;
+  índices tenant+intent y tenant+needs_human.
+  `Email::recordClassification($classification)` (forceFill; **no cambia
+  `status`**, eso es Fase 9), relaciones `classificationRequest()` y
+  `aiRequests()`; nada de esto es asignable en masa. Nota: `jsonb`
+  reordena las claves (en tests comparar con `toEqualCanonicalizing`)
 - [ ] 10. `ClassifyEmailJob` al recibir `EmailIngested` + cola `ai`
 - [ ] 11. Comando `ai:classify` para pruebas manuales
 - [ ] 12. README, prueba real con la API key
