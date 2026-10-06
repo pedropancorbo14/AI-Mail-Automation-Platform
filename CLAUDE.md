@@ -971,7 +971,29 @@ emailId)` de la Fase 4.
   y `forUsage($model, $usage)`. Entrada, salida, escritura y lectura de
   caché × precio de `config/ai.php`; USD con 6 decimales (string, columna
   decimal). Modelo sin precio → **null** (desconocido), nunca 0
-- [ ] 6. `AnthropicProvider` (SDK, structured outputs, fallbacks, uso, latencia, errores)
+- [x] 6. `App\AI\Providers\Anthropic\AnthropicProvider` con el SDK:
+  `$client->beta->messages->create(model, maxTokens, system, messages,
+  outputConfig: {effort, format: json_schema}, fallbacks: 'default',
+  betas: [server-side-fallback-2026-07-01])` (sin `thinking` ni
+  `temperature`: en Opus 5.5 darían 400). Respuesta: texto de los bloques
+  `text` (los `thinking` se ignoran), JSON decodificado, modelo que
+  respondió, `requestId` (id del mensaje), latencia (hrtime), tokens; con
+  fallback, `usage.iterations` (`message` / `fallback_message`) →
+  `usageByModel` + `usedFallback`. `stop_reason` `refusal` →
+  `LLMRefusalException` (con categoría y tokens), `max_tokens` o JSON
+  inválido → `LLMInvalidResponseException`. Errores del SDK: 429 →
+  rate limit; 5xx/529 y otros estados → unavailable; 401/403 →
+  configuración ("revisa ANTHROPIC_API_KEY"); 400/404/422 → configuración
+  con el tipo y mensaje de error de la API; red/timeout → unavailable;
+  nunca la clave en el mensaje. `App\Providers\AIServiceProvider`
+  (registrado en `bootstrap/providers.php`): `LLMProvider` singleton
+  según `ai.provider`; el `Client` del SDK se crea **al primer uso** y
+  sin clave lanza `LLMConfigurationException` (no deja al SDK buscar
+  credenciales en el entorno); timeout y reintentos del SDK desde config.
+  Tests con el SDK real y un `GuzzleHttp\Client` con `MockHandler` como
+  transporte PSR-18 (`RequestOptions::with(transporter: ...)`,
+  `maxRetries: 0`), historial en un `ArrayObject` (una propiedad de test
+  de Pest no sirve por referencia)
 - [ ] 7. `AIService` (ejecuta y registra siempre en `ai_requests`)
 - [ ] 8. Clasificador de emails (prompt v1, esquema, anti prompt injection)
 - [ ] 9. Clasificación guardada en `emails`
