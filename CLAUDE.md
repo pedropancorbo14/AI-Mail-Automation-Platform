@@ -954,7 +954,18 @@ emailId)` de la Fase 4.
   workers controlada) y **falla si el contenido de una versión ya guardada
   cambió** (hash de system + esquema): hay que subir `version()`; así
   `ai_requests` siempre apunta al prompt exacto que se envió
-- [ ] 4. Tabla y modelo `ai_requests`
+- [x] 4. Tabla `ai_requests` (una fila por llamada, **también las
+  fallidas**: los tokens se facturan igual): tenant (restrict), `email_id`
+  (nullOnDelete: el coste se conserva), `ai_prompt_version_id`, `purpose`
+  (= clave del prompt), provider, `requested_model` / `model` (el que
+  respondió) / `used_fallback`, tokens de entrada/salida/escritura y
+  lectura de caché, `cost_usd` decimal(12,6) (null sin precio),
+  `latency_ms`, `status` success/failed/refused (enum
+  `App\AI\Enums\AiRequestStatus`), `stop_reason`, `error`,
+  `provider_request_id`, `intent`, `confidence` decimal(4,3), `response`
+  jsonb. Índices tenant+created_at, tenant+status, email_id. Modelo
+  `AiRequest` con `BelongsToTenant`, relaciones `email()` y
+  `promptVersion()`
 - [ ] 5. Cálculo de costes
 - [ ] 6. `AnthropicProvider` (SDK, structured outputs, fallbacks, uso, latencia, errores)
 - [ ] 7. `AIService` (ejecuta y registra siempre en `ai_requests`)
