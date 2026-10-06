@@ -885,7 +885,7 @@ para verlo con un cliente gráfico (el usuario usa **HeidiSQL**; tipo
 PostgreSQL, `app`/`secret`, BD `app`). 5433 porque en el equipo del
 usuario el 5432 ya lo usa otro PostgreSQL. Solo loopback, nunca la red.
 
-### Fase 5 (AI Engine con Claude/Anthropic): EN CURSO (desde 2026-10-06)
+### Fase 5 (AI Engine con Claude/Anthropic): COMPLETADA EN LOCAL (2026-10-06), pendiente de prueba con API key real y CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push. **El usuario aún no
@@ -1062,7 +1062,29 @@ emailId)` de la Fase 4.
   `--pending` encola todos los emails **ingeridos** sin clasificar (p. ej.
   los que llegaron sin API key); `--force` reclasifica. Consultas
   globales deliberadas (`withoutGlobalScope`), el job entra en el tenant
-- [ ] 12. README, prueba real con la API key
+- [x] 12. Prueba en el stack **sin API key** (2026-10-06): migraciones
+  aplicadas en la BD de desarrollo; `horizon:supervisors` levanta
+  `supervisor-ai` junto a `supervisor-1` y `supervisor-mail`; correo
+  enviado por SMTP a `soporte@demo.test` → ingerido por el scheduler
+  (email **id 2**, "Quiero devolver el producto del pedido #45821") y
+  dejado sin clasificar con el `notice` "IA desactivada" en el log;
+  `ai:classify 2 --now` → "añade ANTHROPIC_API_KEY". README: sección
+  "6. Inteligencia artificial: clasificación de emails" (activarla paso a
+  paso, variables, cómo funciona, qué devuelve, structured outputs,
+  prompts versionados, prompt injection, reintentos, costes con consulta
+  SQL de ejemplo, cómo añadir otro proveedor), estado, comandos,
+  estructura, tests, problemas frecuentes; secciones siguientes
+  renumeradas (API = #8)
+
+**Pendiente para dar la Fase 5 por cerrada:**
+1. **Prueba real con la API key** (cuando el usuario la ponga en `.env`):
+   `horizon:terminate`, `ai:classify 2 --now` (comprobar intención
+   `return_request`, tokens, `cost_usd` y latencia en `ai_requests`, fila
+   en `ai_prompt_versions`), enviar un correo nuevo y ver que se clasifica
+   solo, y `ai:classify --pending`. Verificar que los fallbacks
+   (`fallbacks: "default"`) no dan 400 con la cuenta del usuario; si los
+   diera, `ANTHROPIC_FALLBACKS=false`.
+2. Push (lo hace el usuario) y GitHub Actions en verde.
 
 ### Pendientes anotados para más adelante
 

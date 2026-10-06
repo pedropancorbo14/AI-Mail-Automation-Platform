@@ -25,14 +25,16 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 2 | Empresas (tenants), usuarios, login/logout, roles y permisos, aislamiento entre empresas | ✅ Hecha |
 | 3 | Conexiones de correo: IMAP/SMTP, Microsoft 365 (Graph + OAuth), Gmail (API + OAuth), credenciales cifradas, prueba de conexión | ✅ Hecha |
 | 4 | Ingesta de emails: sincronización periódica de los buzones, emails + destinatarios + adjuntos guardados sin duplicados, reintentos | ✅ Hecha |
-| 5 | AI Engine con Claude/Anthropic: clasificación, confianza, registro de peticiones | ⏳ Siguiente |
+| 5 | IA con Claude (Anthropic): clasificación de cada email (intención, confianza, resumen, datos), registro de cada petición con tokens, coste y latencia | ✅ Hecha (falta probarla con una API key real) |
 | 6–17 | RAG, tools, agente, automatización, panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
-los correos nuevos de los buzones conectados y los guarda (con destinatarios
-y adjuntos) listos para procesar. Todavía no los procesa con IA: eso empieza
-en la Fase 5. La hoja de ruta completa y las
+los correos nuevos de los buzones conectados, los guarda (con destinatarios
+y adjuntos) y los **clasifica con Claude**: intención, confianza, idioma,
+resumen, si necesita una persona y datos como el número de pedido. Todavía
+no consulta sistemas internos ni responde: eso llega en las fases
+siguientes. La hoja de ruta completa y las
 decisiones de arquitectura están en [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -79,7 +81,7 @@ docker compose exec app php artisan test            # todos los tests en verde
 
 | Servicio | URL | Acceso |
 |---|---|---|
-| API | http://localhost:8080/api/v1 | ver [API](#7-api) |
+| API | http://localhost:8080/api/v1 | ver [API](#8-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
 | Grafana | http://localhost:3000 | `admin` / `admin` |
 | Prometheus | http://localhost:9090 | — |
@@ -104,6 +106,7 @@ docker compose exec app php artisan tinker                 # consola interactiva
 docker compose exec app php artisan route:list --path=api  # rutas de la API
 docker compose logs -f horizon                             # logs de las colas
 docker compose exec app php artisan mail:sync              # sincronizar ya los buzones (si no, cada minuto)
+docker compose exec app php artisan ai:classify 2 --now    # clasificar el email 2 con la IA y ver resultado y coste
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
 ```
 
@@ -449,7 +452,80 @@ Horizon (`http://localhost:8080/horizon`, cola `mail`).
 
 ---
 
-## 6. Estructura del proyecto
+## 6. Inteligencia artificial: clasificación de emails
+
+Cada email que entra se clasifica con **Claude** (Anthropic) y cada llamada
+a la IA queda registrada con su coste.
+
+### Activarla
+
+La IA está **desactivada mientras no haya API key**: los emails se siguen
+guardando, solo que sin clasificar (aviso en el log). Para activarla:
+
+1. Crea una API key en [platform.claude.com](https://platform.claude.com)
+   (Settings → API keys) y añade saldo a la cuenta.
+2. Pégala en `.env`: `ANTHROPIC_API_KEY=sk-ant-...`
+3. Reinicia los workers para que la lean:
+   `docker compose exec horizon php artisan horizon:terminate`
+4. Prueba con un email ya guardado y mira resultado y coste:
+   `docker compose exec app php artisan ai:classify <id> --now`
+5. Clasifica los que llegaron mientras no había clave:
+   `docker compose exec app php artisan ai:classify --pending`
+
+| Variable | Para qué |
+|---|---|
+| `ANTHROPIC_API_KEY` | Clave de la API. Vacía = IA desactivada. |
+| `ANTHROPIC_MODEL` | Modelo (por defecto `claude-opus-5-5`, $4 / $20 por millón de tokens de entrada / salida). Más barato: `claude-sonnet-5-5` ($2 / $10) o `claude-haiku-4-5` ($1 / $5). Los precios están en `config/ai.php`. |
+| `AI_CLASSIFY_ON_INGEST` | Clasificar cada email al guardarlo (`true`). |
+| `ANTHROPIC_FALLBACKS` | Si los filtros de seguridad de un modelo rechazan un email, Anthropic lo reintenta con otro modelo en la misma llamada (`true`). |
+| `AI_CLASSIFICATION_EFFORT` | Profundidad del razonamiento (`low` por defecto: clasificar es sencillo y así gasta menos). |
+| `AI_CLASSIFICATION_MAX_BODY_CHARS` | Caracteres del cuerpo que se envían (20 000). Si se recorta, se avisa al modelo y queda registrado. |
+
+### Cómo funciona
+
+```
+Ingesta (Fase 4) ── evento EmailIngested ──► ClassifyEmailJob (cola "ai", Horizon)
+   └─ EmailClassifier ── prompt versionado + email como dato no fiable
+        └─ AIService ── LLMProvider (AnthropicProvider, SDK oficial)
+              ├─ registra SIEMPRE la llamada en ai_requests (tokens, coste, latencia, resultado o error)
+              └─ resultado → columnas de clasificación del email
+```
+
+- **Qué devuelve:** `intent` (pedido, devolución, cancelación, factura,
+  cobro, producto, soporte técnico, queja, ventas, cambio de cuenta,
+  opinión, respuesta automática, spam, otros), `intent_confidence` (0–1),
+  `language`, `summary` (en español), `needs_human` + motivo, `sentiment`,
+  `urgency`, `injection_suspected` y `ai_entities` (números de pedido y de
+  factura, nombre del cliente). Se guarda en la tabla `emails`.
+- **Formato garantizado:** se usan *structured outputs*: el modelo responde
+  con un JSON que cumple un esquema, sin tener que "parsear" texto libre.
+- **Prompts versionados:** el prompt vive en código
+  ([`EmailClassificationPrompt`](app/AI/Classification/EmailClassificationPrompt.php)).
+  Cada versión usada se guarda en `ai_prompt_versions` y cada petición
+  apunta a la suya. Si cambias el texto sin subir `VERSION`, la app falla a
+  propósito: la auditoría nunca miente sobre qué prompt se usó.
+- **Protección contra prompt injection:** el email va al modelo entre
+  `<email>…</email>` como un dato que no debe obedecer; si trae esas
+  etiquetas se neutralizan para que no pueda "cerrar" el bloque. Si el
+  modelo detecta un intento de darle órdenes, el email se marca y **siempre**
+  va a revisión humana.
+- **Errores y reintentos:** límite de peticiones (429), sobrecarga (529),
+  errores 5xx o de red se reintentan (30 s, 2 min, 5 min). Un rechazo de
+  seguridad, una clave inválida o una respuesta inválida **no** se
+  reintentan (costaría dinero y daría lo mismo). Un email ya clasificado no
+  se vuelve a clasificar (salvo `ai:classify <id> --force`): no se paga dos
+  veces.
+- **Costes:** cada fila de `ai_requests` guarda tokens de entrada/salida (y
+  de caché), el modelo que respondió y `cost_usd`. Gasto del mes, por
+  ejemplo:
+  `SELECT SUM(cost_usd) FROM ai_requests WHERE created_at >= date_trunc('month', now());`
+- **Otro proveedor (OpenAI, Gemini…):** implementar
+  [`LLMProvider`](app/AI/Contracts/LLMProvider.php) y elegirlo en
+  `config/ai.php`; el resto de la app no cambia.
+
+---
+
+## 7. Estructura del proyecto
 
 ```
 app/
@@ -470,15 +546,24 @@ app/
 │   ├── Enums/                Proveedor, estados de conexión/email/adjunto, tipo de destinatario
 │   ├── MailProviderFactory   Conexión → proveedor
 │   └── MailConnectionService Prueba de conexión y su estado
-├── Console/Commands/         mail:sync (lo lanza el scheduler cada minuto)
+├── AI/                       Inteligencia artificial (Fase 5)
+│   ├── Contracts/            LLMProvider (la interfaz común)
+│   ├── Data/                 DTOs: LLMRequest, LLMResponse, LLMUsage, AIResult
+│   ├── Providers/Anthropic/  AnthropicProvider (SDK oficial de Anthropic)
+│   ├── Prompts/              Prompt (interfaz) + PromptRegistry (versiones en BD)
+│   ├── Classification/       Prompt de clasificación, EmailClassifier, ClassifyEmailJob
+│   ├── AIService             Ejecuta prompts y registra cada petición en ai_requests
+│   └── CostCalculator        Coste en USD por modelo
+├── Console/Commands/         mail:sync (cada minuto), ai:classify
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
-│                             EmailRecipient, EmailAttachment, MailSyncState
+│                             EmailRecipient, EmailAttachment, MailSyncState,
+│                             AiRequest, AiPromptVersion
 ├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy
-├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders
+├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders, AI
 ├── Tenancy/                  TenantService, BelongsToTenant, TenantScope
 └── Jobs/                     Jobs de cola
 bootstrap/app.php             Middleware y manejo de errores de la API
-config/                       Configuración (sanctum, horizon, mail_connections, services…)
+config/                       Configuración (ai, sanctum, horizon, mail_connections, services…)
 database/
 ├── migrations/               Esquema de la BD
 ├── seeders/                  Roles/permisos + datos de desarrollo
@@ -494,18 +579,18 @@ tests/
 ├── Feature/Users/            Gestión de usuarios y empresa
 ├── Feature/Mail/             Conexiones: Imap/, Smtp/ (GreenMail real), Microsoft/, Google/ (APIs simuladas)
 ├── Feature/Emails/           Tablas y modelos de emails; Ingestion/ (servicio, sync, job, comando, E2E con GreenMail)
+├── Feature/AI/               Proveedor Anthropic (HTTP simulado), AIService, costes, prompts, clasificación, job, comando
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
 ├── Support/GreenMail.php     Cuentas y buzones de prueba en GreenMail
-└── Fakes/FakeMailProvider    Proveedor en memoria para probar código que usa MailProvider
+└── Fakes/                    FakeMailProvider, FakeLLMProvider y FakePrompt (sin servidores ni APIs reales)
 ```
 
-En próximas fases se añadirán más módulos en `app/` por dominio (`AI/`,
-`Tools/`, `Documents/`, `CRM/`, `ERP/`, `Observability/`…), siempre con la
+En próximas fases se añadirán más módulos en `app/` por dominio (`Tools/`, `Documents/`, `CRM/`, `ERP/`, `Observability/`…), siempre con la
 lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 7. API
+## 8. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -561,7 +646,7 @@ para el futuro panel de administración (SPA).
 
 ---
 
-## 8. Tests
+## 9. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -588,23 +673,28 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
   petición y construir correos recibidos, y `FakeMailProvider` para probar
   código que usa `MailProvider` sin servidor (lotes, resync y fallos
   simulados).
+- **IA:** los tests **nunca llaman a Anthropic ni gastan dinero**:
+  `phpunit.xml` fuerza `ANTHROPIC_API_KEY` vacía. `AnthropicProvider` se
+  prueba con el SDK real y un cliente HTTP simulado (Guzzle `MockHandler`);
+  el resto, con `FakeLLMProvider` (respuestas o errores encolados) y el
+  helper `classificationData()`.
 - Las funciones de ayuda de los archivos de test son **globales** en Pest:
   no repitas un nombre ya usado en otro archivo.
 
-## 9. CI
+## 10. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 10. Entornos
+## 11. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 11. Problemas frecuentes
+## 12. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -617,6 +707,8 @@ prepararán en la fase de producción.
 | "El servidor X apunta a una dirección interna no permitida" en local | Protección anti-SSRF. Para usar GreenMail u otro servidor local: `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` en `.env` (**nunca en producción**). |
 | Llegan correos al buzón pero no aparecen en `emails` | El buzón no está `active` (pruébalo con `POST /mail-connections/{id}/test`), la 1ª sincronización solo fija el punto de partida (lo anterior no se importa), o Horizon no procesa la cola `mail`: `docker compose exec horizon php artisan horizon:supervisors` debe mostrar `supervisor-mail`. Mira `last_error` en `mail_sync_states`. |
 | Tras cambiar código o `config/horizon.php` los jobs siguen igual | Horizon mantiene el código cargado: `docker compose exec horizon php artisan horizon:terminate` (el contenedor lo vuelve a arrancar). |
+| Los emails se guardan pero `intent` sigue vacío | No hay `ANTHROPIC_API_KEY` (el log dice "IA desactivada"), `AI_CLASSIFY_ON_INGEST=false`, o Horizon no procesa la cola `ai` (`horizon:supervisors` debe mostrar `supervisor-ai`). Mira `status` y `error` en `ai_requests`. Tras poner la clave: `horizon:terminate` y `ai:classify --pending`. |
+| `ai:classify` → "Anthropic rechazó la API key (401)" | La clave es incorrecta o se revocó: revisa `ANTHROPIC_API_KEY` y reinicia Horizon. |
 | "La conexión con microsoft/google no está configurada en este servidor" | Faltan `MICROSOFT_CLIENT_ID/SECRET` o `GOOGLE_CLIENT_ID/SECRET` (ver [Conexiones de correo](#4-conexiones-de-correo)). |
 
 ## Documentación adicional
