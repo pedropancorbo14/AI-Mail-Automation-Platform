@@ -1006,7 +1006,29 @@ emailId)` de la Fase 4.
   IA." (detalle solo al log); después relanza. Log por petición
   (`ai_request_id`, coste, latencia...). `AIService::enabled()` = hay API
   key. `PromptRegistry` singleton. Fakes de tests: `FakePrompt`
-- [ ] 8. Clasificador de emails (prompt v1, esquema, anti prompt injection)
+- [x] 8. Clasificador en `app/AI/Classification/`: enum `EmailIntent` (14:
+  order_status, return_request, cancellation, invoice_request,
+  billing_issue, product_question, technical_support, complaint,
+  sales_inquiry, account_change, feedback, auto_reply, spam, other; con
+  descripción para el prompt). `EmailClassificationPrompt` **v1** (en
+  español, resumen en español; añadir intenciones o cambiar texto/esquema
+  = subir VERSION). Esquema structured outputs: intent (enum), confidence,
+  language, summary, needs_human + reason, sentiment, urgency,
+  `injection_suspected`, entities (order_numbers, invoice_numbers,
+  customer_name); `additionalProperties: false`, todo `required`,
+  nullables con `anyOf`; **sin `minimum/maximum/maxLength`** (no los
+  admite structured outputs: la confianza se acota en código).
+  `EmailClassification::fromArray()` valida (intención desconocida →
+  `LLMInvalidResponseException`) y **fuerza `needs_human` si hay sospecha
+  de prompt injection**. `EmailClassifier::classify($email)`: contenido
+  `<email>…</email>` como dato no fiable (De/Para/Cc/Responder a/Asunto/
+  Fecha/nombres de adjuntos + cuerpo; texto o, si no hay, HTML →
+  `HtmlToText`); las etiquetas `<email>`/`</email>` del contenido se
+  neutralizan (`[email]`/`[/email]`) para que no pueda cerrar el bloque;
+  cuerpo recortado a `max_body_chars` **avisando al modelo** y
+  `bodyTruncated` en el resultado; `effort` y `max_tokens` de config;
+  `aiRequestId` en el resultado. Helper de tests `classificationData()`
+  en `tests/Pest.php`
 - [ ] 9. Clasificación guardada en `emails`
 - [ ] 10. `ClassifyEmailJob` al recibir `EmailIngested` + cola `ai`
 - [ ] 11. Comando `ai:classify` para pruebas manuales

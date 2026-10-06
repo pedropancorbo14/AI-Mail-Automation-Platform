@@ -47,3 +47,20 @@ function incomingMessage(array $overrides = []): MailMessage
         'references' => ['inicio@cliente.test', 'anterior@empresa.test'],
     ], $overrides));
 }
+
+/** JSON de clasificación tal como lo devolvería el modelo (sobrescribible por campo). */
+function classificationData(array $overrides = []): array
+{
+    return array_replace_recursive([
+        'intent' => 'order_status',
+        'confidence' => 0.92,
+        'language' => 'es',
+        'summary' => 'El cliente pregunta dónde está su pedido #45821.',
+        'needs_human' => false,
+        'needs_human_reason' => null,
+        'sentiment' => 'neutral',
+        'urgency' => 'normal',
+        'injection_suspected' => false,
+        'entities' => ['order_numbers' => ['45821'], 'invoice_numbers' => [], 'customer_name' => 'Cliente Pérez'],
+    ], $overrides);
+}
