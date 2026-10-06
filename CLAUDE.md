@@ -944,7 +944,16 @@ emailId)` de la Fase 4.
   (respuestas/excepciones encoladas, guarda peticiones). **Lección Pest:**
   en datasets, si el parámetro es `Closure`, Pest pasa el closure sin
   evaluarlo → un solo nivel `fn () => ...`
-- [ ] 3. Tabla y modelo `ai_prompt_versions`
+- [x] 3. Prompts **en código** (`App\AI\Prompts\Prompt`: `key()`,
+  `version()`, `system()`, `outputSchema()`), revisables en git. Tabla
+  global (sin tenant: los prompts son de la plataforma)
+  `ai_prompt_versions` (key, version, system_prompt, output_schema jsonb,
+  `content_hash`, único key+version) y modelo `AiPromptVersion`
+  (inmutable, sin updated_at). `PromptRegistry::resolve($prompt)` guarda
+  la versión la primera vez que se usa (caché por proceso, carrera entre
+  workers controlada) y **falla si el contenido de una versión ya guardada
+  cambió** (hash de system + esquema): hay que subir `version()`; así
+  `ai_requests` siempre apunta al prompt exacto que se envió
 - [ ] 4. Tabla y modelo `ai_requests`
 - [ ] 5. Cálculo de costes
 - [ ] 6. `AnthropicProvider` (SDK, structured outputs, fallbacks, uso, latencia, errores)
