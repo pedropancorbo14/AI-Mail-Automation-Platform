@@ -994,7 +994,18 @@ emailId)` de la Fase 4.
   transporte PSR-18 (`RequestOptions::with(transporter: ...)`,
   `maxRetries: 0`), historial en un `ArrayObject` (una propiedad de test
   de Pest no sirve por referencia)
-- [ ] 7. `AIService` (ejecuta y registra siempre en `ai_requests`)
+- [x] 7. `App\AI\AIService::run($prompt, $userContent, $maxTokens,
+  $effort, ?$email)` → `AIResult` (registro + respuesta). Única puerta a
+  la IA: resuelve la versión del prompt, construye la `LLMRequest`
+  (system + esquema del prompt) y **siempre** crea la fila en
+  `ai_requests` (dentro del tenant): éxito (tokens, coste, latencia,
+  modelo, fallback, stop_reason, id, respuesta; `intent`/`confidence` si
+  la respuesta los trae, confianza acotada a 0–1), `LLMException` →
+  `failed` o `refused` con los tokens/coste que se facturaron y su
+  mensaje, error inesperado → `failed` con "Error interno al llamar a la
+  IA." (detalle solo al log); después relanza. Log por petición
+  (`ai_request_id`, coste, latencia...). `AIService::enabled()` = hay API
+  key. `PromptRegistry` singleton. Fakes de tests: `FakePrompt`
 - [ ] 8. Clasificador de emails (prompt v1, esquema, anti prompt injection)
 - [ ] 9. Clasificación guardada en `emails`
 - [ ] 10. `ClassifyEmailJob` al recibir `EmailIngested` + cola `ai`

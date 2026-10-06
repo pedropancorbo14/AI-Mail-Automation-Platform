@@ -3,35 +3,11 @@
 use App\AI\Prompts\Prompt;
 use App\AI\Prompts\PromptRegistry;
 use App\Models\AiPromptVersion;
+use Tests\Fakes\FakePrompt;
 
 function testPrompt(int $version = 1, string $system = 'Clasifica el email.', ?array $schema = ['type' => 'object']): Prompt
 {
-    return new class($version, $system, $schema) implements Prompt
-    {
-        public function __construct(private int $v, private string $s, private ?array $schema)
-        {
-        }
-
-        public function key(): string
-        {
-            return 'test_prompt';
-        }
-
-        public function version(): int
-        {
-            return $this->v;
-        }
-
-        public function system(): string
-        {
-            return $this->s;
-        }
-
-        public function outputSchema(): ?array
-        {
-            return $this->schema;
-        }
-    };
+    return new FakePrompt($version, $system, $schema);
 }
 
 it('stores a prompt version the first time it is used', function () {

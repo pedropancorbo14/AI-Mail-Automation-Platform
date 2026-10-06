@@ -6,6 +6,7 @@ use Anthropic\Client;
 use Anthropic\RequestOptions;
 use App\AI\Contracts\LLMProvider;
 use App\AI\Exceptions\LLMConfigurationException;
+use App\AI\Prompts\PromptRegistry;
 use App\AI\Providers\Anthropic\AnthropicProvider;
 use Illuminate\Support\ServiceProvider;
 
@@ -18,6 +19,9 @@ class AIServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Caché de versiones de prompt durante toda la vida del worker.
+        $this->app->singleton(PromptRegistry::class);
+
         $this->app->singleton(LLMProvider::class, fn () => match (config('ai.provider')) {
             'anthropic' => new AnthropicProvider(
                 client: self::lazyAnthropicClient(),
