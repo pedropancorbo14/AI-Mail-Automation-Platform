@@ -929,7 +929,21 @@ emailId)` de la Fase 4.
 - [x] 1. `composer require anthropic-ai/sdk:^0.54` + `config/ai.php` +
   variables en `.env.docker.example` (`ANTHROPIC_API_KEY`,
   `ANTHROPIC_MODEL`, `AI_CLASSIFY_ON_INGEST`)
-- [ ] 2. Interfaz `LLMProvider` + DTOs + excepciones
+- [x] 2. `App\AI\Contracts\LLMProvider` (`name()`, `generate(LLMRequest):
+  LLMResponse`). DTOs `readonly` en `app/AI/Data`: `LLMRequest` (system,
+  messages — empieza por user —, maxTokens, `jsonSchema` para structured
+  outputs, `effort` low..max, `model` opcional; `single()`), `LLMUsage`
+  (entrada, salida, escritura y lectura de caché) y `LLMResponse`
+  (proveedor, modelo que respondió de verdad, texto, `data` JSON,
+  usage, stopReason, latencia ms, requestId, `usedFallback`,
+  `usageByModel` para costes con fallback). Excepciones en
+  `app/AI/Exceptions` con `$retryable` y `?LLMResponse` (tokens facturados
+  aunque falle): `LLMRateLimitException` y `LLMUnavailableException`
+  (reintentables), `LLMConfigurationException`, `LLMRefusalException`,
+  `LLMInvalidResponseException` (no). `tests/Fakes/FakeLLMProvider`
+  (respuestas/excepciones encoladas, guarda peticiones). **Lección Pest:**
+  en datasets, si el parámetro es `Closure`, Pest pasa el closure sin
+  evaluarlo → un solo nivel `fn () => ...`
 - [ ] 3. Tabla y modelo `ai_prompt_versions`
 - [ ] 4. Tabla y modelo `ai_requests`
 - [ ] 5. Cálculo de costes
