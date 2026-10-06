@@ -885,11 +885,61 @@ para verlo con un cliente gráfico (el usuario usa **HeidiSQL**; tipo
 PostgreSQL, `app`/`secret`, BD `app`). 5433 porque en el equipo del
 usuario el 5432 ya lo usa otro PostgreSQL. Solo loopback, nunca la red.
 
-### Fase 5 (AI Engine con Claude/Anthropic): SIGUIENTE, no empezada.
+### Fase 5 (AI Engine con Claude/Anthropic): EN CURSO (desde 2026-10-06)
 
-Base disponible: evento `EmailIngested(tenantId, emailId)` (lanzado una
-vez por email con adjuntos ya guardados) como punto de entrada; `Email`
-con `status` (received → processing → …) y cuerpos texto/HTML.
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit, sin push. **El usuario aún no
+tiene la API key de Anthropic**: la pondrá en `.env`
+(`ANTHROPIC_API_KEY`); hasta entonces todo se prueba con HTTP simulado y
+la prueba real queda pendiente.
+
+**Objetivo:** clasificar cada email ingerido con Claude (intención,
+confianza, idioma, resumen, si necesita una persona, datos extraídos) y
+registrar cada llamada a la IA en `ai_requests` (proveedor, modelo,
+versión de prompt, tokens, coste, latencia, estado, error, intención,
+confianza, email). Punto de entrada: evento `EmailIngested(tenantId,
+emailId)` de la Fase 4.
+
+**Decisiones tomadas:**
+- **SDK oficial `anthropic-ai/sdk`** (PHP, v0.54; cliente HTTP PSR-18 →
+  Guzzle). En tests se le inyecta un transporte PSR-18 simulado: nunca
+  se llama a la API real. `phpunit.xml` fuerza `ANTHROPIC_API_KEY` vacía.
+- Código en `app/AI/` (sección 20). El resto de la app solo usa la
+  interfaz `LLMProvider` y DTOs propios, nunca clases del SDK.
+- **Modelo por defecto `claude-opus-5-5`** ($4/$20 por MTok),
+  configurable con `ANTHROPIC_MODEL` (más barato: `claude-sonnet-5-5`
+  $2/$10, `claude-haiku-4-5` $1/$5; decisión del usuario). En Opus 5.5 el
+  razonamiento no se puede desactivar (400): se controla con `effort`
+  (clasificación: `low`). Sin prefill (400): formato con **structured
+  outputs** (`outputConfig.format` json_schema).
+- **Fallbacks de servidor activados** (`fallbacks: "default"` + beta
+  `server-side-fallback-2026-07-01`, `ANTHROPIC_FALLBACKS`): si los
+  clasificadores de seguridad rechazan, Anthropic reintenta con otro modelo
+  en la misma llamada. Siempre se comprueba `stop_reason` (`refusal`).
+- **Sin API key = IA desactivada**: la ingesta sigue; la clasificación se
+  omite con aviso en el log.
+- `config/ai.php`: proveedor, clave, modelo, timeout 60 s, 2 reintentos
+  del SDK, fallbacks, **precios por modelo** (USD/MTok, consultados
+  2026-09-25; `cache_write` = 1,25 × entrada) y opciones de clasificación
+  (`on_ingest`, `effort` low, `max_tokens` 4096 — incluye razonamiento —,
+  `max_body_chars` 20000: si se recorta queda registrado y se avisa al
+  modelo, nunca en silencio).
+
+**Tareas (commit):**
+- [x] 1. `composer require anthropic-ai/sdk:^0.54` + `config/ai.php` +
+  variables en `.env.docker.example` (`ANTHROPIC_API_KEY`,
+  `ANTHROPIC_MODEL`, `AI_CLASSIFY_ON_INGEST`)
+- [ ] 2. Interfaz `LLMProvider` + DTOs + excepciones
+- [ ] 3. Tabla y modelo `ai_prompt_versions`
+- [ ] 4. Tabla y modelo `ai_requests`
+- [ ] 5. Cálculo de costes
+- [ ] 6. `AnthropicProvider` (SDK, structured outputs, fallbacks, uso, latencia, errores)
+- [ ] 7. `AIService` (ejecuta y registra siempre en `ai_requests`)
+- [ ] 8. Clasificador de emails (prompt v1, esquema, anti prompt injection)
+- [ ] 9. Clasificación guardada en `emails`
+- [ ] 10. `ClassifyEmailJob` al recibir `EmailIngested` + cola `ai`
+- [ ] 11. Comando `ai:classify` para pruebas manuales
+- [ ] 12. README, prueba real con la API key
 
 ### Pendientes anotados para más adelante
 

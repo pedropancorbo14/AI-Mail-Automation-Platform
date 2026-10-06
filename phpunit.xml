@@ -30,6 +30,8 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <server name="CACHE_STORE" value="array"/>
+        <!-- Nunca llamar a la API de IA real desde los tests (aunque .env tenga clave). -->
+        <server name="ANTHROPIC_API_KEY" value=""/>
         <server name="DB_CONNECTION" value="pgsql"/>
         <server name="DB_DATABASE" value="app_testing"/>
         <env name="DB_URL" value=""/>
