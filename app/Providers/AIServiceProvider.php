@@ -4,10 +4,13 @@ namespace App\Providers;
 
 use Anthropic\Client;
 use Anthropic\RequestOptions;
+use App\AI\Classification\QueueEmailClassification;
 use App\AI\Contracts\LLMProvider;
 use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Prompts\PromptRegistry;
 use App\AI\Providers\Anthropic\AnthropicProvider;
+use App\Mail\Ingestion\Events\EmailIngested;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -30,6 +33,12 @@ class AIServiceProvider extends ServiceProvider
             ),
             default => throw new LLMConfigurationException('Proveedor de IA no soportado: ' . config('ai.provider') . '.'),
         });
+    }
+
+    public function boot(): void
+    {
+        // Ingesta completa → clasificación con IA (cola "ai").
+        Event::listen(EmailIngested::class, QueueEmailClassification::class);
     }
 
     /** @return \Closure(): Client */

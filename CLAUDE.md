@@ -1039,7 +1039,21 @@ emailId)` de la Fase 4.
   `status`**, eso es Fase 9), relaciones `classificationRequest()` y
   `aiRequests()`; nada de esto es asignable en masa. Nota: `jsonb`
   reordena las claves (en tests comparar con `toEqualCanonicalizing`)
-- [ ] 10. `ClassifyEmailJob` al recibir `EmailIngested` + cola `ai`
+- [x] 10. `App\AI\Classification\ClassifyEmailJob($tenantId, $emailId,
+  $force)` en la cola **`ai`**: recibe ids (entra en el tenant con
+  `runAs` + `tenant_id` en `Context`), `ShouldBeUnique` por email (1800
+  s), no repite emails ya clasificados salvo `force` (**no se paga dos
+  veces**), empresa inactiva o email borrado → no hace nada. `tries=4`,
+  `backoff [30, 120, 300]`, `timeout 240` (incluye los reintentos del
+  SDK; < `retry_after` 300). **Solo reintenta `LLMException`
+  reintentables** (429, 529/5xx, red); rechazo, clave mala o respuesta
+  inválida → `fail()` sin reintentar (cada intento cuesta dinero). Listener
+  `QueueEmailClassification` (registrado en `AIServiceProvider::boot`)
+  sobre `EmailIngested`: encola el job si `AI_CLASSIFY_ON_INGEST` y hay API
+  key; sin clave deja un `notice` en el log y el email sin clasificar.
+  Horizon: **`supervisor-ai`** para la cola `ai` (local 1 proceso,
+  producción hasta 3: pocos a propósito para limitar gasto y 429; timeout
+  250) + `waits.redis:ai` 300 s
 - [ ] 11. Comando `ai:classify` para pruebas manuales
 - [ ] 12. README, prueba real con la API key
 

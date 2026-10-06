@@ -99,6 +99,7 @@ return [
     'waits' => [
         'redis:default' => 60,
         'redis:mail' => 120,
+        'redis:ai' => 300,
     ],
 
     /*
@@ -228,6 +229,23 @@ return [
             'timeout' => 250,
             'nice' => 0,
         ],
+
+        // Llamadas a la IA (ClassifyEmailJob...): supervisor propio para que la
+        // latencia de la IA no frene la ingesta ni el resto de jobs. Pocos
+        // procesos a propósito: limita el gasto y los 429 del proveedor.
+        'supervisor-ai' => [
+            'connection' => 'redis',
+            'queue' => ['ai'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'size',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 4,
+            'timeout' => 250,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -244,6 +262,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 5,
             ],
+            'supervisor-ai' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 3,
+            ],
         ],
 
         'local' => [
@@ -258,6 +280,10 @@ return [
             'supervisor-mail' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
+            ],
+            'supervisor-ai' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
             ],
         ],
     ],
