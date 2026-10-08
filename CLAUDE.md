@@ -1184,7 +1184,16 @@ los trozos más parecidos por significado y se devuelven con su fuente
   (`BelongsToTenant`, factory, solo `title` asignable en masa,
   `disk`/`path` ocultos; `markProcessing()`, `markReady($chunks, $model)`,
   `markFailed($error)`, `uploader()`)
-- [ ] 4. Tabla y modelo `document_chunks` con `vector(1024)` e índice HNSW
+- [x] 4. Tabla `document_chunks`: tenant, `document_id` (cascade),
+  `position` (único por documento), `content`, `token_count`, `metadata`
+  jsonb (página/sección para citar), **`embedding vector(1024)`** e índice
+  **HNSW `vector_cosine_ops`** (`$table->vectorIndex()`), `created_at`.
+  Modelo `DocumentChunk` (`BelongsToTenant`, cast `AsVector`, `embedding`
+  oculto en JSON), `Document::chunks()` ordenado por posición.
+  Comprobado: Postgres rechaza vectores de otra dimensión,
+  `orderByVectorDistance` encuentra el trozo más cercano. **pgvector
+  0.8.6** en la imagen: soporta *iterative scans* (necesario porque HNSW
+  filtra `tenant_id` después de buscar vecinos → se usará en la tarea 9)
 - [ ] 5. Extracción de texto (PDF, TXT, MD, HTML)
 - [ ] 6. Troceado (chunking)
 - [ ] 7. `EmbeddingService` (embeddings + registro en `ai_requests`)
