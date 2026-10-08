@@ -100,6 +100,7 @@ return [
         'redis:default' => 60,
         'redis:mail' => 120,
         'redis:ai' => 300,
+        'redis-long:documents' => 900,
     ],
 
     /*
@@ -246,6 +247,23 @@ return [
             'timeout' => 250,
             'nice' => 0,
         ],
+
+        // Indexado de documentos (ProcessDocumentJob): conexión redis-long
+        // (retry_after 1900 s) y timeout amplio; aparte para no frenar la
+        // clasificación de emails mientras se indexa un PDF grande.
+        'supervisor-documents' => [
+            'connection' => 'redis-long',
+            'queue' => ['documents'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'size',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 512,
+            'tries' => 3,
+            'timeout' => 1850,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -266,6 +284,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 3,
             ],
+            'supervisor-documents' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+            ],
         ],
 
         'local' => [
@@ -282,6 +304,10 @@ return [
                 'maxProcesses' => 2,
             ],
             'supervisor-ai' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
+            'supervisor-documents' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],

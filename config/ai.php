@@ -69,6 +69,15 @@ return [
         'chunk_max_chars' => (int) env('RAG_CHUNK_MAX_CHARS', 2000),
         // Texto repetido entre trozos seguidos para no partir una idea por la mitad.
         'chunk_overlap_chars' => (int) env('RAG_CHUNK_OVERLAP_CHARS', 200),
+
+        // Disco PRIVADO para los ficheros originales de los documentos.
+        'disk' => env('RAG_DOCUMENTS_DISK', 'local'),
+
+        // Tamaño máximo de un documento subido (MB).
+        'max_upload_mb' => (int) env('RAG_MAX_UPLOAD_MB', 20),
+
+        // Conexión de cola del indexado: redis-long (retry_after amplio). En tests, sync.
+        'queue_connection' => env('RAG_QUEUE_CONNECTION', 'redis-long'),
     ],
 
     'classification' => [

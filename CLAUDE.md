@@ -1225,7 +1225,28 @@ los trozos más parecidos por significado y se devuelven con su fuente
   vía `CostCalculator::forUsage`), latencia y `response` (nº textos,
   peticiones, dimensiones); fallo → `failed` con el mensaje (o "Error
   interno..." si no es `LLMException`) y relanza
-- [ ] 8. `DocumentService` + `ProcessDocumentJob`
+- [x] 8. `App\Documents\DocumentService`: `upload($content, $filename,
+  ?$title, ?$uploader, ?$detectedMime)` (tipo por extensión/MIME, máx.
+  `ai.rag.max_upload_mb` 20, vacío y **duplicado por sha256** →
+  `DocumentProcessingException`; original en disco privado
+  `ai.rag.disk` en `tenants/{t}/documents/{uuid}`, nunca con el nombre
+  subido; título = el dado o el nombre sin extensión; encola el indexado);
+  `process($document)` (processing → extraer → trocear → embeddings con
+  **contexto "Documento: título / Sección: …"** delante de cada trozo,
+  pero se guarda solo el trozo → **reemplazo atómico de los trozos** en
+  transacción → `ready` con nº de trozos y modelo; error del documento o
+  de configuración → `failed` sin reintento; error temporal del proveedor
+  → se relanza); `delete()` (fichero + documento; trozos en cascada).
+  `App\Documents\ProcessDocumentJob($tenantId, $documentId)`: cola
+  `documents` en la conexión **`redis-long`** (`retry_after` 1900 s,
+  `config/queue.php`) porque indexar en CPU puede tardar minutos y con
+  `retry_after` 300 Redis relanzaría el job en marcha; `timeout` 1800,
+  `tries` 3, `backoff [60, 300]`, único por documento, entra en el tenant
+  con `runAs`; `failed()` deja el documento `failed` con el error.
+  Conexión configurable `ai.rag.queue_connection`
+  (`RAG_QUEUE_CONNECTION`, `sync` en `phpunit.xml`). Horizon:
+  **`supervisor-documents`** (redis-long, timeout 1850, 1 proceso local / 2
+  producción, 512 MB) + `waits.redis-long:documents` 900
 - [ ] 9. `SemanticSearchService` (pgvector)
 - [ ] 10. `KnowledgeBaseService` (contexto con fuentes para el agente)
 - [ ] 11. API de documentos y búsqueda con permisos

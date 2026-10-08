@@ -73,6 +73,18 @@ return [
             'after_commit' => false,
         ],
 
+        // Jobs largos (indexar documentos con embeddings en CPU): retry_after
+        // amplio para que Redis no relance un job que sigue en marcha. Debe ser
+        // mayor que el timeout del job (ProcessDocumentJob: 1800 s).
+        'redis-long' => [
+            'driver' => 'redis',
+            'connection' => 'default',
+            'queue' => 'documents',
+            'retry_after' => 1900,
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],
