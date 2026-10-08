@@ -885,7 +885,7 @@ para verlo con un cliente gráfico (el usuario usa **HeidiSQL**; tipo
 PostgreSQL, `app`/`secret`, BD `app`). 5433 porque en el equipo del
 usuario el 5432 ya lo usa otro PostgreSQL. Solo loopback, nunca la red.
 
-### Fase 5 (AI Engine con Claude/Anthropic): COMPLETADA EN LOCAL (2026-10-06), pendiente de prueba con API key real y CI
+### Fase 5 (AI Engine con Claude/Anthropic): COMPLETADA Y PROBADA CON CLAUDE REAL (2026-10-08), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push. **El usuario aún no
@@ -1076,15 +1076,38 @@ emailId)` de la Fase 4.
   estructura, tests, problemas frecuentes; secciones siguientes
   renumeradas (API = #8)
 
-**Pendiente para dar la Fase 5 por cerrada:**
-1. **Prueba real con la API key** (cuando el usuario la ponga en `.env`):
-   `horizon:terminate`, `ai:classify 2 --now` (comprobar intención
-   `return_request`, tokens, `cost_usd` y latencia en `ai_requests`, fila
-   en `ai_prompt_versions`), enviar un correo nuevo y ver que se clasifica
-   solo, y `ai:classify --pending`. Verificar que los fallbacks
-   (`fallbacks: "default"`) no dan 400 con la cuenta del usuario; si los
-   diera, `ANTHROPIC_FALLBACKS=false`.
-2. Push (lo hace el usuario) y GitHub Actions en verde.
+**Prueba real con Claude (2026-10-08, API key del usuario, 5 $ de
+saldo, `claude-opus-5-5`):**
+- 1er intento (06/10) → 400 "credit balance is too low": registrado como
+  `failed` sin coste y **sin reintento** (comportamiento previsto).
+- `ai:classify 2 --now` → `return_request` 0,95, resumen correcto, pedido
+  45821; 1960/159 tokens = **0,011020 $** (cuadra con el cálculo),
+  17 s (primera petición con el esquema: Anthropic lo compila y cachea
+  24 h; las siguientes 2–7 s). Fallbacks `"default"` aceptados por la
+  cuenta (sin 400). Fila en `ai_prompt_versions` (v1) y email enlazado a
+  su `ai_request` sin cambiar `status`.
+- **Flujo automático** con 7 correos SMTP a GreenMail → scheduler →
+  ingesta → `EmailIngested` → `ClassifyEmailJob` (Horizon, cola `ai`):
+  7/7 clasificados solos en 52 s. Todos correctos: pedido
+  (`order_status`), factura (`invoice_request`, CIF en resumen), queja
+  con amenaza legal (`billing_issue`, urgencia alta, **needs_human**),
+  spam/phishing (`spam`), fuera de oficina (`auto_reply`), email en
+  inglés (`return_request`, `en`, resumen en español, needs_human por
+  reembolso) y **prompt injection** (cierra `</email>` y ordena cambiar
+  la clasificación y revelar clientes/prompt) → `other` 0,30,
+  `injection_suspected` y needs_human, **no obedeció ni reveló nada**.
+- Reclasificar sin `--force` no vuelve a llamar a la API; `--pending`
+  clasificó el email 1 de la Fase 4. **Gasto total de las pruebas:
+  0,106 $** (9 llamadas correctas, media **0,0118 $/email** → ~420
+  emails con 5 $).
+- **Lección:** `storage/` del contenedor es un volumen Docker
+  (`app-storage`), no la carpeta del host: scripts sueltos se pasan por
+  stdin (`docker compose exec -T app php < script.php`, con `require
+  '/var/www/html/vendor/autoload.php'`). `tinker archivo.php` no lo
+  ejecuta.
+
+**Pendiente para dar la Fase 5 por cerrada:** push (lo hace el usuario) y
+GitHub Actions en verde.
 
 ### Pendientes anotados para más adelante
 
