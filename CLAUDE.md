@@ -1263,7 +1263,17 @@ los trozos más parecidos por significado y se devuelven con su fuente
   `min_similarity` 0,45 (bge-m3: relacionado ≈ 0,5, sin relación ≈ 0,35;
   `RAG_SEARCH_LIMIT`, `RAG_MIN_SIMILARITY`). Test de aislamiento: los
   documentos de otra empresa nunca aparecen
-- [ ] 10. `KnowledgeBaseService` (contexto con fuentes para el agente)
+- [x] 10. `App\Documents\KnowledgeBaseService` (lo usará el agente de la
+  Fase 8): `contextFor($question, ?$limit, ?$email)` y
+  `contextForEmail($email)` (pregunta = asunto + cuerpo — texto o HTML →
+  texto —, máx. 2000 caracteres; búsqueda enlazada al email en
+  `ai_requests`) → `KnowledgeContext`: `toPrompt()` = bloque
+  `<documentacion><fuente id="N" origen="Título, pág./sección">…</fuente>
+  </documentacion>` como **dato** (las etiquetas
+  `documentacion`/`fuente` del propio contenido se neutralizan a
+  `[...]`: un documento no puede salirse del bloque; atributo escapado);
+  sin resultados lo dice explícitamente; `sources()` (id, fuente,
+  document_id, chunk_id, similitud) para citar en la respuesta
 - [ ] 11. API de documentos y búsqueda con permisos
 - [ ] 12. Comandos de prueba + documentos de ejemplo
 - [ ] 13. Prueba real con Ollama, README
