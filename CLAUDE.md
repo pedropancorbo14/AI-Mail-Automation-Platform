@@ -1157,7 +1157,21 @@ los trozos más parecidos por significado y se devuelven con su fuente
   `EmbeddingInputType` (query/document); `tests/Fakes/FakeEmbeddingProvider`
   (bolsa de palabras con hashing, normalizada y determinista: textos con
   palabras en común se parecen; registra llamadas, `failWith`)
-- [ ] 2. `OllamaEmbeddingProvider` (HTTP `/api/embed`, lotes, normalización, errores)
+- [x] 2. `App\AI\Embeddings\OllamaEmbeddingProvider` con `Http` de Laravel:
+  `POST {base_url}/api/embed` (`model`, `input` = lote, `truncate: true`),
+  lotes de `batch_size` manteniendo el orden, tokens =
+  `prompt_eval_count`, **vectores normalizados** a longitud 1, valida un
+  vector por texto y las dimensiones (≠ 1024 → `LLMInvalidResponseException`
+  "la base de datos espera 1024"). Errores: sin conexión →
+  `LLMUnavailableException` ("¿está levantado el servicio ollama?"), 404 →
+  `LLMConfigurationException` con el comando `ollama pull`, 5xx →
+  unavailable, resto 4xx → configuración. Singleton `EmbeddingProvider`
+  en `AIServiceProvider` según `ai.embeddings.provider`. Tests con
+  `Http::fake` + `preventStrayRequests`. **Prueba real** (bge-m3
+  descargado, 1,2 GB): 1024 dimensiones; similitud política de
+  devoluciones ↔ "quiero devolver la lámpara rota" 0,52, ↔ mismo email en
+  inglés 0,49, política de envíos ↔ email de devolución 0,37
+  (multilingüe y con sentido); primera llamada 3,3 s (carga del modelo)
 - [ ] 3. Tabla y modelo `documents`
 - [ ] 4. Tabla y modelo `document_chunks` con `vector(1024)` e índice HNSW
 - [ ] 5. Extracción de texto (PDF, TXT, MD, HTML)

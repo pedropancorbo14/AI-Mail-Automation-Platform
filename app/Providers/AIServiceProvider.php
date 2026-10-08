@@ -6,6 +6,8 @@ use Anthropic\Client;
 use Anthropic\RequestOptions;
 use App\AI\Classification\QueueEmailClassification;
 use App\AI\Contracts\LLMProvider;
+use App\AI\Embeddings\EmbeddingProvider;
+use App\AI\Embeddings\OllamaEmbeddingProvider;
 use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Prompts\PromptRegistry;
 use App\AI\Providers\Anthropic\AnthropicProvider;
@@ -32,6 +34,17 @@ class AIServiceProvider extends ServiceProvider
                 fallbacks: (bool) config('ai.anthropic.fallbacks'),
             ),
             default => throw new LLMConfigurationException('Proveedor de IA no soportado: ' . config('ai.provider') . '.'),
+        });
+
+        $this->app->singleton(EmbeddingProvider::class, fn () => match (config('ai.embeddings.provider')) {
+            'ollama' => new OllamaEmbeddingProvider(
+                baseUrl: config('ai.embeddings.ollama.base_url'),
+                model: config('ai.embeddings.ollama.model'),
+                dimensions: (int) config('ai.embeddings.dimensions'),
+                timeout: (int) config('ai.embeddings.ollama.timeout'),
+                batchSize: (int) config('ai.embeddings.ollama.batch_size'),
+            ),
+            default => throw new LLMConfigurationException('Proveedor de embeddings no soportado: ' . config('ai.embeddings.provider') . '.'),
         });
     }
 
