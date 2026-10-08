@@ -1172,7 +1172,18 @@ los trozos más parecidos por significado y se devuelven con su fuente
   devoluciones ↔ "quiero devolver la lámpara rota" 0,52, ↔ mismo email en
   inglés 0,49, política de envíos ↔ email de devolución 0,37
   (multilingüe y con sentido); primera llamada 3,3 s (carga del modelo)
-- [ ] 3. Tabla y modelo `documents`
+- [x] 3. Tabla `documents`: tenant (restrict), `uploaded_by` (users,
+  nullOnDelete), `title`, `original_filename` (solo para mostrar, nunca
+  como ruta), `mime_type`, `size`, `disk`/`path` del original en disco
+  privado, `sha256` (**único por tenant**: la misma empresa no sube dos
+  veces el mismo fichero; otra empresa sí), `status`
+  pending/processing/ready/failed, `error`, `chunks_count`,
+  `embedding_model` (para saber qué reindexar si cambia el modelo),
+  `processed_at`. Código del módulo en **`app/Documents/`** (sección 20):
+  enum `App\Documents\Enums\DocumentStatus`. Modelo `Document`
+  (`BelongsToTenant`, factory, solo `title` asignable en masa,
+  `disk`/`path` ocultos; `markProcessing()`, `markReady($chunks, $model)`,
+  `markFailed($error)`, `uploader()`)
 - [ ] 4. Tabla y modelo `document_chunks` con `vector(1024)` e índice HNSW
 - [ ] 5. Extracción de texto (PDF, TXT, MD, HTML)
 - [ ] 6. Troceado (chunking)
