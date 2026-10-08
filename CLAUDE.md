@@ -1288,7 +1288,17 @@ los trozos más parecidos por significado y se devuelven con su fuente
   `DocumentResource` sin disco/ruta/hash. Tests de aislamiento: otra
   empresa → 404 en ver/reindexar/borrar y su contenido nunca sale en la
   búsqueda
-- [ ] 12. Comandos de prueba + documentos de ejemplo
+- [x] 12. Comandos `php artisan kb:import <ruta> --tenant=<id>
+  [--title=]` (sube un fichero del contenedor; errores claros) y
+  `kb:search "<pregunta>" --tenant=<id> [--limit=] [--min=]` (tabla
+  similitud / fuente / texto). Documentación de ejemplo realista de
+  "Empresa Demo" en `database/seeders/knowledge/*.md` (política de
+  devoluciones, envíos, garantía, FAQ de pagos y facturas: plazos, costes,
+  procesos — base para el agente de la Fase 8) y `KnowledgeBaseSeeder`
+  (idempotente por sha256; título = primer `#`). Se ejecuta **aparte**:
+  `php artisan db:seed --class=KnowledgeBaseSeeder`, no desde
+  `DatabaseSeeder`, porque este usa `WithoutModelEvents` y
+  `BelongsToTenant` necesita el evento `creating`
 - [ ] 13. Prueba real con Ollama, README
 
 ### Pendientes anotados para más adelante
