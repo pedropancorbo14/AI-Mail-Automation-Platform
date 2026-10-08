@@ -64,6 +64,13 @@ return [
         ],
     ],
 
+    'rag' => [
+        // Tamaño de cada trozo (~4 caracteres por token en español: 2000 ≈ 500 tokens).
+        'chunk_max_chars' => (int) env('RAG_CHUNK_MAX_CHARS', 2000),
+        // Texto repetido entre trozos seguidos para no partir una idea por la mitad.
+        'chunk_overlap_chars' => (int) env('RAG_CHUNK_OVERLAP_CHARS', 200),
+    ],
+
     'classification' => [
         // Clasificar al guardar cada email (evento EmailIngested).
         'on_ingest' => (bool) env('AI_CLASSIFY_ON_INGEST', true),

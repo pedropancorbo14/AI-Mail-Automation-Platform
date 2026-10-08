@@ -1208,7 +1208,15 @@ los trozos más parecidos por significado y se devuelven con su fuente
   navegadores envían `.md` como text/plain). Helper de tests
   `tests/Support/Pdf::make([...páginas])` (PDF válido generado al vuelo,
   WinAnsi: acentos OK; sin binarios en el repo)
-- [ ] 6. Troceado (chunking)
+- [x] 6. `App\Documents\Chunking\TextChunker::chunk($sections)` →
+  `TextChunk` (texto, metadata de su sección, tokens estimados ≈ chars/4).
+  Agrupa **párrafos completos** hasta `ai.rag.chunk_max_chars` (2000 ≈ 500
+  tokens); párrafo mayor → por frases; frase mayor → por palabras; palabra
+  mayor → corte bruto. **Solapamiento** `chunk_overlap_chars` (200): cada
+  trozo empieza con el final del anterior (desde una palabra completa).
+  **Nunca mezcla secciones** (páginas/encabezados): la cita es exacta.
+  Cuenta caracteres (mb_*), no bytes. Registrado en el contenedor con los
+  tamaños de config (`RAG_CHUNK_MAX_CHARS`, `RAG_CHUNK_OVERLAP_CHARS`)
 - [ ] 7. `EmbeddingService` (embeddings + registro en `ai_requests`)
 - [ ] 8. `DocumentService` + `ProcessDocumentJob`
 - [ ] 9. `SemanticSearchService` (pgvector)

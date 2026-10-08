@@ -11,6 +11,7 @@ use App\AI\Embeddings\OllamaEmbeddingProvider;
 use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Prompts\PromptRegistry;
 use App\AI\Providers\Anthropic\AnthropicProvider;
+use App\Documents\Chunking\TextChunker;
 use App\Mail\Ingestion\Events\EmailIngested;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -46,6 +47,11 @@ class AIServiceProvider extends ServiceProvider
             ),
             default => throw new LLMConfigurationException('Proveedor de embeddings no soportado: ' . config('ai.embeddings.provider') . '.'),
         });
+
+        $this->app->bind(TextChunker::class, fn () => new TextChunker(
+            (int) config('ai.rag.chunk_max_chars'),
+            (int) config('ai.rag.chunk_overlap_chars'),
+        ));
     }
 
     public function boot(): void
