@@ -1194,7 +1194,20 @@ los trozos más parecidos por significado y se devuelven con su fuente
   `orderByVectorDistance` encuentra el trozo más cercano. **pgvector
   0.8.6** en la imagen: soporta *iterative scans* (necesario porque HNSW
   filtra `tenant_id` después de buscar vecinos → se usará en la tarea 9)
-- [ ] 5. Extracción de texto (PDF, TXT, MD, HTML)
+- [x] 5. `composer require smalot/pdfparser` (v2.12.5, PHP puro, licencia
+  LGPL-3.0: uso como librería en app propia/SaaS sin problema).
+  `App\Documents\Extraction\DocumentTextExtractor::extract($content,
+  $mime)` → lista de `DocumentSection` (texto + metadata para citar): PDF
+  → una por página (`page`, páginas vacías fuera), Markdown → una por
+  encabezado `#` (`heading`, el encabezado se queda en el texto), HTML →
+  `HtmlToText`, TXT tal cual. Texto saneado (UTF-8 válido, sin NUL) y
+  espacios normalizados. `DocumentProcessingException` (mensaje para el
+  usuario, no reintentable): formato no soportado (Word aún no), vacío,
+  **PDF sin texto (escaneado: OCR no soportado)**, PDF dañado o con
+  contraseña. `mimeFor($filename, $detected)`: manda la extensión (los
+  navegadores envían `.md` como text/plain). Helper de tests
+  `tests/Support/Pdf::make([...páginas])` (PDF válido generado al vuelo,
+  WinAnsi: acentos OK; sin binarios en el repo)
 - [ ] 6. Troceado (chunking)
 - [ ] 7. `EmbeddingService` (embeddings + registro en `ai_requests`)
 - [ ] 8. `DocumentService` + `ProcessDocumentJob`
