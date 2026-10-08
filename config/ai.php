@@ -37,6 +37,31 @@ return [
         'claude-sonnet-5-5' => ['input' => 2.00, 'output' => 10.00, 'cache_write' => 2.50, 'cache_read' => 0.20],
         'claude-sonnet-5' => ['input' => 2.00, 'output' => 10.00, 'cache_write' => 2.50, 'cache_read' => 0.20],
         'claude-haiku-4-5' => ['input' => 1.00, 'output' => 5.00, 'cache_write' => 1.25, 'cache_read' => 0.10],
+        // Embeddings locales (Ollama): sin coste por token. Precio 0 (no null) para que cuenten como gratis.
+        'bge-m3' => ['input' => 0.0, 'output' => 0.0, 'cache_write' => 0.0, 'cache_read' => 0.0],
+    ],
+
+    /*
+    | Embeddings (vectores para la búsqueda semántica del RAG). Se calculan
+    | en local con Ollama (contenedor "ollama", solo red interna): los
+    | documentos de las empresas no salen del servidor.
+    */
+    'embeddings' => [
+        'provider' => env('AI_EMBEDDINGS_PROVIDER', 'ollama'),
+
+        // Dimensiones del vector: deben coincidir con la columna vector(N) de
+        // document_chunks. Cambiarlas exige migración y recalcular todo.
+        'dimensions' => 1024,
+
+        'ollama' => [
+            'base_url' => env('OLLAMA_URL', 'http://ollama:11434'),
+            // bge-m3: multilingüe, 1024 dimensiones. Cambiar de modelo obliga a
+            // recalcular los embeddings (no son comparables entre modelos).
+            'model' => env('OLLAMA_EMBEDDING_MODEL', 'bge-m3'),
+            // En CPU un lote grande tarda: margen amplio.
+            'timeout' => (int) env('OLLAMA_TIMEOUT', 120),
+            'batch_size' => (int) env('OLLAMA_BATCH_SIZE', 16),
+        ],
     ],
 
     'classification' => [

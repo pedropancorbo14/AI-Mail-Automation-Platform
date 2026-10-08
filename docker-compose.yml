@@ -34,6 +34,7 @@ volumes:
   grafana-data:
   loki-data:
   app-storage:
+  ollama-data:
 
 services:
   # ---------------------------------------------------------------
@@ -189,6 +190,20 @@ services:
     ports:
       - "127.0.0.1:${GREENMAIL_SMTP_PORT:-3025}:3025"
       - "127.0.0.1:${GREENMAIL_IMAP_PORT:-3143}:3143"
+    networks:
+      - app-net
+
+  # Modelos de IA locales (embeddings del RAG, Fase 6). Solo en la red
+  # interna: los documentos de las empresas no salen del servidor.
+  # Descargar el modelo una vez: docker compose exec ollama ollama pull bge-m3
+  ollama:
+    image: ollama/ollama:0.12.6
+    restart: unless-stopped
+    environment:
+      # El modelo queda cargado en memoria 1 h tras la última petición.
+      OLLAMA_KEEP_ALIVE: 1h
+    volumes:
+      - ollama-data:/root/.ollama
     networks:
       - app-net
 

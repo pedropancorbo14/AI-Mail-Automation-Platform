@@ -1109,6 +1109,67 @@ saldo, `claude-opus-5-5`):**
 **Pendiente para dar la Fase 5 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde.
 
+### Fase 6 (RAG: documentación de la empresa): EN CURSO (desde 2026-10-08)
+
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit, sin push.
+
+**Objetivo:** cada empresa sube su documentación (políticas, FAQs,
+manuales…); se extrae el texto, se trocea, se calcula un embedding por
+trozo y se guarda en PostgreSQL + pgvector. Ante una pregunta se buscan
+los trozos más parecidos por significado y se devuelven con su fuente
+(documento, página/sección) para que el agente (Fase 8) responda citando.
+
+**Decisiones tomadas:**
+- **Embeddings locales con Ollama** (decisión del usuario, 2026-10-08:
+  tratamiento de datos de empresas → los documentos no deben salir del
+  servidor). Se compararon APIs (Voyage, recomendada por Anthropic, 200M
+  tokens gratis; OpenAI; Gemini — su tramo gratis puede usar los datos —;
+  Cohere; Mistral; Jina) y modelos locales (bge-m3, EmbeddingGemma,
+  Qwen3-Embedding, Nomic, voyage-4-nano). Elegido **`bge-m3`**
+  (multilingüe, 1024 dimensiones, ~1,2 GB). Matiz explicado al usuario:
+  los emails ya van a Claude y en la Fase 8 irán también los trozos
+  relevantes (no el corpus): la API de Anthropic no entrena con datos de
+  la API por defecto y ofrece DPA; revisar en Fase 12/16.
+- Servicio **`ollama`** (`ollama/ollama:0.12.6`) en docker-compose, **solo
+  red interna** (sin `ports`), volumen `ollama-data`, `OLLAMA_KEEP_ALIVE`
+  1h. Modelo: `docker compose exec ollama ollama pull bge-m3` (una vez).
+  Docker del usuario: 12 CPU, 15,5 GB (el stack usa <1 GB).
+- Interfaz `App\AI\Embeddings\EmbeddingProvider` (`name`, `model`,
+  `dimensions`, `embed($texts, EmbeddingInputType)` → `EmbeddingResult`:
+  vectores, modelo, tokens, latencia, peticiones), intercambiable por una
+  API si algún día se quiere. Errores: se reutiliza la jerarquía
+  `LLMException` (reintentable o no).
+- pgvector con el **soporte nativo de Laravel 13**: `$table->vector()`,
+  `vectorIndex()` (HNSW + `vector_cosine_ops`), `whereVectorSimilarTo()`
+  / `orderByVectorDistance()` (operador `<=>`), cast `AsVector`. Pasar
+  siempre arrays (con string Laravel intentaría generar embeddings él).
+- Coste de embeddings locales = 0 (precio `bge-m3` a 0 en `ai.pricing`,
+  no null: cuentan como gratis); se registran igualmente en `ai_requests`
+  (tokens, latencia).
+
+**Tareas (commit):**
+- [x] 1. `config/ai.php` → `embeddings` (provider `ollama`, dimensiones
+  1024, `ollama.base_url` `http://ollama:11434`, `model` bge-m3, timeout
+  120 s, `batch_size` 16) + precio 0; `OLLAMA_URL` /
+  `OLLAMA_EMBEDDING_MODEL` en `.env.docker.example`; servicio `ollama` en
+  docker-compose; interfaz `EmbeddingProvider`, `EmbeddingResult`, enum
+  `EmbeddingInputType` (query/document); `tests/Fakes/FakeEmbeddingProvider`
+  (bolsa de palabras con hashing, normalizada y determinista: textos con
+  palabras en común se parecen; registra llamadas, `failWith`)
+- [ ] 2. `OllamaEmbeddingProvider` (HTTP `/api/embed`, lotes, normalización, errores)
+- [ ] 3. Tabla y modelo `documents`
+- [ ] 4. Tabla y modelo `document_chunks` con `vector(1024)` e índice HNSW
+- [ ] 5. Extracción de texto (PDF, TXT, MD, HTML)
+- [ ] 6. Troceado (chunking)
+- [ ] 7. `EmbeddingService` (embeddings + registro en `ai_requests`)
+- [ ] 8. `DocumentService` + `ProcessDocumentJob`
+- [ ] 9. `SemanticSearchService` (pgvector)
+- [ ] 10. `KnowledgeBaseService` (contexto con fuentes para el agente)
+- [ ] 11. API de documentos y búsqueda con permisos
+- [ ] 12. Comandos de prueba + documentos de ejemplo
+- [ ] 13. Prueba real con Ollama, README
+
 ### Pendientes anotados para más adelante
 
 - **Autodetección de configuración IMAP/SMTP (Fase 10, panel)** — pedido
