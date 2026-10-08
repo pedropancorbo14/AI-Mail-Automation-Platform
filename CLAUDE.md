@@ -1217,7 +1217,14 @@ los trozos más parecidos por significado y se devuelven con su fuente
   **Nunca mezcla secciones** (páginas/encabezados): la cita es exacta.
   Cuenta caracteres (mb_*), no bytes. Registrado en el contenedor con los
   tamaños de config (`RAG_CHUNK_MAX_CHARS`, `RAG_CHUNK_OVERLAP_CHARS`)
-- [ ] 7. `EmbeddingService` (embeddings + registro en `ai_requests`)
+- [x] 7. `App\AI\Embeddings\EmbeddingService::embed($texts, $type,
+  $purpose, ?$email)`: única puerta a los embeddings (como `AIService`
+  para el LLM). Registra **cada llamada en `ai_requests`** (dentro del
+  tenant) con `purpose` `document_indexing` o `knowledge_search`
+  (constantes), proveedor/modelo, `input_tokens`, `cost_usd` (0 en local,
+  vía `CostCalculator::forUsage`), latencia y `response` (nº textos,
+  peticiones, dimensiones); fallo → `failed` con el mensaje (o "Error
+  interno..." si no es `LLMException`) y relanza
 - [ ] 8. `DocumentService` + `ProcessDocumentJob`
 - [ ] 9. `SemanticSearchService` (pgvector)
 - [ ] 10. `KnowledgeBaseService` (contexto con fuentes para el agente)
