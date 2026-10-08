@@ -48,6 +48,15 @@ it('splits markdown by headings keeping the heading as source', function () {
     ]);
 });
 
+it('joins headings without text to the next section', function () {
+    $markdown = "# Preguntas frecuentes\n\n## ¿Cómo pago?\n\nCon tarjeta o Bizum.\n\n## ¿Y la factura?\nPor email.";
+
+    expect(extractSections($markdown, 'text/markdown'))->toBe([
+        ["# Preguntas frecuentes\n\n## ¿Cómo pago?\n\nCon tarjeta o Bizum.", ['heading' => '¿Cómo pago?']],
+        ["## ¿Y la factura?\nPor email.", ['heading' => '¿Y la factura?']],
+    ]);
+});
+
 it('converts html to plain text', function () {
     $sections = extractSections('<h1>FAQ</h1><p>¿Hacéis envíos a <b>Canarias</b>?</p><script>alert(1)</script>', 'text/html');
 

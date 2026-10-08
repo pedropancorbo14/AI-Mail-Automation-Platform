@@ -105,16 +105,26 @@ class DocumentTextExtractor
         $heading = null;
         $lines = [];
 
+        $hasText = false;
+
         foreach (preg_split('/\R/', $content) as $line) {
             if (preg_match('/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/', $line, $match)) {
-                $sections[] = new DocumentSection(implode("\n", $lines), $heading ? ['heading' => $heading] : []);
+                if ($hasText) {
+                    $sections[] = new DocumentSection(implode("\n", $lines), $heading ? ['heading' => $heading] : []);
+                    $lines = [];
+                }
+
+                // Encabezados sin texto debajo (p. ej. "# Título" seguido de "## Apartado")
+                // se unen a la sección siguiente: un trozo con solo un título no sirve.
                 $heading = $match[1];
-                $lines = [$line];
+                $lines[] = $line;
+                $hasText = false;
 
                 continue;
             }
 
             $lines[] = $line;
+            $hasText = $hasText || trim($line) !== '';
         }
 
         $sections[] = new DocumentSection(implode("\n", $lines), $heading ? ['heading' => $heading] : []);

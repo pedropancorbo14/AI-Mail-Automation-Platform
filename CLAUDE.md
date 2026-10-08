@@ -1299,6 +1299,10 @@ los trozos más parecidos por significado y se devuelven con su fuente
   `php artisan db:seed --class=KnowledgeBaseSeeder`, no desde
   `DatabaseSeeder`, porque este usa `WithoutModelEvents` y
   `BelongsToTenant` necesita el evento `creating`
+- [x] Fix detectado en la prueba real: en Markdown, un encabezado sin
+  texto debajo (`# Título` seguido de `## Apartado`) generaba un trozo
+  con solo el título (inútil y que salía en las búsquedas); ahora se une
+  a la sección siguiente
 - [ ] 13. Prueba real con Ollama, README
 
 ### Pendientes anotados para más adelante
