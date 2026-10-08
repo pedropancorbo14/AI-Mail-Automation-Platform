@@ -78,6 +78,11 @@ return [
 
         // Conexión de cola del indexado: redis-long (retry_after amplio). En tests, sync.
         'queue_connection' => env('RAG_QUEUE_CONNECTION', 'redis-long'),
+
+        // Trozos devueltos por búsqueda y similitud mínima (coseno, 0–1) para
+        // considerarlos relevantes. Con bge-m3: relacionado ≈ 0,5; sin relación ≈ 0,35.
+        'search_limit' => (int) env('RAG_SEARCH_LIMIT', 5),
+        'min_similarity' => (float) env('RAG_MIN_SIMILARITY', 0.45),
     ],
 
     'classification' => [

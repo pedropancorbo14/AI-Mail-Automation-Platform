@@ -1247,7 +1247,22 @@ los trozos más parecidos por significado y se devuelven con su fuente
   (`RAG_QUEUE_CONNECTION`, `sync` en `phpunit.xml`). Horizon:
   **`supervisor-documents`** (redis-long, timeout 1850, 1 proceso local / 2
   producción, 512 MB) + `waits.redis-long:documents` 900
-- [ ] 9. `SemanticSearchService` (pgvector)
+- [x] 9. `App\Documents\Search\SemanticSearchService::search($query,
+  ?$limit, ?$minSimilarity, ?$email)` → lista de `SearchResult` (chunkId,
+  documentId, título, contenido, metadata, `similarity` 0–1 = 1 −
+  distancia coseno; `source()` → "Título, pág. N" / "Título, sección
+  «X»"). Pregunta → embedding (`knowledge_search` en `ai_requests`,
+  enlazado al email si lo hay) → `DocumentChunk` (scope de tenant) join
+  `documents` **solo `ready`** con `selectVectorDistance` +
+  `whereVectorDistanceLessThan(1 − min)` + `orderByVectorDistance` +
+  `limit`, dentro de una transacción con **`SET LOCAL
+  hnsw.iterative_scan = relaxed_order`** (HNSW filtra el tenant después
+  de buscar vecinos: así completa el límite dentro de la empresa) y
+  reordenado en PHP (relaxed_order puede alterar el orden). Pregunta vacía
+  → [] sin llamar al modelo. Config `ai.rag.search_limit` 5 y
+  `min_similarity` 0,45 (bge-m3: relacionado ≈ 0,5, sin relación ≈ 0,35;
+  `RAG_SEARCH_LIMIT`, `RAG_MIN_SIMILARITY`). Test de aislamiento: los
+  documentos de otra empresa nunca aparecen
 - [ ] 10. `KnowledgeBaseService` (contexto con fuentes para el agente)
 - [ ] 11. API de documentos y búsqueda con permisos
 - [ ] 12. Comandos de prueba + documentos de ejemplo
