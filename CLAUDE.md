@@ -1274,7 +1274,20 @@ los trozos más parecidos por significado y se devuelven con su fuente
   `[...]`: un documento no puede salirse del bloque; atributo escapado);
   sin resultados lo dice explícitamente; `sources()` (id, fuente,
   document_id, chunk_id, similitud) para citar en la respuesta
-- [ ] 11. API de documentos y búsqueda con permisos
+- [x] 11. API: permisos nuevos **`documents.view`** (todos los roles) y
+  **`documents.manage`** (owner, admin) en `Permission::CATALOG` /
+  `Role::PERMISSIONS`; `DocumentPolicy` (otra empresa → 404 antes que el
+  permiso). Rutas (auth + tenant): `GET|POST /documents` (multipart
+  `file` + `title` opcional; `max` = `ai.rag.max_upload_mb`; errores de
+  `DocumentService` → **422 en `file`** con el motivo), `GET|DELETE
+  /documents/{id}`, `POST /documents/{id}/reindex` (vuelve a `pending` y
+  encola), `POST /knowledge-base/search` (`query` máx. 2000, `limit` 1–20,
+  throttle 30/min; respuesta `data[]` con `source`, `document_id`,
+  `document_title`, `content`, `metadata`, `similarity`; proveedor de
+  embeddings caído → **503** "La búsqueda no está disponible…").
+  `DocumentResource` sin disco/ruta/hash. Tests de aislamiento: otra
+  empresa → 404 en ver/reindexar/borrar y su contenido nunca sale en la
+  búsqueda
 - [ ] 12. Comandos de prueba + documentos de ejemplo
 - [ ] 13. Prueba real con Ollama, README
 
