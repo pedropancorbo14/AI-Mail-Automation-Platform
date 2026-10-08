@@ -1109,7 +1109,7 @@ saldo, `claude-opus-5-5`):**
 **Pendiente para dar la Fase 5 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde.
 
-### Fase 6 (RAG: documentación de la empresa): EN CURSO (desde 2026-10-08)
+### Fase 6 (RAG: documentación de la empresa): COMPLETADA Y PROBADA EN LOCAL (2026-10-08), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
@@ -1303,8 +1303,35 @@ los trozos más parecidos por significado y se devuelven con su fuente
   texto debajo (`# Título` seguido de `## Apartado`) generaba un trozo
   con solo el título (inútil y que salía en las búsquedas); ahora se une
   a la sección siguiente
-- [ ] 13. Prueba real con Ollama, README
+- [x] 13. **Prueba real en el stack (2026-10-08)** con Ollama + bge-m3:
+  migraciones en la BD de desarrollo, `RolesAndPermissionsSeeder` (permisos
+  nuevos), `horizon:supervisors` con `supervisor-documents` en
+  `redis-long:documents`; `KnowledgeBaseSeeder` → 4 documentos indexados
+  por Horizon en **14 s** (1,5–3,7 s por documento, coste 0). Búsquedas
+  reales (`kb:search`): producto roto → "Política de devoluciones,
+  sección «Productos que llegan rotos o defectuosos»" 0,53; envío a
+  Canarias → "Coste del envío" 0,74; doble cobro → "Me habéis cobrado dos
+  veces" 0,62; factura de empresa 0,73; **inglés** ("How long do I have
+  to return an item?") → "Plazo para devolver" 0,72; sin relación
+  ("¿tienda física en Madrid?") máx. 0,40 → **vacío con el umbral 0,45**.
+  Fix de encabezados vacíos (commit anterior) y **reindexado por la API**
+  (`POST /documents/{id}/reindex`) → 0 trozos de solo título. API con
+  curl: subida de PDF (2 páginas, ready), duplicado → 422, búsqueda del PDF
+  → "Programa de puntos, pág. 2" 0,68, **usuario de otra empresa: búsqueda
+  vacía y 404 al documento**. 18 llamadas de embeddings en `ai_requests`
+  (coste 0, búsqueda media 0,7 s). `EXPLAIN` forzado confirma que el
+  orden por `<=>` usa `document_chunks_embedding_vectorindex` (HNSW); con
+  pocos trozos el planificador prefiere filtrar por tenant y ordenar (es
+  lo más barato). README: sección "7. Base de conocimiento (RAG)" (cómo
+  funciona, privacidad, aislamiento, fuentes, umbral, formatos, coste,
+  probarlo, resultados reales, detalles técnicos), paso `ollama pull
+  bge-m3` y `KnowledgeBaseSeeder` en el arranque, servicio `ollama`,
+  estructura, API, tests, problemas frecuentes; secciones renumeradas
+  (API = #9)
 
+**Pendiente para dar la Fase 6 por cerrada:** push (lo hace el usuario) y
+GitHub Actions en verde (el CI no necesita Ollama: los tests usan
+`FakeEmbeddingProvider` / `Http::fake`).
 ### Pendientes anotados para más adelante
 
 - **Autodetección de configuración IMAP/SMTP (Fase 10, panel)** — pedido

@@ -26,15 +26,18 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 3 | Conexiones de correo: IMAP/SMTP, Microsoft 365 (Graph + OAuth), Gmail (API + OAuth), credenciales cifradas, prueba de conexión | ✅ Hecha |
 | 4 | Ingesta de emails: sincronización periódica de los buzones, emails + destinatarios + adjuntos guardados sin duplicados, reintentos | ✅ Hecha |
 | 5 | IA con Claude (Anthropic): clasificación de cada email (intención, confianza, resumen, datos), registro de cada petición con tokens, coste y latencia | ✅ Hecha (probada con Claude real: ~0,012 $ por email) |
-| 6–17 | RAG, tools, agente, automatización, panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
+| 6 | Base de conocimiento (RAG): documentos de la empresa (PDF, TXT, Markdown, HTML), troceado, embeddings **locales** (Ollama + bge-m3) y búsqueda por significado con pgvector, citando la fuente | ✅ Hecha |
+| 7 | Tools: herramientas controladas que la IA puede usar (pedidos, clientes, tickets…) | ⏳ Siguiente |
+| 8–17 | Agente, automatización, panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
 los correos nuevos de los buzones conectados, los guarda (con destinatarios
 y adjuntos) y los **clasifica con Claude**: intención, confianza, idioma,
-resumen, si necesita una persona y datos como el número de pedido. Todavía
-no consulta sistemas internos ni responde: eso llega en las fases
-siguientes. La hoja de ruta completa y las
+resumen, si necesita una persona y datos como el número de pedido. Cada
+empresa puede además subir su **documentación** (políticas, FAQs,
+manuales), que se indexa en local y se puede consultar por significado.
+Todavía no responde los emails: eso llega con el agente (Fase 8). La hoja de ruta completa y las
 decisiones de arquitectura están en [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -66,6 +69,12 @@ docker compose up -d
 
 # 5. Crear las tablas y los datos iniciales
 docker compose exec app php artisan migrate --seed
+
+# 6. Descargar el modelo de embeddings para el RAG (una vez, ~1,2 GB)
+docker compose exec ollama ollama pull bge-m3
+
+# 7. (Opcional) Documentación de ejemplo de "Empresa Demo" para probar el RAG
+docker compose exec app php artisan db:seed --class=KnowledgeBaseSeeder
 ```
 
 > Entre los pasos 2 y 4 es **normal** ver el contenedor `horizon`
@@ -81,7 +90,7 @@ docker compose exec app php artisan test            # todos los tests en verde
 
 | Servicio | URL | Acceso |
 |---|---|---|
-| API | http://localhost:8080/api/v1 | ver [API](#8-api) |
+| API | http://localhost:8080/api/v1 | ver [API](#9-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
 | Grafana | http://localhost:3000 | `admin` / `admin` |
 | Prometheus | http://localhost:9090 | — |
@@ -107,6 +116,7 @@ docker compose exec app php artisan route:list --path=api  # rutas de la API
 docker compose logs -f horizon                             # logs de las colas
 docker compose exec app php artisan mail:sync              # sincronizar ya los buzones (si no, cada minuto)
 docker compose exec app php artisan ai:classify 2 --now    # clasificar el email 2 con la IA y ver resultado y coste
+docker compose exec app php artisan kb:search "¿cómo devuelvo un producto?" --tenant=1   # buscar en la documentación
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
 ```
 
@@ -134,6 +144,8 @@ que se usa para la app web, los workers de colas y el scheduler.
 
    greenmail = servidor de correo de PRUEBAS (IMAP + SMTP), solo en
                desarrollo y CI: no envía nada fuera
+   ollama    = modelo de embeddings LOCAL (bge-m3) para el RAG: los
+               documentos de las empresas no salen del servidor
 
   Observabilidad:
    logs de Laravel y contenedores ──► promtail ──► loki ──────┐
@@ -146,13 +158,14 @@ que se usa para la app web, los workers de colas y el scheduler.
 | `nginx` | Servidor web; pasa las peticiones PHP a `app`. |
 | `horizon` | Procesa los jobs en cola (Redis) con Laravel Horizon. |
 | `scheduler` | Ejecuta `php artisan schedule:run` cada minuto (tareas programadas, ver `routes/console.php`). |
-| `postgres` | PostgreSQL 16 con la extensión `pgvector` (para el RAG de fases futuras). Crea también la BD `app_testing` para los tests. |
+| `postgres` | PostgreSQL 16 con la extensión `pgvector` (vectores del RAG, índice HNSW). Crea también la BD `app_testing` para los tests. |
 | `redis` | Colas, caché y sesiones. Con contraseña y persistencia AOF. |
 | `postgres-exporter`, `redis-exporter` | Exponen métricas de BD y Redis para Prometheus. |
 | `prometheus` | Recoge métricas. |
 | `loki` + `promtail` | Almacén y recolector de logs (Laravel + contenedores). |
 | `grafana` | Paneles; datasources de Prometheus y Loki ya configurados. |
 | `greenmail` | Servidor de correo de pruebas (IMAP 3143, SMTP 3025, API 8080). Lo usan los tests de IMAP/SMTP y sirve para probar a mano (p. ej. con Thunderbird). Todo se queda en memoria. |
+| `ollama` | Modelos de IA locales: calcula los embeddings del RAG con `bge-m3`. Solo en la red interna (sin puerto publicado); el modelo se guarda en el volumen `ollama-data`. |
 
 Configuración de cada servicio en [`docker/`](docker/) y en
 [`docker-compose.yml`](docker-compose.yml).
@@ -525,7 +538,84 @@ Ingesta (Fase 4) ── evento EmailIngested ──► ClassifyEmailJob (cola "a
 
 ---
 
-## 7. Estructura del proyecto
+## 7. Base de conocimiento (RAG)
+
+Cada empresa sube su documentación (política de devoluciones, envíos,
+garantía, FAQs, manuales…) y la plataforma puede encontrar **por
+significado** el fragmento que responde a una pregunta, aunque no use las
+mismas palabras e incluso en otro idioma. Es la información que usará el
+agente (Fase 8) para responder los emails citando de dónde sale.
+
+### Cómo funciona
+
+```
+Subir documento (API o kb:import)
+  └─ disco privado + fila en documents (pending)
+       └─ ProcessDocumentJob (cola "documents", Horizon)
+            ├─ extraer texto: PDF por páginas · Markdown por secciones · HTML · TXT
+            ├─ trocear: ~2000 caracteres, párrafos completos, 200 de solapamiento
+            ├─ embeddings con Ollama (bge-m3, local) → vectores de 1024 números
+            └─ document_chunks (PostgreSQL + pgvector, índice HNSW) → ready
+
+Pregunta ("la lámpara llegó rota")
+  └─ embedding de la pregunta → trozos más cercanos (distancia coseno)
+       └─ resultados con su fuente: "Política de devoluciones, sección «Productos que llegan rotos»"
+```
+
+- **Privacidad:** los embeddings se calculan con un modelo **local**
+  (contenedor `ollama`, solo en la red interna). Los documentos de las
+  empresas no se envían a ningún servicio externo para indexarlos.
+- **Aislamiento:** documentos y trozos llevan `tenant_id`; la búsqueda
+  solo ve la documentación de la empresa del usuario (probado con tests y
+  por la API).
+- **Fuente citada:** cada trozo guarda la página (PDF) o la sección
+  (Markdown) de la que sale.
+- **Solo lo relevante:** por debajo de una similitud mínima
+  (`RAG_MIN_SIMILARITY`, 0,45) no se devuelve nada. Así una pregunta sin
+  relación ("¿tenéis tienda en Madrid?") no trae documentación que no
+  viene al caso.
+- **Formatos:** PDF (con texto; los escaneados sin OCR no están
+  soportados), TXT, Markdown y HTML. Máximo 20 MB (`RAG_MAX_UPLOAD_MB`).
+  El mismo fichero no se puede subir dos veces en una empresa.
+- **Coste:** 0 € (modelo local). Cada cálculo se registra igualmente en
+  `ai_requests` (`document_indexing` / `knowledge_search`) con tokens y
+  latencia.
+
+### Probarlo
+
+```bash
+docker compose exec ollama ollama pull bge-m3                        # una vez
+docker compose exec app php artisan db:seed --class=KnowledgeBaseSeeder   # documentos de ejemplo
+docker compose exec app php artisan kb:search "La lámpara me llegó rota, ¿qué hago?" --tenant=1
+docker compose exec app php artisan kb:import /ruta/en/el/contenedor/manual.pdf --tenant=1 --title="Manual"
+```
+
+Resultados reales con la documentación de ejemplo: "¿Cuánto cuesta enviar
+a Canarias?" → *Envíos y entregas, sección «Coste del envío»* (similitud
+0,74); "How long do I have to return an item?" → *Política de
+devoluciones, sección «Plazo para devolver»* (0,72, pregunta en inglés,
+documento en español). Indexar los 4 documentos de ejemplo tarda unos 15 s
+en CPU y cada búsqueda menos de 1 s.
+
+### Detalles técnicos
+
+- pgvector con el soporte nativo de Laravel 13 (`vector(1024)`,
+  `vectorIndex()` = HNSW + `vector_cosine_ops`, `orderByVectorDistance`).
+  Como el índice HNSW filtra por empresa *después* de buscar vecinos, la
+  búsqueda activa `hnsw.iterative_scan` (pgvector 0.8) para completar los
+  resultados dentro de la empresa.
+- Indexar un PDF grande en CPU puede tardar minutos: los documentos van por
+  una conexión de cola propia (`redis-long`, `retry_after` 30 min) para
+  que Redis no relance un job que sigue en marcha.
+- Cambiar de modelo de embeddings obliga a reindexar (los vectores no son
+  comparables entre modelos): `POST /documents/{id}/reindex`.
+- Otro proveedor de embeddings (Voyage, OpenAI…): implementar
+  [`EmbeddingProvider`](app/AI/Embeddings/EmbeddingProvider.php) y elegirlo
+  con `AI_EMBEDDINGS_PROVIDER`.
+
+---
+
+## 8. Estructura del proyecto
 
 ```
 app/
@@ -552,13 +642,20 @@ app/
 │   ├── Providers/Anthropic/  AnthropicProvider (SDK oficial de Anthropic)
 │   ├── Prompts/              Prompt (interfaz) + PromptRegistry (versiones en BD)
 │   ├── Classification/       Prompt de clasificación, EmailClassifier, ClassifyEmailJob
+│   ├── Embeddings/           EmbeddingProvider, OllamaEmbeddingProvider, EmbeddingService
 │   ├── AIService             Ejecuta prompts y registra cada petición en ai_requests
 │   └── CostCalculator        Coste en USD por modelo
-├── Console/Commands/         mail:sync (cada minuto), ai:classify
+├── Documents/                Base de conocimiento / RAG (Fase 6)
+│   ├── Extraction/           Texto de PDF, TXT, Markdown y HTML por secciones citables
+│   ├── Chunking/             TextChunker (troceado con solapamiento)
+│   ├── Search/               SemanticSearchService (pgvector)
+│   ├── DocumentService       Subir, indexar (ProcessDocumentJob) y borrar documentos
+│   └── KnowledgeBaseService  Documentación relevante para un email, lista para el prompt
+├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
 │                             EmailRecipient, EmailAttachment, MailSyncState,
-│                             AiRequest, AiPromptVersion
-├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy
+│                             AiRequest, AiPromptVersion, Document, DocumentChunk
+├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy, DocumentPolicy
 ├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders, AI
 ├── Tenancy/                  TenantService, BelongsToTenant, TenantScope
 └── Jobs/                     Jobs de cola
@@ -566,7 +663,7 @@ bootstrap/app.php             Middleware y manejo de errores de la API
 config/                       Configuración (ai, sanctum, horizon, mail_connections, services…)
 database/
 ├── migrations/               Esquema de la BD
-├── seeders/                  Roles/permisos + datos de desarrollo
+├── seeders/                  Roles/permisos, datos de desarrollo y documentación de ejemplo (knowledge/)
 └── factories/                Datos falsos para tests
 docker/                       Config de nginx, php, postgres, redis, prometheus, loki, grafana
 routes/
@@ -579,18 +676,19 @@ tests/
 ├── Feature/Users/            Gestión de usuarios y empresa
 ├── Feature/Mail/             Conexiones: Imap/, Smtp/ (GreenMail real), Microsoft/, Google/ (APIs simuladas)
 ├── Feature/Emails/           Tablas y modelos de emails; Ingestion/ (servicio, sync, job, comando, E2E con GreenMail)
-├── Feature/AI/               Proveedor Anthropic (HTTP simulado), AIService, costes, prompts, clasificación, job, comando
+├── Feature/AI/               Proveedor Anthropic (HTTP simulado), AIService, costes, prompts, clasificación, embeddings (Ollama simulado)
+├── Feature/Documents/        Documentos: extracción, troceado, indexado, búsqueda, API, aislamiento, comandos
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
-├── Support/GreenMail.php     Cuentas y buzones de prueba en GreenMail
-└── Fakes/                    FakeMailProvider, FakeLLMProvider y FakePrompt (sin servidores ni APIs reales)
+├── Support/                  GreenMail (buzones de prueba) y Pdf (PDFs generados al vuelo)
+└── Fakes/                    FakeMailProvider, FakeLLMProvider, FakePrompt, FakeEmbeddingProvider
 ```
 
-En próximas fases se añadirán más módulos en `app/` por dominio (`Tools/`, `Documents/`, `CRM/`, `ERP/`, `Observability/`…), siempre con la
+En próximas fases se añadirán más módulos en `app/` por dominio (`Tools/`, `CRM/`, `ERP/`, `Observability/`…), siempre con la
 lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 8. API
+## 9. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -616,6 +714,12 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | POST | `/mail-connections/{id}/test` | `mail_connections.manage` | Probar recepción y envío (máx. 10/min) |
 | POST | `/mail-connections/oauth/{microsoft\|google}/start` | `mail_connections.manage` | Iniciar la conexión OAuth: devuelve `authorization_url` |
 | GET | `/mail-connections/oauth/{microsoft\|google}/callback` | público | Vuelta desde Microsoft/Google (la llama el navegador) |
+| GET | `/documents` | `documents.view` | Documentación de tu empresa (paginado, con estado de indexado) |
+| POST | `/documents` | `documents.manage` | Subir un documento (multipart: `file` + `title` opcional); se indexa en cola |
+| GET | `/documents/{id}` | `documents.view` | Ver un documento |
+| POST | `/documents/{id}/reindex` | `documents.manage` | Volver a indexarlo |
+| DELETE | `/documents/{id}` | `documents.manage` | Eliminar documento, trozos y fichero |
+| POST | `/knowledge-base/search` | `documents.view` | Buscar por significado (`query`, `limit` opcional); devuelve trozos con su fuente (máx. 30/min) |
 
 ```bash
 # Login
@@ -646,7 +750,7 @@ para el futuro panel de administración (SPA).
 
 ---
 
-## 9. Tests
+## 10. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -677,24 +781,27 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
   `phpunit.xml` fuerza `ANTHROPIC_API_KEY` vacía. `AnthropicProvider` se
   prueba con el SDK real y un cliente HTTP simulado (Guzzle `MockHandler`);
   el resto, con `FakeLLMProvider` (respuestas o errores encolados) y el
-  helper `classificationData()`.
+  helper `classificationData()`. Los embeddings se prueban con
+  `FakeEmbeddingProvider` (vectores deterministas: textos con palabras en
+  común se parecen) y `Http::fake` para Ollama: los tests no necesitan el
+  modelo descargado.
 - Las funciones de ayuda de los archivos de test son **globales** en Pest:
   no repitas un nombre ya usado en otro archivo.
 
-## 10. CI
+## 11. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 11. Entornos
+## 12. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 12. Problemas frecuentes
+## 13. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -708,6 +815,9 @@ prepararán en la fase de producción.
 | Llegan correos al buzón pero no aparecen en `emails` | El buzón no está `active` (pruébalo con `POST /mail-connections/{id}/test`), la 1ª sincronización solo fija el punto de partida (lo anterior no se importa), o Horizon no procesa la cola `mail`: `docker compose exec horizon php artisan horizon:supervisors` debe mostrar `supervisor-mail`. Mira `last_error` en `mail_sync_states`. |
 | Tras cambiar código o `config/horizon.php` los jobs siguen igual | Horizon mantiene el código cargado: `docker compose exec horizon php artisan horizon:terminate` (el contenedor lo vuelve a arrancar). |
 | Los emails se guardan pero `intent` sigue vacío | No hay `ANTHROPIC_API_KEY` (el log dice "IA desactivada"), `AI_CLASSIFY_ON_INGEST=false`, o Horizon no procesa la cola `ai` (`horizon:supervisors` debe mostrar `supervisor-ai`). Mira `status` y `error` en `ai_requests`. Tras poner la clave: `horizon:terminate` y `ai:classify --pending`. |
+| Un documento se queda en `failed`: "El modelo bge-m3 no está descargado en Ollama" | Falta descargarlo: `docker compose exec ollama ollama pull bge-m3` y después `POST /documents/{id}/reindex`. |
+| Un documento se queda en `pending` | Horizon no procesa la cola `documents`: `horizon:supervisors` debe mostrar `supervisor-documents` (si no, `horizon:terminate`). |
+| "El PDF no contiene texto extraíble" | Es un PDF escaneado (solo imágenes). El OCR no está soportado todavía: súbelo en texto o PDF con texto. |
 | `ai:classify` → "Anthropic rechazó la API key (401)" | La clave es incorrecta o se revocó: revisa `ANTHROPIC_API_KEY` y reinicia Horizon. |
 | "La conexión con microsoft/google no está configurada en este servidor" | Faltan `MICROSOFT_CLIENT_ID/SECRET` o `GOOGLE_CLIENT_ID/SECRET` (ver [Conexiones de correo](#4-conexiones-de-correo)). |
 
