@@ -27,8 +27,9 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 4 | Ingesta de emails: sincronización periódica de los buzones, emails + destinatarios + adjuntos guardados sin duplicados, reintentos | ✅ Hecha |
 | 5 | IA con Claude (Anthropic): clasificación de cada email (intención, confianza, resumen, datos), registro de cada petición con tokens, coste y latencia | ✅ Hecha (probada con Claude real: ~0,012 $ por email) |
 | 6 | Base de conocimiento (RAG): documentos de la empresa (PDF, TXT, Markdown, HTML), troceado, embeddings **locales** (Ollama + bge-m3) y búsqueda por significado con pgvector, citando la fuente | ✅ Hecha |
-| 7 | Tools: herramientas controladas que la IA puede usar (pedidos, clientes, tickets…) | ⏳ Siguiente |
-| 8–17 | Agente, automatización, panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
+| 7 | Tools: herramientas controladas que la IA puede pedir (documentación, pedidos del cliente), validadas, con permisos y auditadas en `ai_tool_calls` | ✅ Hecha |
+| 8 | Agente: Claude usa las herramientas en cadena para preparar la respuesta de cada email | ⏳ Siguiente |
+| 9–17 | Automatización, panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
@@ -36,8 +37,10 @@ los correos nuevos de los buzones conectados, los guarda (con destinatarios
 y adjuntos) y los **clasifica con Claude**: intención, confianza, idioma,
 resumen, si necesita una persona y datos como el número de pedido. Cada
 empresa puede además subir su **documentación** (políticas, FAQs,
-manuales), que se indexa en local y se puede consultar por significado.
-Todavía no responde los emails: eso llega con el agente (Fase 8). La hoja de ruta completa y las
+manuales), que se indexa en local y se puede consultar por significado,
+y la IA ya tiene **herramientas controladas** para consultar esa
+documentación y los pedidos del cliente que escribe. Todavía no responde
+los emails: eso llega con el agente (Fase 8). La hoja de ruta completa y las
 decisiones de arquitectura están en [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -90,7 +93,7 @@ docker compose exec app php artisan test            # todos los tests en verde
 
 | Servicio | URL | Acceso |
 |---|---|---|
-| API | http://localhost:8080/api/v1 | ver [API](#9-api) |
+| API | http://localhost:8080/api/v1 | ver [API](#10-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
 | Grafana | http://localhost:3000 | `admin` / `admin` |
 | Prometheus | http://localhost:9090 | — |
@@ -117,6 +120,7 @@ docker compose logs -f horizon                             # logs de las colas
 docker compose exec app php artisan mail:sync              # sincronizar ya los buzones (si no, cada minuto)
 docker compose exec app php artisan ai:classify 2 --now    # clasificar el email 2 con la IA y ver resultado y coste
 docker compose exec app php artisan kb:search "¿cómo devuelvo un producto?" --tenant=1   # buscar en la documentación
+docker compose exec app php artisan ai:tool --list         # herramientas de la IA (y ejecutarlas a mano)
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
 ```
 
@@ -615,7 +619,75 @@ en CPU y cada búsqueda menos de 1 s.
 
 ---
 
-## 8. Estructura del proyecto
+## 8. Herramientas de la IA (Tools)
+
+La IA **nunca accede a los datos por su cuenta**: solo puede pedir una
+herramienta por su nombre con unos argumentos, y el backend decide si la
+ejecuta. Es la base del agente de la Fase 8, que encadenará herramientas
+para preparar la respuesta de cada email.
+
+### Herramientas disponibles
+
+| Herramienta | Qué hace | Necesita email |
+|---|---|---|
+| `search_company_documents` | Busca en la documentación de la empresa (RAG) y devuelve fragmentos con su fuente para citarla | no |
+| `get_order` | Detalle de un pedido del cliente: estado, productos, total, envío y seguimiento | sí |
+| `get_customer_orders` | Últimos pedidos del cliente (cuando no da el número) | sí |
+
+### Cómo se controlan
+
+```
+La IA pide: get_order {"order_number": "45821"}
+  └─ ToolExecutor (único que ejecuta)
+       1. ¿existe la herramienta?                    → si no: rejected
+       2. ¿los argumentos cumplen su esquema JSON?    → si no: rejected (con el motivo, para que se corrija)
+       3. ¿se puede usar aquí? (p. ej. necesita email) → si no: rejected
+       4. se ejecuta dentro de la empresa del email; un fallo inesperado
+          se convierte en un error genérico (el detalle solo va al log)
+       5. resultado recortado si es demasiado grande
+  └─ SIEMPRE se registra en ai_tool_calls: argumentos, resultado, estado, duración
+```
+
+- **Los datos de un cliente solo se le enseñan a ese cliente.** Las
+  herramientas de pedidos están atadas al **remitente del email**, que pone
+  el backend y no la IA. Si el email pide un pedido de otra persona, la
+  respuesta es la misma que para un pedido que no existe: "No hay ningún
+  pedido con ese número asociado a este cliente". `get_customer_orders`
+  ni siquiera acepta un email como argumento.
+- **Argumentos inventados se rechazan**: los esquemas no admiten campos
+  extra (un `"sql": "DROP TABLE…"` o un `"email": "otro@cliente"` no se
+  ejecutan).
+- **Pedidos de demostración:** todavía no hay integración con una tienda
+  o ERP real (Fase 14). Los pedidos salen de
+  [`database/seeders/demo/orders.json`](database/seeders/demo/orders.json)
+  (solo para "Empresa Demo", con los mismos números que los emails de
+  prueba). Las herramientas usan la interfaz `OrderProvider`: cuando
+  llegue la integración real, se cambia el proveedor y ellas no cambian.
+
+### Probarlas a mano
+
+```bash
+docker compose exec app php artisan ai:tool --list
+# Como si la IA procesara el email 1 (Cliente Pérez):
+docker compose exec app php artisan ai:tool get_order --email=1 --args='{"order_number":"45821"}'
+docker compose exec app php artisan ai:tool get_order --email=1 --args='{"order_number":"76540"}'   # de otro cliente → no lo ve
+docker compose exec app php artisan ai:tool search_company_documents --tenant=1 --args='{"query":"plazo de devolución"}'
+```
+
+Cada ejecución queda en la tabla `ai_tool_calls`.
+
+### Añadir una herramienta
+
+Crear una clase que implemente [`AITool`](app/Tools/Contracts/AITool.php)
+(nombre en snake_case, descripción para el modelo, esquema JSON con
+`additionalProperties: false`, `execute()` que devuelve
+`ToolResult::success()` o `ToolResult::error()`), marcarla con
+`RequiresSender` si devuelve datos de un cliente, y añadirla a
+`ai.tools.available` en [`config/ai.php`](config/ai.php).
+
+---
+
+## 9. Estructura del proyecto
 
 ```
 app/
@@ -651,19 +723,25 @@ app/
 │   ├── Search/               SemanticSearchService (pgvector)
 │   ├── DocumentService       Subir, indexar (ProcessDocumentJob) y borrar documentos
 │   └── KnowledgeBaseService  Documentación relevante para un email, lista para el prompt
-├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search
+├── Tools/                    Herramientas de la IA (Fase 7)
+│   ├── Contracts/            AITool, RequiresSender
+│   ├── Builtin/              search_company_documents, get_order, get_customer_orders
+│   ├── ToolRegistry          Catálogo de herramientas disponibles
+│   └── ToolExecutor          Valida, controla permisos, ejecuta y registra (ai_tool_calls)
+├── ERP/                      Pedidos: OrderProvider + DemoOrderProvider (integraciones reales en la Fase 14)
+├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search, ai:tool
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
 │                             EmailRecipient, EmailAttachment, MailSyncState,
-│                             AiRequest, AiPromptVersion, Document, DocumentChunk
+│                             AiRequest, AiPromptVersion, Document, DocumentChunk, AiToolCall
 ├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy, DocumentPolicy
 ├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders, AI
 ├── Tenancy/                  TenantService, BelongsToTenant, TenantScope
 └── Jobs/                     Jobs de cola
 bootstrap/app.php             Middleware y manejo de errores de la API
-config/                       Configuración (ai, sanctum, horizon, mail_connections, services…)
+config/                       Configuración (ai, erp, sanctum, horizon, mail_connections, services…)
 database/
 ├── migrations/               Esquema de la BD
-├── seeders/                  Roles/permisos, datos de desarrollo y documentación de ejemplo (knowledge/)
+├── seeders/                  Roles/permisos, datos de desarrollo, documentación (knowledge/) y pedidos (demo/) de ejemplo
 └── factories/                Datos falsos para tests
 docker/                       Config de nginx, php, postgres, redis, prometheus, loki, grafana
 routes/
@@ -678,9 +756,11 @@ tests/
 ├── Feature/Emails/           Tablas y modelos de emails; Ingestion/ (servicio, sync, job, comando, E2E con GreenMail)
 ├── Feature/AI/               Proveedor Anthropic (HTTP simulado), AIService, costes, prompts, clasificación, embeddings (Ollama simulado)
 ├── Feature/Documents/        Documentos: extracción, troceado, indexado, búsqueda, API, aislamiento, comandos
+├── Feature/Tools/            Registro, ejecutor (validación, permisos, errores), herramientas, comando ai:tool
+├── Feature/ERP/              Proveedor de pedidos de demostración
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
 ├── Support/                  GreenMail (buzones de prueba) y Pdf (PDFs generados al vuelo)
-└── Fakes/                    FakeMailProvider, FakeLLMProvider, FakePrompt, FakeEmbeddingProvider
+└── Fakes/                    FakeMailProvider, FakeLLMProvider, FakePrompt, FakeEmbeddingProvider, FakeTool
 ```
 
 En próximas fases se añadirán más módulos en `app/` por dominio (`Tools/`, `CRM/`, `ERP/`, `Observability/`…), siempre con la
@@ -688,7 +768,7 @@ lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 9. API
+## 10. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -750,7 +830,7 @@ para el futuro panel de administración (SPA).
 
 ---
 
-## 10. Tests
+## 11. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -788,20 +868,20 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
 - Las funciones de ayuda de los archivos de test son **globales** en Pest:
   no repitas un nombre ya usado en otro archivo.
 
-## 11. CI
+## 12. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 12. Entornos
+## 13. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 13. Problemas frecuentes
+## 14. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|

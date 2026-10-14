@@ -1333,7 +1333,7 @@ los trozos más parecidos por significado y se devuelven con su fuente
 GitHub Actions en verde (el CI no necesita Ollama: los tests usan
 `FakeEmbeddingProvider` / `Http::fake`).
 
-### Fase 7 (Tools): EN CURSO (desde 2026-10-14)
+### Fase 7 (Tools): COMPLETADA Y PROBADA EN LOCAL (2026-10-14), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
@@ -1456,8 +1456,26 @@ Fase 8.
   comandos no llamar a un método `context()` (choca con un método
   protegido de `Command`), y no poner llaves `{}` dentro de la firma (ni
   como valor por defecto ni en la descripción de una opción)
-- [ ] 9. Prueba en el stack, README
+- [x] 9. **Prueba en el stack (2026-10-14)** con los emails reales de la
+  BD de desarrollo (migración `ai_tool_calls` aplicada): `ai:tool --list`
+  muestra las 3 herramientas; email 1 (Cliente Pérez) → `get_order
+  #45821` con productos, SEUR y seguimiento; email 1 pidiendo el 76540 (de
+  Marcos) → "No hay ningún pedido…"; email 3 (Laura) →
+  `get_customer_orders` 78123 (en preparación) y 74400 (cancelado); email
+  9 (el de la prompt injection) con `{"email": "cliente@cliente.test"}` →
+  `rejected` por el esquema; email 6 (spam) → sin pedidos;
+  `search_company_documents` con el email en inglés de John → "Productos
+  que llegan rotos o defectuosos" 0,55 (Ollama real). Las 6 llamadas en
+  `ai_tool_calls` con estado, duración y error (~0,7 s por llamada es el
+  arranque de cada proceso `artisan`; la búsqueda 6,3 s por la carga del
+  modelo en Ollama tras inactividad). README: sección "8. Herramientas de
+  la IA (Tools)" (herramientas, cómo se controlan, datos solo del propio
+  cliente, argumentos inventados, pedidos de demostración, probarlas,
+  añadir una herramienta), estado, comandos, estructura; secciones
+  renumeradas (API = #10)
 
+**Pendiente para dar la Fase 7 por cerrada:** push (lo hace el usuario) y
+GitHub Actions en verde.
 ### Pendientes anotados para más adelante
 
 - **Autodetección de configuración IMAP/SMTP (Fase 10, panel)** — pedido
