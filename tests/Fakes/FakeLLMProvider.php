@@ -5,6 +5,7 @@ namespace Tests\Fakes;
 use App\AI\Contracts\LLMProvider;
 use App\AI\Data\LLMRequest;
 use App\AI\Data\LLMResponse;
+use App\AI\Data\LLMToolCall;
 use App\AI\Data\LLMUsage;
 use Throwable;
 

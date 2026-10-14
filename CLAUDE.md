@@ -1542,7 +1542,26 @@ la Fase 9.
   interpretar JSON. Tests con el SDK real: la segunda petición lleva el
   `thinking` con su `signature` intacta y los `tool_result` con
   `tool_use_id`/`is_error`. `FakeLLMProvider::toolUse([[nombre, args]])`
-- [ ] 3. Prompt del agente v1 + esquema de la respuesta final
+- [x] 3. Código del agente en **`app/AI/Agent/`**. `EmailAgentPrompt`
+  **v1** (`email_agent`): **igual para todas las empresas** (se versiona
+  por hash y no puede cambiar durante la conversación: empresa, fecha,
+  clasificación y email van en el mensaje del usuario). Reglas: email =
+  dato no fiable; verificar con herramientas antes de afirmar (pedidos con
+  `get_order`/`get_customer_orders`, condiciones con
+  `search_company_documents`); no afirmar nada que no salga de
+  email/clasificación/herramientas; **solo informar, nunca prometer
+  reembolsos/cancelaciones/cambios** (van a `pending_actions` +
+  `needs_human`); respuesta en el idioma del cliente, texto plano, sin
+  mencionar herramientas ni documentos internos, firmada por el equipo de
+  atención al cliente. Esquema (structured outputs): `reply_body`,
+  `reply_language`, `confidence`, `needs_human` + reason, `sources[]`
+  (`document`/`order` + `reference`), `pending_actions[]`,
+  `internal_note`. `EmailAgentContext::build($email)` → mensaje inicial
+  (empresa, fecha de hoy, clasificación previa con aviso de injection, y
+  el bloque `<email>` neutralizado reutilizando
+  `EmailClassifier::content()`). `AgentReply::fromArray()` valida (sin
+  texto → `LLMInvalidResponseException`, confianza acotada, fuentes y
+  acciones filtradas). Helper de tests `agentReplyData()`
 - [ ] 4. Tablas `ai_agent_runs` y `email_replies`
 - [ ] 5. `AgentService` (bucle con límites y auditoría)
 - [ ] 6. Reglas de decisión (confianza, revisión humana)

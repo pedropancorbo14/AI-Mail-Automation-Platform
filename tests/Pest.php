@@ -72,3 +72,18 @@ function enableTools(Tenant $tenant, string ...$tools): void
         app(App\Tools\TenantToolService::class)->enable($tenant, $tool);
     }
 }
+
+/** JSON de respuesta final del agente tal como lo devolvería el modelo (sobrescribible por campo). */
+function agentReplyData(array $overrides = []): array
+{
+    return array_replace([
+        'reply_body' => "Hola:\n\nTu pedido #45821 salió el 29 de septiembre con SEUR (seguimiento SEU123456789ES).\n\nUn saludo,\nEl equipo de atención al cliente",
+        'reply_language' => 'es',
+        'confidence' => 0.9,
+        'needs_human' => false,
+        'needs_human_reason' => null,
+        'sources' => [['type' => 'order', 'reference' => '45821']],
+        'pending_actions' => [],
+        'internal_note' => null,
+    ], $overrides);
+}
