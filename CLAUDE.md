@@ -1387,7 +1387,21 @@ Fase 8.
   que no esté ahí no existe para la IA) + `ai.tools.max_result_chars`
   (8000, `AI_TOOLS_MAX_RESULT_CHARS`). `tests/Fakes/FakeTool`
   (nombre, esquema y manejador configurables; registra llamadas)
-- [ ] 4. `ToolExecutor` (JSON Schema, permisos, errores, límites, registro)
+- [x] 4. `composer require opis/json-schema:^2.6` (Apache-2.0).
+  `App\Tools\ToolExecutor::execute($name, $arguments, ToolContext)`:
+  **único punto de ejecución**, nunca lanza (devuelve `ToolResult`).
+  Dentro de `runAs($context->tenant)`: 1) herramienta desconocida →
+  `rejected`; 2) argumentos validados con **JSON Schema** (opis; primer
+  error legible "Argumentos no válidos para X: /campo: …" para que el
+  modelo se corrija; argumentos inventados rechazados por
+  `additionalProperties: false`) → `rejected`; 3) interfaz marcadora
+  **`App\Tools\Contracts\RequiresSender`**: sin remitente en el contexto
+  → `rejected`; 4) ejecución, excepción inesperada → `error` genérico
+  "Error interno al ejecutar X…" (detalle **solo al log**); 5) resultado
+  > `ai.tools.max_result_chars` → se recorta (`truncated`, `note`,
+  `partial`). Siempre registra en `ai_tool_calls` (argumentos, resultado
+  que vio el modelo, estado, error, duración, ai_request_id, email_id) +
+  log
 - [ ] 5. Herramienta `search_company_documents`
 - [ ] 6. `OrderProvider` + proveedor demo
 - [ ] 7. Herramientas `get_order` y `get_customer_orders`

@@ -13,6 +13,7 @@
         "laravel/horizon": "^5.50",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
+        "opis/json-schema": "^2.6",
         "smalot/pdfparser": "^2.12"
     },
     "require-dev": {
