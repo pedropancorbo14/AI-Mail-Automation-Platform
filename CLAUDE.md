@@ -1476,7 +1476,39 @@ Fase 8.
 
 **Pendiente para dar la Fase 7 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde.
+### Fase 8 (AI Agent): SIGUIENTE, no empezada.
+
+**Primera tarea acordada con el usuario (2026-10-14): herramientas por
+empresa.** Hoy `ai.tools.available` es global (todas las empresas tienen
+las mismas). Antes del agente: tabla `tenant_tools` (o configuración del
+tenant) con las herramientas activadas por empresa, y el agente solo
+ofrece a Claude las de esa empresa **y** solo si tiene configurada su
+fuente de datos (p. ej. `get_order` solo si hay `OrderProvider` para
+ella; `search_company_documents` para todas). Motivo: no todas las
+empresas tienen pedidos (servicios, clínicas, gestorías...); ofrecer
+herramientas que no aplican confunde al modelo y gasta tokens. El
+`ToolExecutor` debe rechazar también (`rejected`) una herramienta no
+activada para la empresa del contexto, aunque exista en el catálogo.
+
 ### Pendientes anotados para más adelante
+
+- **Herramientas por tipo de negocio (Fase 14, integraciones)** — pedido
+  por el usuario (2026-10-14): empresas sin pedidos (atención al cliente,
+  servicios) necesitan otras herramientas, cada una con su proveedor
+  intercambiable como `OrderProvider` y las mismas reglas (atadas al
+  remitente, validadas, auditadas, aisladas por empresa): soporte
+  `get_ticket`/`create_support_ticket` (Zendesk, Freshdesk, helpdesk
+  propio), citas `get_appointment`/`get_available_slots` (agenda,
+  Calendly), contratos/suscripciones `get_contract`/`get_invoice` (CRM,
+  facturación). Sin herramientas de datos el agente sigue pudiendo
+  responder con `search_company_documents` (FAQs, condiciones) y derivar
+  a una persona lo demás.
+- **Herramienta genérica configurable por empresa** (más adelante y solo
+  si hay demanda real): el administrador define URL, parámetros y datos
+  devueltos de una API propia. Muy flexible pero arriesgada (SSRF,
+  filtrado de datos de otros clientes, credenciales): exigiría
+  anti-SSRF como `MailHostGuard`, credenciales cifradas, atadura al
+  remitente y límites de respuesta.
 
 - **Autodetección de configuración IMAP/SMTP (Fase 10, panel)** — pedido
   por el usuario (2026-09-30). Que el cliente solo escriba email y
