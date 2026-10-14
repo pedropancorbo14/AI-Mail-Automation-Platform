@@ -1614,7 +1614,18 @@ la Fase 9.
   respuesta limpia y segura → sin revisión; cada motivo por separado;
   pedido ajeno con confianza 0,95 → revisión; varios motivos acumulados;
   umbral configurable
-- [ ] 7. Comando `ai:reply`
+- [x] 7. Comando `php artisan ai:reply {email} [--last]`
+  (`app/Console/Commands/ReplyToEmail.php`): busca el email globalmente
+  (`withoutGlobalScope`), entra en su tenant con `runAs` y ejecuta
+  `AgentService` al momento (sin cola; nunca envía nada). Muestra la
+  traza: cada paso (estado, tokens, latencia, coste) con sus llamadas a
+  herramientas (argumentos, estado, resultado recortado), el resumen de
+  la ejecución (motivo de fin, pasos/herramientas, tokens, coste,
+  duración) y la propuesta (cuerpo, confianza, ¿necesita persona? y
+  motivos, fuentes, acciones pendientes, nota interna). `--last` muestra
+  la última ejecución guardada sin volver a llamar a la IA. Sin API key
+  → error claro; error temporal → lo muestra junto a la ejecución
+  registrada; sin propuesta → explica el motivo y termina con fallo
 - [ ] 8. Prueba real con Claude, README
 
 ### Pendientes anotados para más adelante
