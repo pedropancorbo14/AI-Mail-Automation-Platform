@@ -160,6 +160,7 @@ class EmailIngestionService
             'text_body' => self::clean($message->textBody),
             'html_body' => self::clean($message->htmlBody),
             'sent_at' => $message->date,
+            'automated_reason' => self::limit($message->automatedReason, 500),
         ]);
         $email->mailConnection()->associate($connection);
         $email->save();

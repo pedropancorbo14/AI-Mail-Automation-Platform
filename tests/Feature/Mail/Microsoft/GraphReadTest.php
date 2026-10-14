@@ -233,3 +233,17 @@ it('converts html bodies into readable text', function () {
 
     expect(HtmlToText::convert($html))->toBe("Hola Ana,\nTu pedido:\n- Silla&Mesa");
 });
+
+it('detects automated emails by their headers', function () {
+    Http::fake(['graph.microsoft.com/v1.0/me/messages/AAMk%3D%3D*' => Http::response(graphMessage('AAMk==', [
+        'internetMessageHeaders' => [['name' => 'List-Unsubscribe', 'value' => '<https://tienda.test/baja>']],
+    ]))]);
+
+    expect(graphProvider()->message('inbox', 'AAMk==')->automatedReason)->toContain('boletín');
+});
+
+it('treats an email without automatic headers as written by a person', function () {
+    Http::fake(['graph.microsoft.com/v1.0/me/messages/AAMk%3D%3D*' => Http::response(graphMessage('AAMk=='))]);
+
+    expect(graphProvider()->message('inbox', 'AAMk==')->automatedReason)->toBeNull();
+});

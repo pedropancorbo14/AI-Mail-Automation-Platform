@@ -277,7 +277,7 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-09-29)
+## ESTADO ACTUAL (actualizado 2026-10-14)
 
 **Decisión ya tomada, distinta al plan original:** empezar la Fase 5 (AI
 Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
@@ -455,7 +455,7 @@ commits; el push y la revisión del CI los hace el usuario.
 Usuario de desarrollo (seeder): `test@example.com` / `password`, owner
 de "Empresa Demo" (`php artisan migrate:fresh --seed`).
 
-### Fase 3 (conexiones de correo): COMPLETADA EN LOCAL (2026-09-30), pendiente de CI
+### Fase 3 (conexiones de correo): CERRADA — COMPLETADA EN LOCAL (2026-09-30), CI en verde (2026-10-14)
 
 Misma forma de trabajo que la Fase 2: un commit por tarea, tests antes de
 cada commit, este archivo actualizado en cada commit, sin push.
@@ -723,12 +723,11 @@ sin configurar → 422 claro. Conexión demo en la BD de desarrollo:
   limitaciones, cómo añadir un proveedor), API, estructura, tests, CI y
   problemas frecuentes (este commit)
 
-**Pendiente para dar la Fase 3 por cerrada:** push (lo hace el usuario) y
-GitHub Actions en verde (el CI ahora levanta también GreenMail como
-servicio). Probar Microsoft/Google con cuentas reales requiere registrar
+**Cerrada:** push del usuario y GitHub Actions en verde (2026-10-14; el
+CI levanta también GreenMail como servicio). Probar Microsoft/Google con cuentas reales requiere registrar
 las apps (Azure / Google Cloud) y rellenar `MICROSOFT_*`/`GOOGLE_*`.
 
-### Fase 4 (ingesta de emails): COMPLETADA EN LOCAL (2026-09-30), pendiente de CI
+### Fase 4 (ingesta de emails): CERRADA — COMPLETADA EN LOCAL (2026-09-30), CI en verde (2026-10-14)
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
@@ -877,15 +876,14 @@ privado), registra los errores y reintenta los fallos temporales.
   local), estado, estructura, API (409), tests, problemas frecuentes;
   secciones siguientes renumeradas (API = #7)
 
-**Pendiente para dar la Fase 4 por cerrada:** push (lo hace el usuario) y
-GitHub Actions en verde.
+**Cerrada:** push del usuario y GitHub Actions en verde (2026-10-14).
 
 **Después:** PostgreSQL publicado en `127.0.0.1:${DB_FORWARD_PORT:-5433}`
 para verlo con un cliente gráfico (el usuario usa **HeidiSQL**; tipo
 PostgreSQL, `app`/`secret`, BD `app`). 5433 porque en el equipo del
 usuario el 5432 ya lo usa otro PostgreSQL. Solo loopback, nunca la red.
 
-### Fase 5 (AI Engine con Claude/Anthropic): COMPLETADA Y PROBADA CON CLAUDE REAL (2026-10-08), pendiente de CI
+### Fase 5 (AI Engine con Claude/Anthropic): CERRADA — COMPLETADA Y PROBADA CON CLAUDE REAL (2026-10-08), CI en verde (2026-10-14)
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push. **El usuario aún no
@@ -1106,10 +1104,9 @@ saldo, `claude-opus-5-5`):**
   '/var/www/html/vendor/autoload.php'`). `tinker archivo.php` no lo
   ejecuta.
 
-**Pendiente para dar la Fase 5 por cerrada:** push (lo hace el usuario) y
-GitHub Actions en verde.
+**Cerrada:** push del usuario y GitHub Actions en verde (2026-10-14).
 
-### Fase 6 (RAG: documentación de la empresa): COMPLETADA Y PROBADA EN LOCAL (2026-10-08), pendiente de CI
+### Fase 6 (RAG: documentación de la empresa): CERRADA — COMPLETADA Y PROBADA EN LOCAL (2026-10-08), CI en verde (2026-10-14)
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
@@ -1329,11 +1326,9 @@ los trozos más parecidos por significado y se devuelven con su fuente
   estructura, API, tests, problemas frecuentes; secciones renumeradas
   (API = #9)
 
-**Pendiente para dar la Fase 6 por cerrada:** push (lo hace el usuario) y
-GitHub Actions en verde (el CI no necesita Ollama: los tests usan
-`FakeEmbeddingProvider` / `Http::fake`).
+**Cerrada:** push del usuario y GitHub Actions en verde (2026-10-14).
 
-### Fase 7 (Tools): COMPLETADA Y PROBADA EN LOCAL (2026-10-14), pendiente de CI
+### Fase 7 (Tools): CERRADA — COMPLETADA Y PROBADA EN LOCAL (2026-10-14), CI en verde (2026-10-14)
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
@@ -1474,9 +1469,8 @@ Fase 8.
   añadir una herramienta), estado, comandos, estructura; secciones
   renumeradas (API = #10)
 
-**Pendiente para dar la Fase 7 por cerrada:** push (lo hace el usuario) y
-GitHub Actions en verde.
-### Fase 8 (AI Agent): COMPLETADA Y PROBADA CON CLAUDE REAL (2026-10-14), pendiente de CI
+**Cerrada:** push del usuario y GitHub Actions en verde (2026-10-14).
+### Fase 8 (AI Agent): CERRADA — COMPLETADA Y PROBADA CON CLAUDE REAL (2026-10-14), CI en verde (2026-10-14)
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
@@ -1666,8 +1660,65 @@ la Fase 9.
   sección 8, estado, comandos, estructura, tests, problemas frecuentes;
   secciones siguientes renumeradas (API = #11)
 
-**Pendiente para dar la Fase 8 por cerrada:** push (lo hace el usuario) y
-GitHub Actions en verde.
+**Cerrada:** push del usuario y GitHub Actions en verde (2026-10-14).
+
+### Fase 9 (automatización de emails): EN CURSO (desde 2026-10-14)
+
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit, sin push.
+
+**Objetivo:** cada email que llega se procesa solo de principio a fin
+(sección 17, MVP): ingesta → clasificación → agente → decisión → **envío
+automático** o **revisión humana**, moviendo `emails.status` por los
+estados de la sección 12 y registrando cada cambio. Hasta ahora la
+clasificación y el agente existían por separado y nada se enviaba.
+
+**Decisiones tomadas:**
+- **Modo de automatización por empresa** (`off` / `draft` / `auto`),
+  **por defecto `draft`**: el agente prepara la respuesta pero todo va a
+  revisión humana. Enviar sin persona es opt-in explícito de cada empresa
+  (`auto`), y aun así solo para las **intenciones permitidas** por la
+  empresa y si `AgentDecision` no pide revisión.
+- **Nunca responder a correos automáticos** (anti-bucles): rebotes,
+  respuestas automáticas, listas y boletines se detectan por cabeceras
+  (`Auto-Submitted`, `Precedence`, `List-Id`/`List-Unsubscribe`,
+  `multipart/report`, `X-Autoreply`) o remitente `noreply`/`mailer-daemon`,
+  y no se gasta IA en ellos. Además: límite de respuestas automáticas por
+  remitente y día, nunca a un buzón de la propia empresa, y las
+  respuestas automáticas salen con `Auto-Submitted: auto-replied`
+  (RFC 3834) para que otros bots no contesten.
+- Estado nuevo **`ignored`** (no necesita respuesta: automático, spam,
+  fuera de oficina): la sección 12 no tenía un final para "no responder".
+- **Historial de estados** en tabla propia (quién/qué lo movió y por qué)
+  y transiciones válidas en código: un email no puede saltar de estado
+  sin pasar por las reglas.
+- **Envío idempotente:** la respuesta se "reclama" con un cambio de estado
+  atómico antes de enviar (dos workers no envían dos veces) y nunca se
+  reintenta un envío cuyo resultado se desconoce.
+
+**Tareas (commit):**
+- [x] 1. **Detección de correos automáticos** en la ingesta.
+  `App\Mail\Support\AutomatedMessageDetector::reason($headers, $from)`
+  (común a todos los proveedores, sin IA): `Auto-Submitted` distinto de
+  `no` (RFC 3834), `Content-Type: multipart/report` (rebotes),
+  `Precedence: bulk|list|junk|auto_reply`, `List-Id`/`List-Unsubscribe`
+  (listas y boletines), `X-Autoreply`/`X-Autorespond`… y remitentes que no
+  aceptan respuesta (`noreply`, `no-reply+x`, `donotreply`,
+  `mailer-daemon`, `postmaster`, `bounce`; "noreplyjuan" no cuenta).
+  `MailMessage::$automatedReason` lo rellenan `MimeMessageMapper` (IMAP y
+  Gmail, solo las cabeceras de `HEADERS`) y `GraphMessageMapper`
+  (`internetMessageHeaders`, que ya se pedían). Columna
+  `emails.automated_reason` (null = escrito por una persona; fillable) y
+  `Email::isAutomated()`. Tests: detector (casos positivos y negativos),
+  IMAP real con GreenMail, Graph y Gmail simulados, ingesta
+- [ ] 2. Estados del email: `ignored`, transiciones válidas e historial
+- [ ] 3. Modo de automatización por empresa
+- [ ] 4. `EmailProcessor` + `ProcessEmailJob`: clasificación → agente → decisión
+- [ ] 5. Política de envío automático (intenciones, anti-bucles, límites)
+- [ ] 6. Envío de la respuesta en el hilo (`ReplySender` + `SendReplyJob`)
+- [ ] 7. Comandos `ai:process` y `ai:automation`
+- [ ] 8. Prueba de extremo a extremo con GreenMail
+- [ ] 9. Prueba real con Claude, README
 
 ### Pendientes anotados para más adelante
 

@@ -43,6 +43,16 @@ it('stores the email with sender, subject, bodies, date and thread headers', fun
         ->and($email->ingested_at)->toBeNull();
 });
 
+it('stores why an email is automated', function () {
+    $auto = inTenant($this->tenant, fn () => ingestMessage(incomingMessage(['automatedReason' => 'Mensaje automático (Auto-Submitted: auto-replied).']))->fresh());
+    $person = inTenant($this->tenant, fn () => ingestMessage(incomingMessage(['messageId' => 'otro@cliente.test']))->fresh());
+
+    expect($auto->automated_reason)->toBe('Mensaje automático (Auto-Submitted: auto-replied).')
+        ->and($auto->isAutomated())->toBeTrue()
+        ->and($person->automated_reason)->toBeNull()
+        ->and($person->isAutomated())->toBeFalse();
+});
+
 it('stores the recipients in order', function () {
     $email = ingestMessage(incomingMessage());
 

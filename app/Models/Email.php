@@ -25,7 +25,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 #[Fillable([
     'folder', 'provider_message_id', 'message_id', 'in_reply_to', 'references', 'dedup_hash',
-    'from_email', 'from_name', 'subject', 'text_body', 'html_body', 'sent_at',
+    'from_email', 'from_name', 'subject', 'text_body', 'html_body', 'sent_at', 'automated_reason',
 ])]
 class Email extends Model
 {
@@ -50,6 +50,12 @@ class Email extends Model
             'ai_entities' => 'array',
             'classified_at' => 'datetime',
         ];
+    }
+
+    /** Rebote, respuesta automática, lista o boletín: la automatización nunca le responde. */
+    public function isAutomated(): bool
+    {
+        return $this->automated_reason !== null;
     }
 
     /** Correo y adjuntos guardados: listo para procesar. */

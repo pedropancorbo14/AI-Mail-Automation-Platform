@@ -14,6 +14,8 @@ final readonly class MailMessage
      * @param  list<MailAddress>  $replyTo
      * @param  list<string>  $references  Message-IDs del hilo, sin < >.
      * @param  list<MailAttachment>  $attachments
+     * @param  string|null  $automatedReason  Por qué es un correo automático (rebote, lista,
+     *         respuesta automática...); null si parece escrito por una persona.
      */
     public function __construct(
         public string $id,
@@ -31,6 +33,7 @@ final readonly class MailMessage
         public ?string $inReplyTo = null,
         public array $references = [],
         public bool $seen = false,
+        public ?string $automatedReason = null,
     ) {
     }
 }

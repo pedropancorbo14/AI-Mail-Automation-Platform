@@ -44,7 +44,24 @@ class MimeMessageMapper
             inReplyTo: self::stripAngles($message->inReplyTo()[0] ?? null),
             references: self::references($message),
             seen: $seen,
+            automatedReason: AutomatedMessageDetector::reason(self::headers($message), $message->from()?->email()),
         );
+    }
+
+    /**
+     * Valores de las cabeceras que usa AutomatedMessageDetector.
+     *
+     * @return array<string, string|null>
+     */
+    private static function headers(MessageInterface $message): array
+    {
+        $values = [];
+
+        foreach (AutomatedMessageDetector::HEADERS as $name) {
+            $values[$name] = $message->header($name)?->getValue();
+        }
+
+        return $values;
     }
 
     /** @return list<MailAttachment> */

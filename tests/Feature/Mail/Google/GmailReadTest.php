@@ -209,3 +209,11 @@ it('resyncs with an unreadable cursor', function () {
 
     expect(gmailProvider()->newMessages('INBOX', 'basura')->resynced)->toBeTrue();
 });
+
+it('detects automated emails by their headers', function () {
+    fakeGmailMailbox([$raw = gmailRaw('Ofertas de la semana', ['INBOX'], function (Email $email) {
+        $email->getHeaders()->addTextHeader('Precedence', 'bulk');
+    })]);
+
+    expect(gmailProvider()->message('INBOX', $raw['id'])->automatedReason)->toContain('Precedence: bulk');
+});

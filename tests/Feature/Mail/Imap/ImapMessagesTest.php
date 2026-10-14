@@ -111,3 +111,15 @@ it('fails with not found for unknown folders or messages', function (string $fol
     'uid inexistente' => ['INBOX', '999'],
     'id no numérico' => ['INBOX', 'abc'],
 ])->throws(MailNotFoundException::class);
+
+it('detects automated emails by their headers', function () {
+    $auto = customerEmail('Fuera de la oficina');
+    $auto->getHeaders()->addTextHeader('Auto-Submitted', 'auto-replied');
+    $autoUid = GreenMail::append($this->email, $auto);
+    $personUid = GreenMail::append($this->email, customerEmail('Consulta normal'));
+
+    $provider = GreenMail::provider($this->email);
+
+    expect($provider->message('INBOX', (string) $autoUid)->automatedReason)->toContain('Auto-Submitted: auto-replied')
+        ->and($provider->message('INBOX', (string) $personUid)->automatedReason)->toBeNull();
+})->group('greenmail');

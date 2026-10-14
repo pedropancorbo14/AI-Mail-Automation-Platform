@@ -5,6 +5,7 @@ namespace App\Mail\Providers\Microsoft;
 use App\Mail\Data\MailAddress;
 use App\Mail\Data\MailAttachment;
 use App\Mail\Data\MailMessage;
+use App\Mail\Support\AutomatedMessageDetector;
 use App\Mail\Support\HtmlToText;
 use Carbon\CarbonImmutable;
 
@@ -44,6 +45,7 @@ class GraphMessageMapper
             inReplyTo: self::stripAngles($headers['in-reply-to'] ?? null),
             references: self::references($headers['references'] ?? null),
             seen: (bool) ($message['isRead'] ?? false),
+            automatedReason: AutomatedMessageDetector::reason($headers, $message['from']['emailAddress']['address'] ?? null),
         );
     }
 
