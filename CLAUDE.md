@@ -2026,8 +2026,37 @@ ven).
   y `utils/format.ts` (fecha, %, USD, bytes, remitente). **Ojo en rutas:**
   en un string de JS el patrón es `'\\d+'` (con `'\d+'` el `\` se pierde).
   Vitest: `query.test.ts`, `format.test.ts`, rutas del detalle (25 tests)
-- [ ] 7. Página: detalle del email (cuerpo, clasificación, propuesta,
-  historial, traza del agente)
+- [x] 7. **Página: detalle del email** (`pages/EmailPage.vue`): cabecera
+  (asunto, intención + confianza, estado, de/para/cc/responder a,
+  recibido, buzón), avisos de injection y de correo automático, y dos
+  columnas: **Mensaje** (`components/email/EmailBody.vue`: pestañas
+  "Formato original" / "Texto"; el HTML saneado va en un **`iframe`
+  `srcdoc` con `sandbox="allow-popups allow-popups-to-escape-sandbox"`**
+  —sin scripts ni mismo origen: no puede leer la sesión— y **CSP**
+  `default-src 'none'; img-src data:` dentro del documento (segunda capa:
+  sin conexiones ni imágenes remotas, con aviso), 300 px redimensionable
+  —un iframe aislado no puede medir su contenido—; adjuntos como enlaces
+  de descarga o etiqueta si no se guardaron) + **Respuesta propuesta**
+  (`ReplyCard.vue`: estado, motivos de revisión uno por línea, texto,
+  confianza, fuentes, acciones pendientes, nota interna, cuándo/a quién
+  se envió y si fue automática o quién la aprobó); a la derecha
+  **Clasificación** (resumen, intención, confianza, urgencia, tono,
+  idioma, pedidos, motivo y **coste total de IA del email**),
+  **Historial** (`NTimeline`, motivo recortado a 3 líneas con clic para
+  verlo entero, quién lo decidió) y **Lo que hizo la IA**
+  (`AgentTrace.vue`: por ejecución, motivo de fin, pasos, herramientas,
+  tokens, coste y duración; por paso, modelo, tokens, coste y latencia;
+  cada herramienta con nombre en español, argumentos y "lo que vio la
+  IA" desplegable). 404 y errores con `NResult`. **Revisión visual**:
+  capturas con Chromium headless dentro del contenedor `vite`
+  (`playwright-core` + `apk add chromium` en `/tmp`, proxy TCP
+  localhost:8080 → nginx para que Sanctum vea el Origin del panel; nada
+  en el proyecto) → arreglados: confianza partida en dos líneas en el
+  listado, iframe demasiado alto, motivos largos en el historial. Vitest
+  con `@vue/test-utils` (34 tests): iframe con sandbox sin
+  `allow-scripts`/`allow-same-origin`, CSP en el documento, aviso de
+  imágenes remotas, texto sin pedir HTML, enlaces de adjuntos, motivos
+  separados, envío automático, traza con herramientas
 - [ ] 8. API + página: dashboard
 - [ ] 9. API + página: configuración de la IA (modo, intenciones,
   herramientas)

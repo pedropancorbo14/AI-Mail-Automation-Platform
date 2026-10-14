@@ -108,12 +108,12 @@ const columns: DataTableColumns<EmailListItem> = [
     {
         title: 'Intención',
         key: 'intent',
-        width: 190,
+        width: 215,
         render: (row) =>
             row.intent
                 ? h(NSpace, { size: 4, align: 'center', wrap: false }, () => [
                       h(NTag, { size: 'small', bordered: false }, () => intentLabels[row.intent!]),
-                      h(NText, { depth: 3 }, () => formatPercent(row.intent_confidence)),
+                      h(NText, { depth: 3, style: 'white-space: nowrap' }, () => formatPercent(row.intent_confidence)),
                   ])
                 : h(NText, { depth: 3 }, () => (row.automated_reason ? 'Automático' : '—')),
     },

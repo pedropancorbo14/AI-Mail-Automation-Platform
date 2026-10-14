@@ -1,5 +1,5 @@
 import { api } from '@/api/http';
-import type { EmailIntent, EmailListItem, EmailStatus, Paginated } from '@/api/types';
+import type { EmailDetail, EmailIntent, EmailListItem, EmailStatus, Paginated } from '@/api/types';
 
 export interface EmailFilters {
     status: EmailStatus | null;
@@ -15,4 +15,18 @@ export const emptyFilters = (): EmailFilters => ({ status: null, intent: null, m
 
 export function listEmails(filters: EmailFilters, perPage = 25): Promise<Paginated<EmailListItem>> {
     return api.get<Paginated<EmailListItem>>('/emails', { ...filters, per_page: perPage });
+}
+
+export async function getEmail(id: number): Promise<EmailDetail> {
+    return (await api.get<{ data: EmailDetail }>(`/emails/${id}`)).data;
+}
+
+/** HTML del email ya saneado por el servidor (null si solo tiene texto). */
+export async function getEmailHtml(id: number): Promise<{ html: string | null; remote_images: boolean }> {
+    return (await api.get<{ data: { html: string | null; remote_images: boolean } }>(`/emails/${id}/html`)).data;
+}
+
+/** Enlace de descarga de un adjunto (la cookie de sesión va sola: mismo origen). */
+export function attachmentUrl(emailId: number, attachmentId: number): string {
+    return `/api/v1/emails/${emailId}/attachments/${attachmentId}`;
 }

@@ -1,0 +1,65 @@
+import type { EmailDetail, EmailReply } from '@/api/types';
+
+/** Datos de ejemplo para los tests de componentes del detalle del email. */
+export function replyFixture(overrides: Partial<EmailReply> = {}): EmailReply {
+    return {
+        id: 1,
+        agent_run_id: 1,
+        status: 'draft',
+        body: 'Hola:\n\nTu pedido salió el 29 de septiembre con SEUR.',
+        language: 'es',
+        confidence: 0.6,
+        needs_human: true,
+        needs_human_reason: 'La IA lo pide: el pedido va con retraso. Confianza baja (0.60 < 0.75). Requiere acciones de una persona: Abrir incidencia con SEUR.',
+        sources: [{ type: 'order', reference: '45821' }, { type: 'document', reference: 'Envíos y entregas, sección «Retrasos»' }],
+        pending_actions: ['Abrir incidencia con SEUR'],
+        internal_note: 'Lleva 13 días de retraso.',
+        approved_by: null,
+        approved_at: null,
+        sent_automatically: false,
+        sent_to: null,
+        sent_at: null,
+        send_error: null,
+        created_at: '2026-10-14T10:00:00Z',
+        ...overrides,
+    };
+}
+
+export function emailFixture(overrides: Partial<EmailDetail> = {}): EmailDetail {
+    return {
+        id: 12,
+        subject: '¿Dónde está mi pedido #45821?',
+        from: { email: 'cliente@cliente.test', name: 'Cliente Pérez' },
+        mailbox: { id: 1, name: 'Soporte', email: 'soporte@demo.test' },
+        status: 'human_review',
+        status_label: 'Revisión humana',
+        intent: 'order_status',
+        intent_confidence: 0.92,
+        summary: 'Pregunta por su pedido.',
+        language: 'es',
+        urgency: 'medium',
+        sentiment: 'neutral',
+        injection_suspected: false,
+        automated_reason: null,
+        attachments_count: 1,
+        sent_at: null,
+        received_at: '2026-10-14T09:00:00Z',
+        to: [{ email: 'soporte@demo.test', name: 'Soporte' }],
+        cc: [],
+        reply_to: [],
+        message_id: 'pedido@cliente.test',
+        in_reply_to: null,
+        text_body: 'Hola, ¿dónde está mi pedido?',
+        has_html: true,
+        classification: null,
+        attachments: [
+            { id: 7, filename: 'justificante.pdf', content_type: 'application/pdf', size: 2048, inline: false, status: 'stored', error: null },
+            { id: 8, filename: 'enorme.zip', content_type: 'application/zip', size: 99999999, inline: false, status: 'skipped', error: 'Demasiado grande.' },
+        ],
+        status_history: [],
+        replies: [],
+        agent_runs: [],
+        ai_cost_usd: 0,
+        ...overrides,
+    };
+}
