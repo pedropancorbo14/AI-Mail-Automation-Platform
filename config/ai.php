@@ -123,9 +123,17 @@ return [
     ],
 
     'automation' => [
+        // Freno de emergencia de la plataforma: false = ninguna empresa
+        // envía respuestas sin revisión humana (aunque esté en modo "auto").
+        'auto_send_enabled' => (bool) env('AI_AUTO_SEND', true),
+
         // Intenciones a las que la IA responde sola en modo "auto" si la
         // empresa no ha elegido otras (ai:automation --intents=...).
         'default_auto_send_intents' => ['order_status', 'product_question'],
+
+        // Anti-bucles: respuestas automáticas máximas a una misma dirección
+        // en 24 h. A partir de ahí, las siguientes las revisa una persona.
+        'max_auto_replies_per_address' => (int) env('AI_MAX_AUTO_REPLIES_PER_ADDRESS', 3),
     ],
 
     'classification' => [

@@ -168,8 +168,14 @@ class ReplySender
         );
     }
 
-    /** @return list<MailAddress> */
-    private function recipients(Email $email): array
+    /**
+     * A quién se responde: el "Responder a" del original o, si no tiene, su remitente.
+     *
+     * @return list<MailAddress>
+     *
+     * @throws MailProviderException sin remitente
+     */
+    public function recipients(Email $email): array
     {
         $replyTo = $email->recipients()
             ->where('type', RecipientType::ReplyTo)

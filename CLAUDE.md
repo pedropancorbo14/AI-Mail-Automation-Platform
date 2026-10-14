@@ -1768,7 +1768,21 @@ clasificación y el agente existían por separado y nada se enviaba.
   **`Auto-Submitted: auto-replied`** (RFC 3834; SMTP y Gmail). Graph no
   admite cabeceras que no empiecen por `X-`: en Microsoft no se añade.
   `FakeMailProvider::$failSendWith`; helper de tests `draftReply($email)`
-- [ ] 5. Política de envío automático (intenciones, anti-bucles, límites)
+- [x] 5. **Política de envío automático.** `App\Automation\AutoSendPolicy::
+  check($email, $reply)` → `AutoSendDecision` (`allowed()`, `reasons`,
+  `reason()`): la última palabra antes de enviar sin persona, sumada a
+  `AgentDecision`. Va a revisión humana si se cumple CUALQUIERA (se
+  devuelven todos los motivos): freno de emergencia de la plataforma
+  (`ai.automation.auto_send_enabled`, `AI_AUTO_SEND=false`); la empresa no
+  está en modo `auto`; la propuesta tiene `needs_human`; email sin
+  clasificar o intención fuera de `Tenant::autoSendIntents()`; correo
+  automático; sospecha de injection; y por cada destinatario real (Reply-To
+  o remitente, vía `ReplySender::recipients()`, ahora público): es un
+  **buzón de la propia empresa**, no acepta respuestas (`noreply`…), o ya
+  recibió **`max_auto_replies_per_address`** (3,
+  `AI_MAX_AUTO_REPLIES_PER_ADDRESS`) respuestas automáticas en 24 h
+  (anti-bucles; sin distinguir mayúsculas; solo de la propia empresa; las
+  enviadas por personas no cuentan); sin remitente
 - [ ] 6. `EmailProcessor` + `ProcessEmailJob`: clasificación → agente → decisión
   (reordenadas: el procesador usa la política y el envío, que van antes)
 - [ ] 7. Comando `ai:process` (`ai:automation` se hizo en la tarea 3)
