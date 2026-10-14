@@ -2217,7 +2217,17 @@ ven).
   (job `frontend`), problemas frecuentes (panel en blanco, login fuera de
   `APP_URL`, 419); secciones renumeradas (API = #13)
 
-**Resumen:** 14 tareas en 14 commits, 887 tests PHP + 54 Vitest en verde.
+- [x] Fix tras el push (CI en rojo): `tests/Feature/ExampleTest.php`
+  (el de ejemplo de Laravel, Fase 1) hacía `GET /`, que ahora pinta el
+  panel con `@vite`; en local pasaba porque existe `public/hot` (servicio
+  `vite`) o `public/build`, pero el job de PHP del CI no compila el panel
+  → `ViteManifestNotFoundException` (500). Eliminado: `PanelTest` ya
+  cubre `/` con `withoutVite()`. **Lección:** todo test que pinte una
+  vista con `@vite` debe usar `withoutVite()`; para reproducir el CI en
+  local, mover `public/hot` y `public/build` y lanzar la suite (886 en
+  verde así)
+
+**Resumen:** 14 tareas en 14 commits + 1 fix, 886 tests PHP + 54 Vitest en verde.
 **Pendiente para dar la Fase 10 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde (incluido el job nuevo `frontend`).
 
