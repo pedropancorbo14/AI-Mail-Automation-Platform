@@ -101,3 +101,29 @@ jobs:
 
       - name: Ejecutar tests (Pest)
         run: ./vendor/bin/pest
+
+  # Panel de administración (Fase 10): tipos, tests y compilación.
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Comprobar tipos (vue-tsc)
+        run: npm run typecheck
+
+      - name: Tests del panel (Vitest)
+        run: npm test
+
+      - name: Compilar el panel
+        run: npx vite build

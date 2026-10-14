@@ -35,6 +35,7 @@ volumes:
   loki-data:
   app-storage:
   ollama-data:
+  node-modules:
 
 services:
   # ---------------------------------------------------------------
@@ -190,6 +191,24 @@ services:
     ports:
       - "127.0.0.1:${GREENMAIL_SMTP_PORT:-3025}:3025"
       - "127.0.0.1:${GREENMAIL_IMAP_PORT:-3143}:3143"
+    networks:
+      - app-net
+
+  # Servidor de desarrollo del panel (Vite, Fase 10): recompila al guardar.
+  # node_modules vive en un volumen: los binarios nativos de Windows no
+  # sirven en Linux. En producción el panel se compila (npm run build).
+  vite:
+    image: node:22-alpine
+    working_dir: /var/www/html
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
+    environment:
+      # Los cambios en ficheros de Windows no llegan al contenedor como eventos: sondeo.
+      VITE_POLLING: "true"
+    volumes:
+      - ./:/var/www/html
+      - node-modules:/var/www/html/node_modules
+    ports:
+      - "127.0.0.1:${VITE_PORT:-5173}:5173"
     networks:
       - app-net
 

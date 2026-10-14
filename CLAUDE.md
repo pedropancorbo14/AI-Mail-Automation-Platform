@@ -1868,8 +1868,80 @@ clasificación y el agente existían por separado y nada se enviaba.
   estructura, tests, problemas frecuentes; secciones siguientes
   renumeradas (API = #12)
 
-**Pendiente para dar la Fase 9 por cerrada:** push (lo hace el usuario) y
-GitHub Actions en verde.
+**Cerrada:** push del usuario (2026-10-14).
+
+### Fase 10 (panel de administración): EN CURSO (desde 2026-10-14)
+
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit, sin push.
+
+**Objetivo:** panel web para que cada empresa vea y gestione su
+plataforma: dashboard, emails (lista y detalle con clasificación,
+confianza, respuesta propuesta, historial de estados y traza del agente con
+sus herramientas), conexiones de correo, documentación (RAG),
+configuración de la IA (modo, intenciones, herramientas), usuarios y
+empresa. Aprobar/editar/rechazar respuestas es la Fase 13 (aquí solo se
+ven).
+
+**Decisiones tomadas:**
+- **SPA de Vue 3 + TypeScript + Naive UI + Vue Router + Pinia dentro del
+  repo de Laravel** (`resources/js/panel/`), compilada con Vite y servida
+  por Laravel en `/` (ruta comodín que excluye `api`, `sanctum`,
+  `horizon`, `up`). Un solo despliegue y **mismo origen**: login con
+  **cookie de sesión de Sanctum** (httpOnly, CSRF), sin tokens en
+  `localStorage` (un XSS no puede robar la sesión). Los tokens de API
+  siguen para integraciones.
+- **TypeScript 6.0** (no 7: el compilador nativo en Go aún no ofrece la
+  API JS que usa `vue-tsc`). Se quita Tailwind (Naive UI ya da el sistema
+  de componentes: no dos sistemas de estilos).
+- **Vite en Docker** (servicio `vite`, `node:22-alpine`, `node_modules` en
+  un volumen: los binarios nativos de Windows no sirven en Linux).
+- El panel es **solo de la propia empresa**: no hay superadministrador
+  multiempresa (eso es SaaS, Fase 17).
+- **HTML de los emails saneado en el servidor** (HTMLPurifier) y mostrado
+  en un `iframe` con `sandbox` y CSP, **sin imágenes remotas** por defecto
+  (píxeles de rastreo).
+- Tests del frontend con **Vitest**; en CI: tipos (`vue-tsc`), tests y
+  `vite build`.
+
+**Tareas (commit):**
+- [x] 1. **Base del panel.** Dependencias: `vue` 3.5, `vue-router` 5,
+  `pinia` 4, `naive-ui` 2.45; dev: `@vitejs/plugin-vue` 6, `typescript`
+  ~6.0, `vue-tsc` 3, `vitest` 5, `@vue/test-utils`, `jsdom`,
+  `@types/node`; fuera Tailwind, `welcome.blade.php`, `app.js`/`app.css`.
+  `vite.config.ts` (entrada `resources/js/panel/main.ts`, alias `@` →
+  `resources/js/panel`, servidor en 0.0.0.0:5173 con `origin`/HMR en
+  localhost y **sondeo** si `VITE_POLLING=true`: en Docker sobre Windows
+  los cambios no llegan como eventos), `vitest.config.ts` (jsdom),
+  `tsconfig.json` (estricto, `verbatimModuleSyntax`, sin `baseUrl`:
+  obsoleto en TS 6). App: `main.ts` (Pinia + router), `App.vue`
+  (`NConfigProvider` en español + proveedores de mensajes, diálogos y
+  barra de carga), `router.ts` (`createPanelRouter(history)` testeable,
+  título por ruta, 404 comodín), páginas `HomePage`/`NotFoundPage`.
+  `resources/views/panel.blade.php` + **`routes/web.php`**: `/{path?}`
+  sirve el panel salvo `api`, `sanctum`, `horizon` y `up`. Servicio
+  **`vite`** en docker-compose (`node:22-alpine`, `npm install && npm run
+  dev`, puerto 127.0.0.1:5173, volumen `node-modules`). Scripts: `dev`,
+  `build` (vue-tsc + vite build), `typecheck`, `test`. CI: job
+  **`frontend`** (Node 22, `npm ci`, tipos, Vitest, build). Tests:
+  `PanelTest` (rutas del panel con `withoutVite()`; la API, `/up` y la
+  health siguen respondiendo) y `router.test.ts`. Verificado: build 90 KB
+  gzip; `http://localhost:8080/emails/3` carga el panel desde Vite
+- [ ] 2. Login del panel con cookie de sesión de Sanctum
+- [ ] 3. Estructura: menú según permisos, cabecera, páginas de error
+- [ ] 4. API: listado de emails con filtros
+- [ ] 5. API: detalle del email, HTML saneado y adjuntos
+- [ ] 6. Página: listado de emails
+- [ ] 7. Página: detalle del email (cuerpo, clasificación, propuesta,
+  historial, traza del agente)
+- [ ] 8. API + página: dashboard
+- [ ] 9. API + página: configuración de la IA (modo, intenciones,
+  herramientas)
+- [ ] 10. Página: conexiones de correo (IMAP, OAuth, prueba)
+- [ ] 11. Autodetección de la configuración IMAP/SMTP
+- [ ] 12. Página: documentación (RAG) y buscador
+- [ ] 13. Páginas: usuarios y empresa
+- [ ] 14. Prueba en el navegador, README
 
 ### Pendientes anotados para más adelante
 

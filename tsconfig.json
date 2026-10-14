@@ -1,0 +1,28 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "types": ["vite/client", "node"],
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true,
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "jsx": "preserve",
+        "paths": {
+            "@/*": ["./resources/js/panel/*"]
+        }
+    },
+    "include": [
+        "resources/js/panel/**/*.ts",
+        "resources/js/panel/**/*.vue",
+        "vite.config.ts",
+        "vitest.config.ts"
+    ]
+}
