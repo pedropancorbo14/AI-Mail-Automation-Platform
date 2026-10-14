@@ -30,8 +30,9 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 7 | Tools: herramientas controladas que la IA puede pedir (documentación, pedidos del cliente), validadas, con permisos y auditadas en `ai_tool_calls` | ✅ Hecha |
 | 8 | Agente: Claude usa las herramientas en cadena, prepara una propuesta de respuesta citando sus fuentes y el backend decide si necesita revisión humana | ✅ Hecha (probada con Claude real: ~0,05 $ por respuesta) |
 | 9 | Automatización: cada email se procesa solo de principio a fin (clasificar → agente → reglas → **enviar en el hilo** o revisión humana), con estados, historial y protección contra bucles | ✅ Hecha (probada con Claude real y GreenMail) |
-| 10 | Panel de administración | ⏳ Siguiente |
-| 11–17 | Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
+| 10 | Panel de administración (Vue + Naive UI): resumen, emails con lo que hizo la IA, buzones (con autodetección), documentación, ajustes de la IA, empresa y usuarios | ✅ Hecha (probada en navegador) |
+| 11 | Grafana: métricas, dashboards y alertas | ⏳ Siguiente |
+| 12–17 | Seguridad, human-in-the-loop, integraciones… | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
@@ -46,7 +47,8 @@ documentación y los pedidos del cliente que escribe. Con ellas, el
 de dónde saca cada dato, y el backend decide si una persona debe revisarla.
 Si la empresa lo permite y la respuesta es segura, **se envía sola** en el
 hilo del cliente; si no, queda para una persona (la bandeja de revisión es
-la Fase 13). La hoja de ruta completa y las
+la Fase 13). Todo se ve y se configura desde el **panel web**
+(`http://localhost:8080`). La hoja de ruta completa y las
 decisiones de arquitectura están en [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -86,6 +88,11 @@ docker compose exec ollama ollama pull bge-m3
 docker compose exec app php artisan db:seed --class=KnowledgeBaseSeeder
 ```
 
+El **panel** (`http://localhost:8080`) lo sirve en desarrollo el servicio
+`vite` (se levanta con los demás e instala solo sus dependencias de Node la
+primera vez: tarda un par de minutos). Sin Vite, compílalo una vez:
+`docker compose run --rm vite npm run build`.
+
 > Entre los pasos 2 y 4 es **normal** ver el contenedor `horizon`
 > reiniciándose: no puede arrancar hasta que existen `vendor/` y `APP_KEY`.
 
@@ -99,7 +106,8 @@ docker compose exec app php artisan test            # todos los tests en verde
 
 | Servicio | URL | Acceso |
 |---|---|---|
-| API | http://localhost:8080/api/v1 | ver [API](#12-api) |
+| **Panel** | http://localhost:8080 | `test@example.com` / `password` |
+| API | http://localhost:8080/api/v1 | ver [API](#13-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
 | Grafana | http://localhost:3000 | `admin` / `admin` |
 | Prometheus | http://localhost:9090 | — |
@@ -132,6 +140,8 @@ docker compose exec app php artisan ai:reply 1             # el agente prepara l
 docker compose exec app php artisan ai:automation 1        # modo de automatización de la empresa 1 (off / draft / auto)
 docker compose exec app php artisan ai:process 1 --now     # procesar el email 1 de principio a fin y ver su historial de estados
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
+docker compose logs -f vite                                # servidor de desarrollo del panel
+docker compose exec vite npm test                          # tests del panel (Vitest)
 ```
 
 ---
@@ -942,7 +952,73 @@ los correos automáticos no cuestan nada.
 
 ---
 
-## 11. Estructura del proyecto
+## 11. Panel de administración
+
+SPA de **Vue 3 + TypeScript + Naive UI** dentro de este mismo repositorio
+([`resources/js/panel/`](resources/js/panel/)), compilada con Vite y servida
+por Laravel en `/`. Cada empresa ve y gestiona **solo lo suyo**.
+
+| Sección | Qué hace | Permiso |
+|---|---|---|
+| **Resumen** | Emails del periodo (7/30/90 días), respondidos solos y % de automatización, los que esperan a una persona, con error, coste de IA (periodo, hoy, mes, medio por email), intenciones más frecuentes, estados y "necesitan atención" | `emails.view` |
+| **Emails** | Listado con filtros (estado, intención, buzón, texto, fechas; guardados en la URL) | `emails.view` |
+| Detalle del email | Mensaje (texto o formato original aislado), adjuntos, clasificación, **respuesta propuesta** con los motivos de revisión, **historial de estados** y **lo que hizo la IA** (cada paso y cada herramienta con lo que consultó y lo que vio) | `emails.view` |
+| **Buzones** | Añadir IMAP (con **autodetección**), conectar Microsoft 365 / Gmail (OAuth), probar, editar, desactivar, eliminar | `mail_connections.view` / `.manage` |
+| **Documentación** | Subir, reindexar y eliminar documentos (se refresca mientras indexa) y **probar la búsqueda**: lo que encontraría la IA, con su fuente | `documents.view` / `.manage` |
+| **Ajustes de la IA** | Modo (`off` / `draft` / `auto`, con confirmación), intenciones que se responden solas, herramientas del agente | `tenant.view` / `automation.manage` |
+| **Empresa y usuarios** | Nombre de la empresa, usuarios y roles | `tenant.view`, `users.*` |
+
+Lo que el rol no permite no se muestra; aun así, **la API comprueba
+siempre los permisos** (la interfaz solo es comodidad).
+
+### Seguridad del panel
+
+- **Sesión por cookie** de Sanctum (`POST /api/v1/auth/session`), httpOnly
+  y con CSRF; nunca se guarda un token en el navegador (un XSS no podría
+  llevárselo). Tras el login solo se vuelve a rutas internas del panel.
+- El **HTML de los emails** (que escribe cualquiera) se limpia en el
+  servidor con HTMLPurifier y se muestra en un `iframe` aislado
+  (`sandbox` sin scripts ni acceso al panel, CSP que bloquea conexiones e
+  **imágenes remotas**: píxeles de rastreo).
+- Los **adjuntos** se descargan siempre como fichero, nunca se abren en el
+  navegador.
+- La **autodetección** de buzones consulta servidores de un dominio que
+  escribe el usuario: solo HTTPS, IPs comprobadas por la protección
+  anti-SSRF y fijadas en la conexión (sin *DNS rebinding*), sin
+  redirecciones, con tiempo y tamaño máximos.
+
+### Autodetección de buzones
+
+Al escribir el email (o con "Detectar configuración") se proponen
+servidor, puerto y cifrado de IMAP y SMTP, como hace Thunderbird:
+
+1. Base de datos pública de Thunderbird (ISPDB).
+2. Autoconfig del propio dominio.
+3. Registros DNS SRV.
+4. Nombres habituales (`imap.`, `smtp.`, `mail.`): es una suposición.
+
+Si el dominio usa **Microsoft 365 o Google** (por sus MX) avisa de que es
+mejor "Conectar Microsoft 365 / Gmail". El buzón se **prueba al guardarlo**.
+
+### Desarrollo
+
+```bash
+docker compose logs -f vite                      # el servidor de Vite recompila al guardar
+docker compose exec vite npm run typecheck       # tipos (vue-tsc)
+docker compose exec vite npm test                # tests (Vitest + @vue/test-utils)
+docker compose run --rm vite npm run build       # compilar para producción (public/build)
+```
+
+- Rutas en [`router.ts`](resources/js/panel/router.ts) (con `meta.permission`)
+  y entradas del menú en [`menu.ts`](resources/js/panel/menu.ts).
+- Cliente de la API en [`api/http.ts`](resources/js/panel/api/http.ts)
+  (cookie CSRF, errores `ApiError` con `fieldError()`, sesión caducada → login).
+- Textos de estados, intenciones y herramientas en español en
+  [`utils/labels.ts`](resources/js/panel/utils/labels.ts).
+
+---
+
+## 12. Estructura del proyecto
 
 ```
 app/
@@ -960,6 +1036,7 @@ app/
 │   ├── Security/             MailHostGuard (anti-SSRF)
 │   ├── Support/              MIME común (parser y builder), HTML → texto
 │   ├── Ingestion/            Ingesta (Fase 4): MailSyncService, EmailIngestionService, FetchEmailsJob
+│   ├── Autodetect/           Autodetección IMAP/SMTP (ISPDB, autoconfig, SRV, MX) con anti-SSRF
 │   ├── Enums/                Proveedor, estados de conexión/email/adjunto, tipo de destinatario
 │   ├── MailProviderFactory   Conexión → proveedor
 │   └── MailConnectionService Prueba de conexión y su estado
@@ -988,6 +1065,7 @@ app/
 ├── ERP/                      Pedidos: OrderProvider + DemoOrderProvider (integraciones reales en la Fase 14)
 ├── Automation/               Automatización (Fase 9): EmailProcessor + ProcessEmailJob, AutoSendPolicy,
 │                             ReplySender + SendReplyJob (envío en el hilo), AutomationMode
+├── Observability/            DashboardStats (cifras del resumen del panel; métricas de Grafana en la Fase 11)
 ├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search, ai:tool, ai:tools, ai:reply,
 │                             ai:automation, ai:process
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
@@ -1005,6 +1083,8 @@ database/
 ├── seeders/                  Roles/permisos, datos de desarrollo, documentación (knowledge/) y pedidos (demo/) de ejemplo
 └── factories/                Datos falsos para tests
 docker/                       Config de nginx, php, postgres, redis, prometheus, loki, grafana
+resources/js/panel/           Panel (Fase 10): Vue + TS + Naive UI — pages/, components/, layouts/, api/, stores/, utils/
+resources/views/panel.blade.php  Página que carga el panel (Laravel la sirve en cualquier ruta que no sea de la API)
 routes/
 ├── api.php                   Prefijo /api/v1
 ├── api/v1.php                Rutas de la API v1
@@ -1020,18 +1100,19 @@ tests/
 ├── Feature/Documents/        Documentos: extracción, troceado, indexado, búsqueda, API, aislamiento, comandos
 ├── Feature/Tools/            Registro, ejecutor (validación, permisos, errores), herramientas por empresa, comandos ai:tool/ai:tools
 ├── Feature/Automation/       Modos, política de envío, envío en el hilo, procesador, job, comandos y E2E con GreenMail real
+├── Feature/Observability/    Dashboard del panel
 ├── Feature/ERP/              Proveedor de pedidos de demostración
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
 ├── Support/                  GreenMail (buzones de prueba) y Pdf (PDFs generados al vuelo)
 └── Fakes/                    FakeMailProvider, FakeLLMProvider, FakePrompt, FakeEmbeddingProvider, FakeTool
 ```
 
-En próximas fases se añadirán más módulos en `app/` por dominio (`CRM/`, `Observability/`…), siempre con la
+En próximas fases se añadirán más módulos en `app/` por dominio (`CRM/`…), siempre con la
 lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 12. API
+## 13. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -1063,6 +1144,16 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | POST | `/documents/{id}/reindex` | `documents.manage` | Volver a indexarlo |
 | DELETE | `/documents/{id}` | `documents.manage` | Eliminar documento, trozos y fichero |
 | POST | `/knowledge-base/search` | `documents.view` | Buscar por significado (`query`, `limit` opcional); devuelve trozos con su fuente (máx. 30/min) |
+| POST | `/auth/session` | público (solo el panel) | Login del panel con cookie de sesión (sin token) |
+| POST | `/mail-connections/autodetect` | `mail_connections.manage` | Proponer la configuración IMAP/SMTP de un email (máx. 10/min) |
+| GET | `/dashboard?days=7\|30\|90` | `emails.view` | Resumen del periodo para el panel |
+| GET | `/emails` | `emails.view` | Emails (filtros `status`, `intent`, `mailbox`, `q`, `from`, `to`; paginado) |
+| GET | `/emails/{id}` | `emails.view` | Detalle: clasificación, propuesta, historial y traza de la IA |
+| GET | `/emails/{id}/html` | `emails.view` | HTML del email **ya saneado** |
+| GET | `/emails/{id}/attachments/{adjunto}` | `emails.view` | Descargar un adjunto (siempre como fichero) |
+| GET | `/automation` | `tenant.view` | Modo de automatización, intenciones y herramientas de tu empresa |
+| PATCH | `/automation` | `automation.manage` | Cambiar el modo (`mode`) y las intenciones (`auto_send_intents`) |
+| PATCH | `/automation/tools/{tool}` | `automation.manage` | Activar o desactivar una herramienta (`enabled`) |
 
 ```bash
 # Login
@@ -1077,8 +1168,8 @@ curl http://localhost:8080/api/v1/auth/me \
 
 **Autenticación:** tokens de Laravel Sanctum, válidos durante 7 días
 (`SANCTUM_TOKEN_EXPIRATION`, en minutos). Los caducados se borran a diario
-de forma automática. Ya está configurada también la autenticación por cookie
-para el futuro panel de administración (SPA).
+de forma automática. El panel no usa tokens: entra con cookie de sesión
+(`/auth/session`).
 
 **Errores** (mismo formato siempre, sin detalles internos):
 
@@ -1093,7 +1184,7 @@ para el futuro panel de administración (SPA).
 
 ---
 
-## 13. Tests
+## 14. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -1132,24 +1223,32 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
   modelo descargado.
 - Las funciones de ayuda de los archivos de test son **globales** en Pest:
   no repitas un nombre ya usado en otro archivo.
+- **Panel:** Vitest + `@vue/test-utils` en `resources/js/panel/**/*.test.ts`
+  (`docker compose exec vite npm test`), con `fetch` simulado: rutas y
+  permisos, cliente HTTP, filtros en la URL, el iframe aislado del email,
+  formularios y páginas por rol.
 
-## 14. CI
+## 15. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
-contra PostgreSQL + pgvector, Redis y GreenMail reales
+contra PostgreSQL + pgvector, Redis y GreenMail reales, y además el job
+`frontend` comprueba los tipos del panel, sus tests y que compila
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 15. Entornos
+## 16. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 16. Problemas frecuentes
+## 17. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
+| El panel sale en blanco | Ni Vite ni build: `docker compose up -d vite` (mira `docker compose logs vite`) o `docker compose run --rm vite npm run build`. |
+| No puedo iniciar sesión en el panel ("solo para el panel") | Entra por la URL de `APP_URL` (`http://localhost:8080`): Sanctum solo abre sesión a los dominios de `SANCTUM_STATEFUL_DOMAINS`. |
+| "La sesión ha caducado. Recarga la página." (419) | Token CSRF caducado: recarga la página. |
 | `horizon` en bucle "Restarting" | Faltan `vendor/` o `APP_KEY`: pasos 3–4 del arranque. |
 | `No application encryption key has been specified` | Se generó la clave pero los contenedores no se recrearon: `docker compose up -d`. |
 | Un puerto ya está en uso (8080, 3000, 9090, 3100, 5433) | Cámbialo en `.env`: `APP_PORT`, `GRAFANA_PORT`, `PROMETHEUS_PORT`, `LOKI_PORT`, `DB_FORWARD_PORT`. |

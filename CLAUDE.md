@@ -1870,7 +1870,7 @@ clasificación y el agente existían por separado y nada se enviaba.
 
 **Cerrada:** push del usuario (2026-10-14).
 
-### Fase 10 (panel de administración): EN CURSO (desde 2026-10-14)
+### Fase 10 (panel de administración): COMPLETADA Y PROBADA EN EL NAVEGADOR (2026-10-14), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
@@ -2198,7 +2198,28 @@ ven).
   422/403 de la API se muestran. `roleLabels` tipado por rol. Vitest:
   admin vs. propietarios y él mismo, agente solo lectura, roles
   asignables, contraseña vacía fuera (54 tests)
-- [ ] 14. Prueba en el navegador, README
+- [x] 14. **Prueba en el navegador (Chromium headless contra el stack) y
+  README.** Como propietario: crear una usuaria agente **desde el panel**
+  ("Lucía Agente", rol agente; el segundo intento dio el 422 de email
+  repetido, bien mostrado). Como Lucía: "Ajustes de la IA" y "Buzones" en
+  solo lectura (todo deshabilitado y el aviso). **Flujo en vivo**: correo
+  por SMTP "¿Envío a Mallorca?" → scheduler → ingesta → Horizon → Claude
+  (`search_company_documents`) → enviado solo; en el panel: 9,95 € y 3–4
+  días laborables (**comprobado contra `envios.md`**), confianza 0,95,
+  fuentes, historial processing → ai_review → approved → sent y traza;
+  coste 0,047 $. **Build de producción**: con Vite parado, `npm run build`
+  → Laravel enlaza `/build/assets/main-*.js` y nginx lo sirve (200,
+  `application/javascript`). README: sección "11. Panel de
+  administración" (secciones y permisos, seguridad: cookie, HTML aislado,
+  adjuntos, anti-SSRF de la autodetección; autodetección; desarrollo),
+  arranque (servicio `vite` / `npm run build`), URL del panel y usuario,
+  comandos, API (11 endpoints nuevos), estructura, tests (Vitest), CI
+  (job `frontend`), problemas frecuentes (panel en blanco, login fuera de
+  `APP_URL`, 419); secciones renumeradas (API = #13)
+
+**Resumen:** 14 tareas en 14 commits, 887 tests PHP + 54 Vitest en verde.
+**Pendiente para dar la Fase 10 por cerrada:** push (lo hace el usuario) y
+GitHub Actions en verde (incluido el job nuevo `frontend`).
 
 ### Pendientes anotados para más adelante
 
