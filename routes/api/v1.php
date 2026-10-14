@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\DocumentController;
+use App\Http\Controllers\Api\V1\EmailController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\KnowledgeSearchController;
 use App\Http\Controllers\Api\V1\MailConnectionController;
@@ -37,6 +38,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/mail-connections/oauth/{provider}/start', [MailOAuthController::class, 'start']);
     Route::post('/mail-connections/{mailConnection}/test', [MailConnectionController::class, 'test'])
         ->middleware('throttle:mail-connection-test');
+
+    // Emails recibidos y lo que hizo la IA con ellos (panel, Fase 10).
+    Route::get('/emails', [EmailController::class, 'index']);
 
     // Base de conocimiento (RAG): documentación de la empresa y búsqueda.
     Route::apiResource('documents', DocumentController::class)->except(['update']);

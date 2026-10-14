@@ -1964,7 +1964,23 @@ ven).
   comprobarlo). El script de commit ejecuta también `vue-tsc` y Vitest
   en el contenedor `vite`. Tests Vitest: `menu.test.ts`, guard de
   permisos en `router.test.ts`
-- [ ] 4. API: listado de emails con filtros
+- [x] 4. **API: listado de emails.** Permiso nuevo **`emails.view`**
+  (todos los roles: es el trabajo diario de un agente; sembrado en la BD
+  de desarrollo). `EmailPolicy` (otra empresa → 404, luego permiso).
+  **`GET /api/v1/emails`** (`EmailController@index`): más recientes
+  primero, paginado (`per_page` 1–100, 25 por defecto, conserva los
+  filtros en los enlaces), filtros validados en `ListEmailsRequest`:
+  `status` y `intent` (enums), `mailbox` (id de conexión), `q` (asunto,
+  email o nombre del remitente con `ilike`; **`%` y `_` escapados**: son
+  texto, no comodines), `from`/`to` (día de llegada, `to` incluido).
+  `EmailListResource` **sin cuerpos**: asunto, remitente, buzón, estado +
+  etiqueta, intención y confianza, resumen, idioma, urgencia,
+  sentimiento, sospecha de injection, motivo de "automático", nº de
+  adjuntos, fechas. Tests: orden, campos, cada filtro, búsqueda sin
+  mayúsculas, `%` literal, fechas, paginación, 422 por filtro inválido,
+  **aislamiento** (ni con el id del buzón de otra empresa ni buscando su
+  texto), 401 y 403 sin permiso. `PermissionsTest` cuenta los permisos
+  del agente desde `Role::PERMISSIONS` (no un número fijo)
 - [ ] 5. API: detalle del email, HTML saneado y adjuntos
 - [ ] 6. Página: listado de emails
 - [ ] 7. Página: detalle del email (cuerpo, clasificación, propuesta,

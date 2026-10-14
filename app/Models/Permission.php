@@ -32,6 +32,9 @@ class Permission extends Model
     /** Subir, reindexar y eliminar documentos. */
     public const string DOCUMENTS_MANAGE = 'documents.manage';
 
+    /** Ver los emails recibidos, su clasificación, la respuesta propuesta y lo que hizo la IA. */
+    public const string EMAILS_VIEW = 'emails.view';
+
     /**
      * Catálogo completo (nombre => descripción). Cada permiso se registra
      * como Gate en AppServiceProvider y se guarda en BD con el seeder.
@@ -47,6 +50,7 @@ class Permission extends Model
         self::MAIL_CONNECTIONS_MANAGE => 'Gestionar conexiones de correo',
         self::DOCUMENTS_VIEW => 'Ver y buscar en la documentación',
         self::DOCUMENTS_MANAGE => 'Gestionar la documentación',
+        self::EMAILS_VIEW => 'Ver los emails y lo que hizo la IA con ellos',
     ];
 
     /** @return BelongsToMany<Role, $this> */
