@@ -1711,7 +1711,21 @@ clasificación y el agente existían por separado y nada se enviaba.
   `emails.automated_reason` (null = escrito por una persona; fillable) y
   `Email::isAutomated()`. Tests: detector (casos positivos y negativos),
   IMAP real con GreenMail, Graph y Gmail simulados, ingesta
-- [ ] 2. Estados del email: `ignored`, transiciones válidas e historial
+- [x] 2. **Estados del email.** `EmailStatus::Ignored` (no necesita
+  respuesta), `label()` en español y `allowedNext()`/`canTransitionTo()`:
+  received → processing | ignored; processing → ai_review | human_review |
+  ignored | failed; ai_review → approved | human_review | failed;
+  human_review → approved | ignored | processing (reprocesar); approved →
+  sent | failed; sent = final; ignored → processing | human_review; failed
+  → processing | human_review | ignored. Tabla **`email_status_changes`**
+  (tenant, email cascade, `from_status`, `to_status`, `reason`, `user_id`
+  nullOnDelete — null = la plataforma —, `created_at`) y modelo
+  `EmailStatusChange` (`BelongsToTenant`). **`Email::transitionTo($to,
+  $reason, ?$user)`**: rechaza pasos no permitidos
+  (`EmailStatusException`) y cambia el estado con un **UPDATE condicional**
+  (`WHERE status = actual`) en la misma transacción que el historial: si
+  otro proceso lo movió antes, lanza en vez de pisarlo.
+  `Email::statusChanges()`
 - [ ] 3. Modo de automatización por empresa
 - [ ] 4. `EmailProcessor` + `ProcessEmailJob`: clasificación → agente → decisión
 - [ ] 5. Política de envío automático (intenciones, anti-bucles, límites)

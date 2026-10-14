@@ -5,6 +5,7 @@ namespace App\Models;
 use App\AI\Classification\EmailClassification;
 use App\AI\Classification\EmailIntent;
 use App\Mail\Enums\EmailStatus;
+use App\Mail\Exceptions\EmailStatusException;
 use App\Tenancy\Concerns\BelongsToTenant;
 use Database\Factories\EmailFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Email recibido en un buzón conectado. Lo crea la ingesta
@@ -56,6 +58,45 @@ class Email extends Model
     public function isAutomated(): bool
     {
         return $this->automated_reason !== null;
+    }
+
+    /**
+     * Cambia el estado y lo deja en el historial (email_status_changes).
+     * Solo permite los pasos de EmailStatus::allowedNext(). El cambio es
+     * condicional (UPDATE ... WHERE status = actual): si otro proceso lo ha
+     * movido entretanto, lanza en vez de pisarlo.
+     *
+     * @param  User|null  $by  Quién lo decide (null = la plataforma).
+     *
+     * @throws EmailStatusException
+     */
+    public function transitionTo(EmailStatus $to, ?string $reason = null, ?User $by = null): void
+    {
+        $from = $this->status;
+
+        if (! $from->canTransitionTo($to)) {
+            throw EmailStatusException::notAllowed($this->id, $from, $to);
+        }
+
+        DB::transaction(function () use ($from, $to, $reason, $by) {
+            $updated = static::query()
+                ->whereKey($this->id)
+                ->where('status', $from)
+                ->update(['status' => $to, 'updated_at' => now()]);
+
+            if ($updated === 0) {
+                throw EmailStatusException::changedMeanwhile($this->id, $from);
+            }
+
+            $this->statusChanges()->create([
+                'from_status' => $from,
+                'to_status' => $to,
+                'reason' => $reason,
+                'user_id' => $by?->id,
+            ]);
+        });
+
+        $this->forceFill(['status' => $to])->syncOriginalAttribute('status');
     }
 
     /** Correo y adjuntos guardados: listo para procesar. */
@@ -115,6 +156,12 @@ class Email extends Model
     public function agentRuns(): HasMany
     {
         return $this->hasMany(AiAgentRun::class)->latest('id');
+    }
+
+    /** @return HasMany<EmailStatusChange, $this> Historial de estados, el más antiguo primero. */
+    public function statusChanges(): HasMany
+    {
+        return $this->hasMany(EmailStatusChange::class)->orderBy('id');
     }
 
     /** @return HasMany<EmailRecipient, $this> */
