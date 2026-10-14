@@ -9,8 +9,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Propuesta de respuesta a un email. status no es asignable en masa: lo
- * cambian el flujo de envío y la revisión humana (Fases 9 y 13).
+ * Propuesta de respuesta a un email. status y los datos de aprobación y
+ * envío no son asignables en masa: los cambia App\Automation\ReplySender
+ * (y la revisión humana de la Fase 13).
  *
  * @property EmailReplyStatus $status
  */
@@ -34,6 +35,9 @@ class EmailReply extends Model
             'needs_human' => 'boolean',
             'sources' => 'array',
             'pending_actions' => 'array',
+            'approved_at' => 'datetime',
+            'sent_automatically' => 'boolean',
+            'sent_at' => 'datetime',
         ];
     }
 
@@ -41,6 +45,12 @@ class EmailReply extends Model
     public function email(): BelongsTo
     {
         return $this->belongsTo(Email::class);
+    }
+
+    /** @return BelongsTo<User, $this> Quién la aprobó (null = las reglas de envío automático). */
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
     }
 
     /** @return BelongsTo<AiAgentRun, $this> */

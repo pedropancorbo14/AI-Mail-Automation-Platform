@@ -87,3 +87,19 @@ function agentReplyData(array $overrides = []): array
         'internal_note' => null,
     ], $overrides);
 }
+
+/**
+ * Propuesta de respuesta (borrador) para un email, como la dejaría el
+ * agente. Llamar dentro del tenant del email.
+ */
+function draftReply(App\Models\Email $email, array $overrides = []): App\Models\EmailReply
+{
+    return $email->replies()->create(array_replace([
+        'body' => "Hola:\n\nTu pedido #45821 salió el 29 de septiembre con SEUR.\n\nUn saludo,\nEl equipo de atención al cliente",
+        'language' => 'es',
+        'confidence' => 0.9,
+        'needs_human' => false,
+        'sources' => [['type' => 'order', 'reference' => '45821']],
+        'pending_actions' => [],
+    ], $overrides));
+}

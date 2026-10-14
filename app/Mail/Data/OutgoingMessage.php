@@ -17,6 +17,8 @@ final readonly class OutgoingMessage
      * @param  string|null  $inReplyTo  Message-ID (sin < >) del mensaje al que se responde.
      * @param  list<string>  $references  Message-IDs del hilo (sin < >).
      * @param  list<OutgoingAttachment>  $attachments
+     * @param  bool  $autoSubmitted  Respuesta generada sin intervención humana: se marca con
+     *         "Auto-Submitted: auto-replied" (RFC 3834) para que otros sistemas no respondan.
      */
     public function __construct(
         public array $to,
@@ -28,6 +30,7 @@ final readonly class OutgoingMessage
         public ?string $inReplyTo = null,
         public array $references = [],
         public array $attachments = [],
+        public bool $autoSubmitted = false,
     ) {
         if ($to === [] && $cc === [] && $bcc === []) {
             throw new InvalidArgumentException('El email necesita al menos un destinatario.');

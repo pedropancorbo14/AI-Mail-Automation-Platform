@@ -27,6 +27,9 @@ class FakeMailProvider implements MailProvider
     /** Si se define, downloadAttachment() lanza esta excepción (simular fallos). */
     public ?\Throwable $failDownloadsWith = null;
 
+    /** Si se define, send() lanza esta excepción (y no registra el envío). */
+    public ?\Throwable $failSendWith = null;
+
     /** Si se define, newMessages() lanza esta excepción. */
     public ?\Throwable $failNewMessagesWith = null;
 
@@ -119,6 +122,10 @@ class FakeMailProvider implements MailProvider
 
     public function send(OutgoingMessage $message): SentMessage
     {
+        if ($this->failSendWith !== null) {
+            throw $this->failSendWith;
+        }
+
         $this->sent[] = $message;
 
         return new SentMessage('fake-' . count($this->sent) . '@fake.test');

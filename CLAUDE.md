@@ -1741,9 +1741,36 @@ clasificación y el agente existían por separado y nada se enviaba.
   config). No son asignables en masa (el PATCH `/tenant` sigue cambiando
   solo `name`). Comando **`php artisan ai:automation <tenant> [--mode=]
   [--intents=a,b]`** (tabla de intenciones: se envía sola / no / nunca)
-- [ ] 4. `EmailProcessor` + `ProcessEmailJob`: clasificación → agente → decisión
+- [x] 4. **Envío de la respuesta en el hilo.** `EmailReplyStatus` +
+  `sending` (reclamada por un worker) y `failed`. Columnas en
+  `email_replies`: `approved_by` (users, nullOnDelete; null = las reglas),
+  `approved_at`, `sent_automatically`, `sent_to`, `sent_message_id`,
+  `sent_at`, `send_error` + índice tenant+sent_to+sent_at (para el límite
+  anti-bucles). **`App\Automation\ReplySender`**: `approve($reply,
+  $reason, ?$user)` (draft → approved con UPDATE condicional + email →
+  approved en la misma transacción, encola `SendReplyJob` *after
+  commit*); `send($reply)`: solo si email y respuesta están `approved`,
+  **reclama** la respuesta (approved → sending condicional: dos workers
+  nunca envían dos veces), envía por el buzón en el que llegó el email al
+  **Reply-To** (o al remitente), asunto con "Re: " salvo que ya lleve
+  prefijo (Re/RE/Aw/Sv/Antw/R), `In-Reply-To` = Message-ID original,
+  `References` = las del original + él (máx. 20), `autoSubmitted` si la
+  aprobaron las reglas. Éxito → respuesta `sent` (destinatario,
+  Message-ID, fecha) y email `sent` ("Respuesta enviada automáticamente
+  a …"). Errores: conexión → la respuesta vuelve a `approved` y se relanza
+  (reintento); credenciales → buzón `failing`, respuesta y email
+  `failed`; rechazo del servidor o buzón desactivado → `failed`;
+  **resultado desconocido** (error inesperado) → `failed` sin reintento
+  ("revisa si llegó"). `SendReplyJob($tenantId, $replyId)`: cola `mail`,
+  único por respuesta, `tries` 3, `backoff [60, 300]`, `timeout` 120;
+  `failed()` deja `failed` la respuesta que esperaba reintento.
+  `OutgoingMessage::$autoSubmitted` → `MimeMessageBuilder` añade
+  **`Auto-Submitted: auto-replied`** (RFC 3834; SMTP y Gmail). Graph no
+  admite cabeceras que no empiecen por `X-`: en Microsoft no se añade.
+  `FakeMailProvider::$failSendWith`; helper de tests `draftReply($email)`
 - [ ] 5. Política de envío automático (intenciones, anti-bucles, límites)
-- [ ] 6. Envío de la respuesta en el hilo (`ReplySender` + `SendReplyJob`)
+- [ ] 6. `EmailProcessor` + `ProcessEmailJob`: clasificación → agente → decisión
+  (reordenadas: el procesador usa la política y el envío, que van antes)
 - [ ] 7. Comando `ai:process` (`ai:automation` se hizo en la tarea 3)
 - [ ] 8. Prueba de extremo a extremo con GreenMail
 - [ ] 9. Prueba real con Claude, README

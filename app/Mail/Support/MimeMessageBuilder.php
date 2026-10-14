@@ -46,6 +46,12 @@ class MimeMessageBuilder
             $email->getHeaders()->addIdHeader('References', $message->references);
         }
 
+        // RFC 3834: así otros sistemas automáticos (respuestas de fuera de la
+        // oficina, tickets...) no contestan a nuestra respuesta automática.
+        if ($message->autoSubmitted) {
+            $email->getHeaders()->addTextHeader('Auto-Submitted', 'auto-replied');
+        }
+
         return $email;
     }
 
