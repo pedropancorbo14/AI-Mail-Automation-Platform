@@ -7,6 +7,7 @@ use App\Tenancy\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Una llamada a la IA (lograda o no). La crea App\AI\AIService; nunca una
@@ -44,5 +45,11 @@ class AiRequest extends Model
     public function promptVersion(): BelongsTo
     {
         return $this->belongsTo(AiPromptVersion::class, 'ai_prompt_version_id');
+    }
+
+    /** @return HasMany<AiToolCall, $this> */
+    public function toolCalls(): HasMany
+    {
+        return $this->hasMany(AiToolCall::class);
     }
 }

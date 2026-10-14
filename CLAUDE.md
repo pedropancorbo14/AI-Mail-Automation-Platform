@@ -1369,7 +1369,15 @@ Fase 8.
   ?email, ?aiRequestId; `senderEmail()` normalizado en minúsculas) y
   `App\Tools\ToolResult` (`success($data)` / `error($message)`,
   `toArray()` = lo que verá el modelo)
-- [ ] 2. Tabla y modelo `ai_tool_calls`
+- [x] 2. Tabla `ai_tool_calls` (sección 9): tenant (restrict),
+  `ai_request_id` y `email_id` (nullOnDelete: la auditoría se conserva),
+  `tool`, `arguments` jsonb, `result` jsonb (lo que vio el modelo),
+  `status` **success / error / rejected** (enum
+  `App\Tools\Enums\ToolCallStatus`; rejected = ni se ejecutó: herramienta
+  desconocida o desactivada, argumentos inválidos o sin permiso), `error`,
+  `duration_ms`, `created_at`. Índices tenant+created_at, tenant+tool,
+  ai_request_id. Modelo `AiToolCall` (`BelongsToTenant`), relación
+  `AiRequest::toolCalls()`
 - [ ] 3. `ToolRegistry`
 - [ ] 4. `ToolExecutor` (JSON Schema, permisos, errores, límites, registro)
 - [ ] 5. Herramienta `search_company_documents`
