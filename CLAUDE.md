@@ -1602,7 +1602,18 @@ la Fase 9.
   completa, historial **solo-añadir** comprobado petición a petición
   (mismo system y herramientas), herramientas en paralelo, solo las de la
   empresa, cada límite, rechazo, errores
-- [ ] 6. Reglas de decisión (confianza, revisión humana)
+- [x] 6. **`AgentDecision::review($reply, $email, $run)`: la IA propone,
+  el backend decide.** `needs_human` si se cumple CUALQUIERA (aunque el
+  modelo diga que está seguro), guardando **todos** los motivos en
+  `needs_human_reason`: el modelo lo pide; confianza <
+  `ai.agent.min_confidence` (0,75, `AI_AGENT_MIN_CONFIDENCE`); sospecha
+  de prompt injection en el email; la clasificación ya lo marcó;
+  `pending_actions` no vacío (el agente no ejecuta acciones); alguna
+  herramienta del run con estado distinto de `success` (p. ej. pedido no
+  encontrado); el email se recortó antes de dárselo al agente. Tests:
+  respuesta limpia y segura → sin revisión; cada motivo por separado;
+  pedido ajeno con confianza 0,95 → revisión; varios motivos acumulados;
+  umbral configurable
 - [ ] 7. Comando `ai:reply`
 - [ ] 8. Prueba real con Claude, README
 
