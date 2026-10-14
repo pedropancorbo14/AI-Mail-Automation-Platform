@@ -1413,7 +1413,25 @@ Fase 8.
   error "La búsqueda en la documentación no está disponible…". La
   descripción le pide al modelo responder solo con lo que digan los
   fragmentos y citar la fuente
-- [ ] 6. `OrderProvider` + proveedor demo
+- [x] 6. Módulo **`app/ERP/`**: interfaz `Contracts\OrderProvider`
+  (`findOrder($number)` — admite "#" —, `ordersForCustomer($email,
+  $limit)` del más reciente al más antiguo; siempre la empresa del
+  `TenantService`), DTOs `readonly` `Data\Order` (número, cliente, estado,
+  fecha, total, moneda, líneas, envío, ciudad/país — sin dirección
+  completa: no hace falta para responder —; `belongsTo($email)` sin
+  mayúsculas/espacios), `OrderItem`, `Shipment` (transportista,
+  seguimiento, fechas) y enum `OrderStatus` (pending_payment, processing,
+  shipped, delivered, cancelled, returned; `label()` en español).
+  **`Providers\DemoOrderProvider`**: lee `database/seeders/demo/orders.json`
+  (`{slug: [pedidos]}`); solo "empresa-demo" tiene pedidos, coherentes con
+  los emails de prueba (#45821 y #44102 Cliente Pérez, #78123 y #74400
+  Laura, #77001 Talleres Ruiz, #76540 Marcos 349 €, #75555 John, lámpara).
+  `config/erp.php` (`ORDERS_PROVIDER=demo`, `ORDERS_DEMO_FILE`). **Bug
+  evitado:** `OrderProvider` y `ToolRegistry` registrados como
+  **`scoped`** y no singleton: dependen (directa o indirectamente) de
+  `TenantService`, que es scoped; un singleton se quedaría en el worker
+  con el `TenantService` del primer job y vería la empresa equivocada
+  (test con `forgetScopedInstances()`)
 - [ ] 7. Herramientas `get_order` y `get_customer_orders`
 - [ ] 8. Comando `ai:tool`
 - [ ] 9. Prueba en el stack, README

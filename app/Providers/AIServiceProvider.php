@@ -12,7 +12,10 @@ use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Prompts\PromptRegistry;
 use App\AI\Providers\Anthropic\AnthropicProvider;
 use App\Documents\Chunking\TextChunker;
+use App\ERP\Contracts\OrderProvider;
+use App\ERP\Providers\DemoOrderProvider;
 use App\Mail\Ingestion\Events\EmailIngested;
+use App\Tenancy\TenantService;
 use App\Tools\ToolRegistry;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -49,8 +52,17 @@ class AIServiceProvider extends ServiceProvider
             default => throw new LLMConfigurationException('Proveedor de embeddings no soportado: ' . config('ai.embeddings.provider') . '.'),
         });
 
-        // Herramientas de la IA: solo las de config('ai.tools.available'), construidas desde el contenedor.
-        $this->app->singleton(ToolRegistry::class, fn ($app) => new ToolRegistry(
+        // Fuente de pedidos para las herramientas (demo hasta las integraciones de la Fase 14).
+        // "scoped", no singleton: depende de TenantService (scoped); un singleton se quedaría
+        // en un worker con el TenantService del primer job y vería la empresa equivocada.
+        $this->app->scoped(OrderProvider::class, fn ($app) => match (config('erp.orders.provider')) {
+            'demo' => new DemoOrderProvider($app->make(TenantService::class), config('erp.orders.demo_file')),
+            default => throw new \InvalidArgumentException('Proveedor de pedidos no soportado: ' . config('erp.orders.provider') . '.'),
+        });
+
+        // Herramientas de la IA: solo las de config('ai.tools.available'), construidas desde el
+        // contenedor. "scoped" por lo mismo: las herramientas guardan servicios del tenant.
+        $this->app->scoped(ToolRegistry::class, fn ($app) => new ToolRegistry(
             array_map(fn (string $class) => $app->make($class), config('ai.tools.available', [])),
         ));
 

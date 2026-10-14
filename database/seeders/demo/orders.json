@@ -1,0 +1,146 @@
+{
+    "empresa-demo": [
+        {
+            "number": "45821",
+            "customer_email": "cliente@cliente.test",
+            "customer_name": "Cliente Pérez",
+            "status": "shipped",
+            "placed_at": "2026-09-28T10:12:00+02:00",
+            "total": 89.9,
+            "currency": "EUR",
+            "items": [
+                {"sku": "LMP-200", "name": "Lámpara de mesa Nórdica", "quantity": 1, "unit_price": 59.9},
+                {"sku": "BLB-E27", "name": "Pack 2 bombillas LED E27", "quantity": 2, "unit_price": 15.0}
+            ],
+            "shipment": {
+                "carrier": "SEUR",
+                "tracking_number": "SEU123456789ES",
+                "tracking_url": "https://www.seur.com/livetracking/?segOnlineIdentificador=SEU123456789ES",
+                "shipped_at": "2026-09-29T17:40:00+02:00",
+                "estimated_delivery": "2026-10-01T20:00:00+02:00",
+                "delivered_at": null
+            },
+            "shipping_city": "Zaragoza",
+            "shipping_country": "ES"
+        },
+        {
+            "number": "44102",
+            "customer_email": "cliente@cliente.test",
+            "customer_name": "Cliente Pérez",
+            "status": "delivered",
+            "placed_at": "2026-07-14T19:05:00+02:00",
+            "total": 34.5,
+            "currency": "EUR",
+            "items": [
+                {"sku": "CUS-45", "name": "Cojín de lino 45x45", "quantity": 3, "unit_price": 11.5}
+            ],
+            "shipment": {
+                "carrier": "Correos Express",
+                "tracking_number": "CEX0099887766",
+                "tracking_url": null,
+                "shipped_at": "2026-07-15T12:00:00+02:00",
+                "estimated_delivery": "2026-07-17T20:00:00+02:00",
+                "delivered_at": "2026-07-16T11:22:00+02:00"
+            },
+            "shipping_city": "Zaragoza",
+            "shipping_country": "ES"
+        },
+        {
+            "number": "78123",
+            "customer_email": "laura@cliente.test",
+            "customer_name": "Laura Gómez",
+            "status": "processing",
+            "placed_at": "2026-10-05T09:31:00+02:00",
+            "total": 129.0,
+            "currency": "EUR",
+            "items": [
+                {"sku": "SLL-OAK", "name": "Silla de comedor roble", "quantity": 2, "unit_price": 64.5}
+            ],
+            "shipment": null,
+            "shipping_city": "Valencia",
+            "shipping_country": "ES"
+        },
+        {
+            "number": "77001",
+            "customer_email": "contabilidad@talleresruiz.test",
+            "customer_name": "Talleres Ruiz SL",
+            "status": "delivered",
+            "placed_at": "2026-09-12T08:15:00+02:00",
+            "total": 412.3,
+            "currency": "EUR",
+            "items": [
+                {"sku": "EST-MET", "name": "Estantería metálica industrial", "quantity": 2, "unit_price": 189.0},
+                {"sku": "ORG-BOX", "name": "Caja organizadora", "quantity": 3, "unit_price": 11.43}
+            ],
+            "shipment": {
+                "carrier": "SEUR",
+                "tracking_number": "SEU555000111ES",
+                "tracking_url": null,
+                "shipped_at": "2026-09-13T16:00:00+02:00",
+                "estimated_delivery": "2026-09-15T20:00:00+02:00",
+                "delivered_at": "2026-09-15T10:05:00+02:00"
+            },
+            "shipping_city": "Logroño",
+            "shipping_country": "ES"
+        },
+        {
+            "number": "76540",
+            "customer_email": "marcos@cliente.test",
+            "customer_name": "Marcos Vidal",
+            "status": "delivered",
+            "placed_at": "2026-09-02T22:47:00+02:00",
+            "total": 349.0,
+            "currency": "EUR",
+            "items": [
+                {"sku": "SOF-2P", "name": "Sofá 2 plazas Gris", "quantity": 1, "unit_price": 349.0}
+            ],
+            "shipment": {
+                "carrier": "Transportes Pesados SL",
+                "tracking_number": "TP-77120",
+                "tracking_url": null,
+                "shipped_at": "2026-09-08T09:00:00+02:00",
+                "estimated_delivery": "2026-09-11T20:00:00+02:00",
+                "delivered_at": "2026-09-10T17:30:00+02:00"
+            },
+            "shipping_city": "Sevilla",
+            "shipping_country": "ES"
+        },
+        {
+            "number": "75555",
+            "customer_email": "john@customer.test",
+            "customer_name": "John Smith",
+            "status": "delivered",
+            "placed_at": "2026-09-20T14:02:00+02:00",
+            "total": 59.9,
+            "currency": "EUR",
+            "items": [
+                {"sku": "LMP-200", "name": "Lámpara de mesa Nórdica", "quantity": 1, "unit_price": 59.9}
+            ],
+            "shipment": {
+                "carrier": "SEUR",
+                "tracking_number": "SEU777333222ES",
+                "tracking_url": null,
+                "shipped_at": "2026-09-21T15:00:00+02:00",
+                "estimated_delivery": "2026-09-23T20:00:00+02:00",
+                "delivered_at": "2026-09-23T12:41:00+02:00"
+            },
+            "shipping_city": "Lisboa",
+            "shipping_country": "PT"
+        },
+        {
+            "number": "74400",
+            "customer_email": "laura@cliente.test",
+            "customer_name": "Laura Gómez",
+            "status": "cancelled",
+            "placed_at": "2026-08-30T18:20:00+02:00",
+            "total": 45.0,
+            "currency": "EUR",
+            "items": [
+                {"sku": "ALF-120", "name": "Alfombra yute 120x180", "quantity": 1, "unit_price": 45.0}
+            ],
+            "shipment": null,
+            "shipping_city": "Valencia",
+            "shipping_country": "ES"
+        }
+    ]
+}
