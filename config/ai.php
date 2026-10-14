@@ -90,6 +90,8 @@ return [
         // herramienta que no esté aquí no existe para la IA.
         'available' => [
             App\Tools\Builtin\SearchCompanyDocumentsTool::class,
+            App\Tools\Builtin\GetOrderTool::class,
+            App\Tools\Builtin\GetCustomerOrdersTool::class,
         ],
 
         // Tamaño máximo (caracteres JSON) del resultado que se devuelve al

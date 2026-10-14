@@ -1432,7 +1432,20 @@ Fase 8.
   `TenantService`, que es scoped; un singleton se quedaría en el worker
   con el `TenantService` del primer job y vería la empresa equivocada
   (test con `forgetScopedInstances()`)
-- [ ] 7. Herramientas `get_order` y `get_customer_orders`
+- [x] 7. **`get_order`** y **`get_customer_orders`** (`app/Tools/Builtin/`,
+  ambas `RequiresSender`, registradas en `ai.tools.available`).
+  `get_order(order_number)`: número normalizado (primer fragmento con
+  dígitos: "#45821", "nº 45821", "pedido 45821", "ES-1234"); **pedido
+  inexistente y pedido de otro cliente → misma respuesta** ("No hay
+  ningún pedido con ese número asociado a este cliente": ni siquiera se
+  puede averiguar si un número existe); detalle vía `OrderPresenter`
+  (estado + `status_label`, fecha, total, líneas, envío con seguimiento y
+  fechas, ciudad/país). `get_customer_orders(limit?)`: **sin parámetro de
+  email** (siempre el remitente del contexto; un `email` en los
+  argumentos se rechaza por el esquema), resúmenes del más reciente al más
+  antiguo, límite acotado a 1–10 en código, `note` si no tiene pedidos.
+  Tests: otro cliente/otra empresa/sin remitente nunca ven datos; todo
+  queda en `ai_tool_calls`
 - [ ] 8. Comando `ai:tool`
 - [ ] 9. Prueba en el stack, README
 
