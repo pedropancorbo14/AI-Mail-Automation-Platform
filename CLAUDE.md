@@ -1446,7 +1446,16 @@ Fase 8.
   antiguo, límite acotado a 1–10 en código, `note` si no tiene pedidos.
   Tests: otro cliente/otra empresa/sin remitente nunca ven datos; todo
   queda en `ai_tool_calls`
-- [ ] 8. Comando `ai:tool`
+- [x] 8. Comando `php artisan ai:tool {name?} [--args=JSON]
+  [--email=<id>|--tenant=<id>] [--list]` (`RunAiTool`): `--list` (o sin
+  nombre) → tabla herramienta / necesita email / descripción; ejecutar →
+  **siempre vía `ToolExecutor`** (validación, permisos y registro en
+  `ai_tool_calls` igual que con la IA) con el contexto del email indicado
+  (empresa + remitente; consulta global deliberada) o de la empresa;
+  imprime OK/ERROR + el JSON que vería el modelo. **Lecciones:** en
+  comandos no llamar a un método `context()` (choca con un método
+  protegido de `Command`), y no poner llaves `{}` dentro de la firma (ni
+  como valor por defecto ni en la descripción de una opción)
 - [ ] 9. Prueba en el stack, README
 
 ### Pendientes anotados para más adelante
