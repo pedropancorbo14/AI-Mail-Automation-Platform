@@ -32,6 +32,12 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Email', permission: 'emails.view', menu: 'emails' },
             },
             {
+                path: 'buzones',
+                name: 'mail-connections',
+                component: () => import('@/pages/MailConnectionsPage.vue'),
+                meta: { title: 'Buzones de correo', permission: 'mail_connections.view' },
+            },
+            {
                 path: 'configuracion/ia',
                 name: 'ai-settings',
                 component: () => import('@/pages/AiSettingsPage.vue'),

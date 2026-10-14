@@ -2106,7 +2106,28 @@ ven).
   todo y no se puede cambiar nada. Tests: `AutomationApiTest` (11) y
   Vitest `AiSettingsPage.test.ts` (solo lectura sin permiso, activar una
   herramienta llama al PATCH, intenciones prohibidas marcadas)
-- [ ] 10. Página: conexiones de correo (IMAP, OAuth, prueba)
+- [x] 10. **Página: buzones de correo** (`MailConnectionsPage`,
+  `/buzones`, `mail_connections.view`, menú "Buzones"; usa la API de la
+  Fase 3). Tabla con nombre/email, tipo, estado (Activo / Sin probar /
+  Falla con su `last_error` / Desactivado) y última prueba. Con
+  `mail_connections.manage`: **Probar** (diálogo con recepción y envío
+  por separado y su error), **Editar** (solo IMAP), interruptor
+  activar/desactivar, **Eliminar** con confirmación (el 409 "tiene
+  correos guardados: desactívalo" se muestra tal cual), **Añadir buzón
+  IMAP** y **Conectar Microsoft 365 / Gmail** (`POST .../oauth/{p}/start`
+  → el navegador va a la URL de autorización). Formulario
+  `components/connections/ImapConnectionForm.vue` (cajón lateral):
+  nombre, email (no editable después), IMAP y SMTP (servidor, puerto,
+  cifrado, usuario, contraseña); el usuario se rellena con el email; en
+  edición la contraseña vacía = **conservar la guardada**
+  (`withoutEmptyPasswords`); errores 422 bajo cada campo (incluido el
+  anti-SSRF). **Un buzón nuevo o con credenciales cambiadas se prueba
+  solo al guardar** (sin probar no se sincroniza). Vuelta de OAuth:
+  `MAIL_CONNECTIONS_OAUTH_REDIRECT_TO=${APP_URL}/buzones` en
+  `.env.docker.example` (y en el `.env` local) → la página lee
+  `?status=connected|error&message=`, avisa y limpia la URL. Vitest:
+  listado con estado y error, sin permiso solo lectura, usuario
+  autocompletado, errores 422 por campo, contraseñas vacías fuera
 - [ ] 11. Autodetección de la configuración IMAP/SMTP
 - [ ] 12. Página: documentación (RAG) y buscador
 - [ ] 13. Páginas: usuarios y empresa
