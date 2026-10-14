@@ -29,8 +29,9 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 6 | Base de conocimiento (RAG): documentos de la empresa (PDF, TXT, Markdown, HTML), troceado, embeddings **locales** (Ollama + bge-m3) y búsqueda por significado con pgvector, citando la fuente | ✅ Hecha |
 | 7 | Tools: herramientas controladas que la IA puede pedir (documentación, pedidos del cliente), validadas, con permisos y auditadas en `ai_tool_calls` | ✅ Hecha |
 | 8 | Agente: Claude usa las herramientas en cadena, prepara una propuesta de respuesta citando sus fuentes y el backend decide si necesita revisión humana | ✅ Hecha (probada con Claude real: ~0,05 $ por respuesta) |
-| 9 | Automatización: procesar cada email de principio a fin (clasificar → agente → enviar o revisión humana) | ⏳ Siguiente |
-| 10–17 | Panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
+| 9 | Automatización: cada email se procesa solo de principio a fin (clasificar → agente → reglas → **enviar en el hilo** o revisión humana), con estados, historial y protección contra bucles | ✅ Hecha (probada con Claude real y GreenMail) |
+| 10 | Panel de administración | ⏳ Siguiente |
+| 11–17 | Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
@@ -43,8 +44,9 @@ y la IA tiene **herramientas controladas** para consultar esa
 documentación y los pedidos del cliente que escribe. Con ellas, el
 **agente** prepara una **propuesta de respuesta** para cada email, citando
 de dónde saca cada dato, y el backend decide si una persona debe revisarla.
-Todavía **no se envía nada**: el envío automático y la bandeja de revisión
-llegan en las Fases 9 y 13. La hoja de ruta completa y las
+Si la empresa lo permite y la respuesta es segura, **se envía sola** en el
+hilo del cliente; si no, queda para una persona (la bandeja de revisión es
+la Fase 13). La hoja de ruta completa y las
 decisiones de arquitectura están en [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -97,7 +99,7 @@ docker compose exec app php artisan test            # todos los tests en verde
 
 | Servicio | URL | Acceso |
 |---|---|---|
-| API | http://localhost:8080/api/v1 | ver [API](#11-api) |
+| API | http://localhost:8080/api/v1 | ver [API](#12-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
 | Grafana | http://localhost:3000 | `admin` / `admin` |
 | Prometheus | http://localhost:9090 | — |
@@ -127,6 +129,8 @@ docker compose exec app php artisan kb:search "¿cómo devuelvo un producto?" --
 docker compose exec app php artisan ai:tool --list         # herramientas de la IA (y ejecutarlas a mano)
 docker compose exec app php artisan ai:tools 1             # herramientas activadas para la empresa 1
 docker compose exec app php artisan ai:reply 1             # el agente prepara la respuesta al email 1 y muestra la traza
+docker compose exec app php artisan ai:automation 1        # modo de automatización de la empresa 1 (off / draft / auto)
+docker compose exec app php artisan ai:process 1 --now     # procesar el email 1 de principio a fin y ver su historial de estados
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
 ```
 
@@ -372,7 +376,9 @@ locales). El ejemplo usa la cuenta demo de GreenMail.
 - Google: `gmail.readonly` es un scope restringido; para usarlo con cuentas
   de otras organizaciones hay que pasar la verificación de la app en Google.
 - No se guarda copia de lo enviado por SMTP en "Enviados" (Gmail/Microsoft
-  sí lo hacen solos): se decidirá en la Fase 9.
+  sí lo hacen solos). Las respuestas quedan guardadas en la plataforma
+  (`email_replies`); la copia se valorará por buzón (algunos servidores
+  SMTP ya la guardan y saldría duplicada).
 
 ### Añadir un proveedor nuevo
 
@@ -492,14 +498,15 @@ guardando, solo que sin clasificar (aviso en el log). Para activarla:
    `docker compose exec horizon php artisan horizon:terminate`
 4. Prueba con un email ya guardado y mira resultado y coste:
    `docker compose exec app php artisan ai:classify <id> --now`
-5. Clasifica los que llegaron mientras no había clave:
-   `docker compose exec app php artisan ai:classify --pending`
+5. Procesa los que llegaron mientras no había clave (estaban en revisión
+   humana): `docker compose exec app php artisan ai:process <id> --now --reprocess`
+   o, para los que siguen en `received`, `ai:process --pending`
 
 | Variable | Para qué |
 |---|---|
 | `ANTHROPIC_API_KEY` | Clave de la API. Vacía = IA desactivada. |
 | `ANTHROPIC_MODEL` | Modelo (por defecto `claude-opus-5-5`, $4 / $20 por millón de tokens de entrada / salida). Más barato: `claude-sonnet-5-5` ($2 / $10) o `claude-haiku-4-5` ($1 / $5). Los precios están en `config/ai.php`. |
-| `AI_CLASSIFY_ON_INGEST` | Clasificar cada email al guardarlo (`true`). |
+| `AI_PROCESS_ON_INGEST` | Procesar cada email al guardarlo: clasificación, agente y envío o revisión humana (`true`; ver [Automatización](#10-automatización-cada-email-de-principio-a-fin)). Acepta el nombre antiguo `AI_CLASSIFY_ON_INGEST`. |
 | `ANTHROPIC_FALLBACKS` | Si los filtros de seguridad de un modelo rechazan un email, Anthropic lo reintenta con otro modelo en la misma llamada (`true`). |
 | `AI_CLASSIFICATION_EFFORT` | Profundidad del razonamiento (`low` por defecto: clasificar es sencillo y así gasta menos). |
 | `AI_CLASSIFICATION_MAX_BODY_CHARS` | Caracteres del cuerpo que se envían (20 000). Si se recorta, se avisa al modelo y queda registrado. |
@@ -507,7 +514,7 @@ guardando, solo que sin clasificar (aviso en el log). Para activarla:
 ### Cómo funciona
 
 ```
-Ingesta (Fase 4) ── evento EmailIngested ──► ClassifyEmailJob (cola "ai", Horizon)
+Ingesta (Fase 4) ── evento EmailIngested ──► ProcessEmailJob (cola "ai", Horizon) ── ver sección 10
    └─ EmailClassifier ── prompt versionado + email como dato no fiable
         └─ AIService ── LLMProvider (AnthropicProvider, SDK oficial)
               ├─ registra SIEMPRE la llamada en ai_requests (tokens, coste, latencia, resultado o error)
@@ -713,9 +720,9 @@ una configuración de la empresa, implementar también `HasAvailability`.
 
 El agente junta todo lo anterior: lee el email (con su clasificación),
 **decide qué consultar**, usa las herramientas las veces que necesite y
-termina con una **propuesta de respuesta** que cita sus fuentes. Ahora
-mismo **no envía nada**: deja un borrador en `email_replies`. Enviarlo
-solo o pasarlo a una persona es la Fase 9.
+termina con una **propuesta de respuesta** que cita sus fuentes. El agente
+**no envía nada**: deja un borrador en `email_replies`. Si se envía solo o
+lo revisa una persona lo decide la [automatización](#10-automatización-cada-email-de-principio-a-fin).
 
 ### Cómo funciona
 
@@ -823,7 +830,119 @@ bajo; conviene medirlo con un conjunto de emails de prueba (Fase 15).
 
 ---
 
-## 10. Estructura del proyecto
+## 10. Automatización: cada email de principio a fin
+
+Es el MVP completo: cuando llega un email, la plataforma lo procesa sola y
+termina **enviando la respuesta en el hilo del cliente** o dejándolo
+preparado para una persona. Código en [`app/Automation/`](app/Automation/).
+
+### Cómo funciona
+
+```
+email nuevo (mail:sync, cada minuto) ── EmailIngested ──► ProcessEmailJob (cola "ai")
+  received ─► processing
+     ├─ ¿correo automático? (rebote, lista, boletín, fuera de oficina...) ─► ignored   (sin gastar IA)
+     ├─ ¿empresa en modo "off" o IA sin configurar? ─────────────────────► human_review
+     ├─ clasificación (Claude) ─ ¿spam / respuesta automática, confianza ≥ 0,8? ─► ignored
+     ├─ ¿sospecha de prompt injection? ──────────────────────────────────► human_review (sin agente)
+     └─ agente (herramientas + documentación) ─► ai_review
+            └─ reglas: AgentDecision + AutoSendPolicy
+                 ├─ todo correcto ─► approved ─► SendReplyJob (cola "mail") ─► sent
+                 └─ cualquier motivo ─► human_review (con todos los motivos)
+```
+
+Cada cambio de estado se guarda en **`email_status_changes`** con su motivo
+y quién lo decidió (null = la plataforma; una persona en la Fase 13). Un
+email no puede saltarse pasos: las transiciones válidas están en
+[`EmailStatus`](app/Mail/Enums/EmailStatus.php) y el cambio es atómico
+(dos procesos no pueden moverlo a la vez).
+
+### Modos por empresa
+
+| Modo | Qué hace |
+|---|---|
+| `off` | Sin IA: todos los emails van a revisión humana. |
+| `draft` (**por defecto**) | La IA clasifica y prepara la respuesta; **una persona la revisa siempre**. |
+| `auto` | Además, se envían solas las respuestas seguras de las **intenciones permitidas** (por defecto `order_status` y `product_question`). |
+
+```bash
+docker compose exec app php artisan ai:automation 1                                   # ver
+docker compose exec app php artisan ai:automation 1 --mode=auto                       # activar el envío automático
+docker compose exec app php artisan ai:automation 1 --intents=order_status,invoice_request
+docker compose exec app php artisan ai:automation 1 --mode=draft                      # volver a borradores
+```
+
+Nunca se envían solas (aunque la empresa lo pida) las quejas, los
+problemas de cobro, el spam, las respuestas automáticas y lo que no se ha
+entendido (`other`).
+
+### Cuándo se envía sola una respuesta
+
+Solo si **no** se cumple ninguna de estas condiciones (si se cumple
+alguna, va a una persona con todos los motivos):
+
+- la IA pide revisión, su confianza es menor de 0,75, quedan acciones para
+  una persona, falló alguna consulta o el email era demasiado largo
+  ([agente](#9-agente-propuesta-de-respuesta));
+- la empresa no está en modo `auto` o la intención no está permitida;
+- es un correo automático o hay sospecha de prompt injection;
+- la respuesta iría a un **buzón de la propia empresa** o a una dirección
+  `noreply`;
+- esa dirección ya recibió **3 respuestas automáticas en 24 horas**
+  (`AI_MAX_AUTO_REPLIES_PER_ADDRESS`): corta bucles entre sistemas;
+- **freno de emergencia**: `AI_AUTO_SEND=false` desactiva el envío
+  automático en toda la plataforma.
+
+### Cómo se envía
+
+- Por el **mismo buzón** en el que llegó, al "Responder a" del email (o a
+  su remitente), con "Re: " y las cabeceras `In-Reply-To`/`References`:
+  el cliente la ve en la misma conversación.
+- Las respuestas automáticas llevan **`Auto-Submitted: auto-replied`**
+  (RFC 3834), para que otros sistemas automáticos no contesten. (Microsoft
+  Graph no permite esa cabecera.)
+- **Nunca se envía dos veces:** antes de enviar, la respuesta se "reclama"
+  con un cambio de estado atómico. Solo se reintenta si el servidor no
+  respondió (2 reintentos: 1 y 5 min). Si se desconoce si salió, queda en
+  `failed` para que lo revise una persona, y un email con un envío ya
+  intentado no se reprocesa nunca.
+- Errores: credenciales rechazadas → el buzón queda `failing`; rechazo del
+  servidor o buzón desactivado → `failed` con el motivo en `send_error`.
+
+### Probarlo
+
+```bash
+docker compose exec app php artisan ai:automation 1 --mode=auto
+# Envía un correo a soporte@demo.test (GreenMail, SMTP 127.0.0.1:3025):
+#   "¿Hacéis envíos a Canarias?" → en < 1 min se responde solo.
+docker compose exec app php artisan ai:process 12 --now        # procesar uno al momento y ver su historial
+docker compose exec app php artisan ai:process 12 --now --reprocess   # volver a procesar uno ya decidido
+docker compose exec app php artisan ai:process --pending       # encolar los que siguen sin procesar
+docker compose exec app php artisan ai:process --failed        # reintentar los que fallaron
+```
+
+Historial de un email en SQL:
+`SELECT from_status, to_status, reason, created_at FROM email_status_changes WHERE email_id = 12 ORDER BY id;`
+
+### Resultados de la prueba real (Claude + GreenMail, modo `auto`)
+
+| Email | Resultado |
+|---|---|
+| "¿Llegó mi pedido 44102?" (del propio cliente) | **Enviada sola** (0,95): entregado el 16/07 en Zaragoza, Correos Express, seguimiento; todo comprobado con el pedido |
+| "Do you ship to Lisbon?" (inglés) | **Enviada sola en inglés** (0,90): Portugal 3–5 días laborables, según la documentación |
+| "¿Cuántos días tengo para devolver una silla?" | **Enviada sola** (0,90): clasificada como pregunta sobre el producto; 30 días, estado, pasos, 14 días de reembolso y 4,95 €, todo exacto según la política |
+| "¿Hacéis envíos a Canarias?" | **Enviada sola**; llegó al buzón de la clienta en el hilo, con `Auto-Submitted` |
+| Boletín con `List-Unsubscribe` | **Ignorado sin llamar a la IA** |
+| Spam y "fuera de la oficina" | Ignorados (confianza 0,97) |
+| Pedido retrasado, doble cobro con amenaza legal, producto roto, factura | **Revisión humana**, cada uno con sus motivos (acciones pendientes, intención no permitida...) |
+| Prompt injection | Revisión humana **sin ejecutar el agente** |
+
+Coste: clasificación + agente ≈ **0,04–0,07 $ por email** con Opus 5.5;
+los correos automáticos no cuestan nada.
+
+---
+
+## 11. Estructura del proyecto
 
 ```
 app/
@@ -867,11 +986,14 @@ app/
 │   ├── TenantToolService     Herramientas activadas y disponibles para cada empresa
 │   └── ToolExecutor          Valida, controla permisos, ejecuta y registra (ai_tool_calls)
 ├── ERP/                      Pedidos: OrderProvider + DemoOrderProvider (integraciones reales en la Fase 14)
-├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search, ai:tool, ai:tools, ai:reply
+├── Automation/               Automatización (Fase 9): EmailProcessor + ProcessEmailJob, AutoSendPolicy,
+│                             ReplySender + SendReplyJob (envío en el hilo), AutomationMode
+├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search, ai:tool, ai:tools, ai:reply,
+│                             ai:automation, ai:process
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
 │                             EmailRecipient, EmailAttachment, MailSyncState,
 │                             AiRequest, AiPromptVersion, Document, DocumentChunk, AiToolCall,
-│                             TenantTool, AiAgentRun, EmailReply
+│                             TenantTool, AiAgentRun, EmailReply, EmailStatusChange
 ├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy, DocumentPolicy
 ├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders, AI
 ├── Tenancy/                  TenantService, BelongsToTenant, TenantScope
@@ -897,18 +1019,19 @@ tests/
 │                             embeddings (Ollama simulado), Agent/ (bucle, límites, decisión humana, comando ai:reply)
 ├── Feature/Documents/        Documentos: extracción, troceado, indexado, búsqueda, API, aislamiento, comandos
 ├── Feature/Tools/            Registro, ejecutor (validación, permisos, errores), herramientas por empresa, comandos ai:tool/ai:tools
+├── Feature/Automation/       Modos, política de envío, envío en el hilo, procesador, job, comandos y E2E con GreenMail real
 ├── Feature/ERP/              Proveedor de pedidos de demostración
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
 ├── Support/                  GreenMail (buzones de prueba) y Pdf (PDFs generados al vuelo)
 └── Fakes/                    FakeMailProvider, FakeLLMProvider, FakePrompt, FakeEmbeddingProvider, FakeTool
 ```
 
-En próximas fases se añadirán más módulos en `app/` por dominio (`Tools/`, `CRM/`, `ERP/`, `Observability/`…), siempre con la
+En próximas fases se añadirán más módulos en `app/` por dominio (`CRM/`, `Observability/`…), siempre con la
 lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 11. API
+## 12. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -970,7 +1093,7 @@ para el futuro panel de administración (SPA).
 
 ---
 
-## 12. Tests
+## 13. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -1010,20 +1133,20 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
 - Las funciones de ayuda de los archivos de test son **globales** en Pest:
   no repitas un nombre ya usado en otro archivo.
 
-## 13. CI
+## 14. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 14. Entornos
+## 15. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 15. Problemas frecuentes
+## 16. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -1036,7 +1159,10 @@ prepararán en la fase de producción.
 | "El servidor X apunta a una dirección interna no permitida" en local | Protección anti-SSRF. Para usar GreenMail u otro servidor local: `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` en `.env` (**nunca en producción**). |
 | Llegan correos al buzón pero no aparecen en `emails` | El buzón no está `active` (pruébalo con `POST /mail-connections/{id}/test`), la 1ª sincronización solo fija el punto de partida (lo anterior no se importa), o Horizon no procesa la cola `mail`: `docker compose exec horizon php artisan horizon:supervisors` debe mostrar `supervisor-mail`. Mira `last_error` en `mail_sync_states`. |
 | Tras cambiar código o `config/horizon.php` los jobs siguen igual | Horizon mantiene el código cargado: `docker compose exec horizon php artisan horizon:terminate` (el contenedor lo vuelve a arrancar). |
-| Los emails se guardan pero `intent` sigue vacío | No hay `ANTHROPIC_API_KEY` (el log dice "IA desactivada"), `AI_CLASSIFY_ON_INGEST=false`, o Horizon no procesa la cola `ai` (`horizon:supervisors` debe mostrar `supervisor-ai`). Mira `status` y `error` en `ai_requests`. Tras poner la clave: `horizon:terminate` y `ai:classify --pending`. |
+| Los emails se guardan pero se quedan en `received` | `AI_PROCESS_ON_INGEST=false`, o Horizon no procesa la cola `ai`: `horizon:supervisors` debe mostrar `supervisor-ai` en **`redis-long:ai`** (si no, `horizon:terminate`). Para encolarlos: `ai:process --pending`. |
+| Todos los emails van a `human_review` | Es lo normal en modo `draft` (por defecto). Mira el motivo en `email_status_changes`: "La IA no está configurada" (falta `ANTHROPIC_API_KEY`; tras ponerla, `horizon:terminate` y `ai:process <id> --now --reprocess`), modo `off`, intención no permitida, confianza baja... |
+| No se envía nada aunque la empresa esté en `auto` | `AI_AUTO_SEND=false`, la intención no está en `ai:automation <empresa>`, o el motivo está en `email_status_changes`. Si el email está `approved`, Horizon no procesa la cola `mail` (`supervisor-mail`). |
+| Un email en `failed` con "No se pudo enviar la respuesta" | El servidor rechazó el envío o falló la conexión tras los reintentos (`send_error` en `email_replies`). No se reprocesa solo para no enviarlo dos veces: lo revisa una persona. |
 | Un documento se queda en `failed`: "El modelo bge-m3 no está descargado en Ollama" | Falta descargarlo: `docker compose exec ollama ollama pull bge-m3` y después `POST /documents/{id}/reindex`. |
 | Un documento se queda en `pending` | Horizon no procesa la cola `documents`: `horizon:supervisors` debe mostrar `supervisor-documents` (si no, `horizon:terminate`). |
 | "El PDF no contiene texto extraíble" | Es un PDF escaneado (solo imágenes). El OCR no está soportado todavía: súbelo en texto o PDF con texto. |

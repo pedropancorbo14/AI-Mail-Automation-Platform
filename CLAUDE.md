@@ -1662,7 +1662,7 @@ la Fase 9.
 
 **Cerrada:** push del usuario y GitHub Actions en verde (2026-10-14).
 
-### Fase 9 (automatización de emails): EN CURSO (desde 2026-10-14)
+### Fase 9 (automatización de emails): COMPLETADA Y PROBADA CON CLAUDE REAL (2026-10-14), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
@@ -1840,7 +1840,36 @@ clasificación y el agente existían por separado y nada se enviaba.
   Message-ID recibido. **Anti-bucle real:** el autorespondedor del
   cliente contesta con `Auto-Submitted` → `ignored` sin llamar a la IA y
   sin segunda respuesta. Modo draft → `human_review` y nada enviado
-- [ ] 9. Prueba real con Claude, README
+- [x] 9. **Prueba real en el stack (2026-10-14, Claude Opus 5.5 +
+  GreenMail):** migraciones aplicadas, `horizon:terminate` →
+  `supervisor-ai` en **`redis-long:ai`**; "Empresa Demo" en modo `auto`.
+  - `ai:process --pending` con los 10 emails de fases anteriores (6
+    reutilizan su borrador de la Fase 8: sin coste): spam y "fuera de la
+    oficina" → `ignored` (0,97); injection → `human_review` **sin
+    agente**; pedido retrasado, doble cobro, producto roto, devolución
+    (needs_human de la IA) y factura (intención no permitida) →
+    `human_review` con sus motivos; **Canarias → enviada sola**: llegó al
+    buzón de elena@cliente.test en GreenMail como "Re: …", en el hilo
+    (`In-Reply-To`) y con `Auto-Submitted: auto-replied`.
+  - **Flujo en vivo** (4 correos por SMTP, sin tocar nada: scheduler →
+    ingesta → Horizon → Claude → SMTP): pedido 44102 del propio cliente →
+    **enviada sola** (0,95; entrega 16/07, Zaragoza, Correos Express y
+    seguimiento, exactos); "Do you ship to Lisbon?" → **enviada sola en
+    inglés** (Portugal 3–5 días, según la documentación); "¿cuántos días
+    tengo para devolver una silla?" → clasificada `product_question` y
+    **enviada sola** (30 días, estado, pasos, 14 días y 4,95 €: todo
+    exacto) — anotado en pendientes; boletín con `List-Unsubscribe` →
+    `ignored` **sin llamar a la IA**.
+  - Coste de la prueba: **0,25 $** (6 emails con IA); ≈ 0,04–0,07 $ por
+    email con Opus 5.5; los automáticos, 0.
+  README: sección "10. Automatización: cada email de principio a fin"
+  (flujo, modos, cuándo se envía sola, cómo se envía, probarlo,
+  resultados reales), estado, comandos, secciones 6 y 9 actualizadas,
+  estructura, tests, problemas frecuentes; secciones siguientes
+  renumeradas (API = #12)
+
+**Pendiente para dar la Fase 9 por cerrada:** push (lo hace el usuario) y
+GitHub Actions en verde.
 
 ### Pendientes anotados para más adelante
 
@@ -1883,7 +1912,15 @@ clasificación y el agente existían por separado y nada se enviaba.
   (Microsoft desactivó usuario/contraseña en IMAP/SMTP de empresa).
 - Microsoft: envío de adjuntos > 3 MB (upload session) y detección de
   correos movidos entre carpetas (delta query) si hace falta.
-- Copia en "Enviados" de lo enviado por SMTP (Fase 9).
+- Copia en "Enviados" de lo enviado por SMTP: **aplazada en la Fase 9**
+  (las respuestas ya quedan en `email_replies`; hay servidores SMTP que la
+  guardan solos, como Gmail, y saldría duplicada). Valorar una opción por
+  buzón (IMAP APPEND a la carpeta con rol Sent) cuando haya panel.
+- Clasificación de preguntas informativas sobre devoluciones: en la prueba
+  real de la Fase 9, "¿cuántos días tengo para devolver…?" se clasificó
+  `product_question` y se envió sola (respuesta exacta según la política).
+  Es razonable (solo informa), pero si una empresa no lo quiere, quitar
+  `product_question` de sus intenciones o afinar el prompt (Fase 15).
 - Ingesta (Fase 4), límites conocidos:
   - Solo se sincroniza la bandeja de entrada (añadir carpetas = más filas
     en `mail_sync_states`; valorar cuando haga falta).
