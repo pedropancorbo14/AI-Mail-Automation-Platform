@@ -99,6 +99,18 @@ class Email extends Model
         return $this->hasMany(AiRequest::class);
     }
 
+    /** @return HasMany<EmailReply, $this> Propuestas de respuesta, la más reciente primero. */
+    public function replies(): HasMany
+    {
+        return $this->hasMany(EmailReply::class)->latest('id');
+    }
+
+    /** @return HasMany<AiAgentRun, $this> */
+    public function agentRuns(): HasMany
+    {
+        return $this->hasMany(AiAgentRun::class)->latest('id');
+    }
+
     /** @return HasMany<EmailRecipient, $this> */
     public function recipients(): HasMany
     {

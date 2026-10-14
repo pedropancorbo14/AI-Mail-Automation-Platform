@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property AiRequestStatus $status
  */
 #[Fillable([
-    'email_id', 'ai_prompt_version_id', 'purpose', 'provider', 'requested_model', 'model', 'used_fallback',
+    'email_id', 'agent_run_id', 'ai_prompt_version_id', 'purpose', 'provider', 'requested_model', 'model', 'used_fallback',
     'input_tokens', 'output_tokens', 'cache_write_tokens', 'cache_read_tokens', 'cost_usd', 'latency_ms',
     'status', 'stop_reason', 'error', 'provider_request_id', 'intent', 'confidence', 'response',
 ])]
@@ -45,6 +45,12 @@ class AiRequest extends Model
     public function promptVersion(): BelongsTo
     {
         return $this->belongsTo(AiPromptVersion::class, 'ai_prompt_version_id');
+    }
+
+    /** @return BelongsTo<AiAgentRun, $this> */
+    public function agentRun(): BelongsTo
+    {
+        return $this->belongsTo(AiAgentRun::class, 'agent_run_id');
     }
 
     /** @return HasMany<AiToolCall, $this> */

@@ -1562,7 +1562,23 @@ la Fase 9.
   `EmailClassifier::content()`). `AgentReply::fromArray()` valida (sin
   texto → `LLMInvalidResponseException`, confianza acotada, fuentes y
   acciones filtradas). Helper de tests `agentReplyData()`
-- [ ] 4. Tablas `ai_agent_runs` y `email_replies`
+- [x] 4. Tabla **`ai_agent_runs`** (una por ejecución del agente sobre un
+  email: tenant, email nullOnDelete, versión de prompt, `status`
+  running/completed/failed, `stop_reason` end_turn / max_iterations /
+  max_tool_calls / timeout / budget / refusal / error — enums
+  `AgentRunStatus` y `AgentStopReason` con `label()` en
+  `app/AI/Agent/Enums/` —, `error`, iteraciones, nº de herramientas,
+  tokens, `cost_usd`, `duration_ms`, `final_output` jsonb, inicio/fin) +
+  columna **`ai_requests.agent_run_id`** (un paso del agente por
+  petición; las herramientas ya cuelgan de cada `ai_request`: se puede
+  reconstruir todo lo que hizo la IA). Tabla **`email_replies`**
+  (propuesta de respuesta: email cascade, `agent_run_id`, `body`,
+  `language`, `confidence`, `needs_human` + reason, `sources`,
+  `pending_actions`, `internal_note`, `status` draft/approved/rejected/sent
+  — enum `EmailReplyStatus`, no asignable en masa; lo moverán las Fases 9
+  y 13). Modelos `AiAgentRun` (`aiRequests()`, `reply()`, `email()`) y
+  `EmailReply` (`email()`, `agentRun()`); `Email::replies()` /
+  `agentRuns()`, `AiRequest::agentRun()`
 - [ ] 5. `AgentService` (bucle con límites y auditoría)
 - [ ] 6. Reglas de decisión (confianza, revisión humana)
 - [ ] 7. Comando `ai:reply`
