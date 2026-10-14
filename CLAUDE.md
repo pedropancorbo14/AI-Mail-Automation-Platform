@@ -1332,6 +1332,52 @@ los trozos más parecidos por significado y se devuelven con su fuente
 **Pendiente para dar la Fase 6 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde (el CI no necesita Ollama: los tests usan
 `FakeEmbeddingProvider` / `Http::fake`).
+
+### Fase 7 (Tools): EN CURSO (desde 2026-10-14)
+
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit, sin push.
+
+**Objetivo:** herramientas controladas por el backend que la IA puede
+pedir (sección 9): la IA nunca accede a datos por su cuenta. `AITool` +
+`ToolRegistry` + `ToolExecutor` (único que ejecuta: valida argumentos con
+JSON Schema, permisos, errores, límites, registro en `ai_tool_calls`) y
+primeras herramientas. El bucle de tool calling con Claude (agente) es la
+Fase 8.
+
+**Decisiones tomadas:**
+- Código en **`app/Tools/`** (sección 20). Errores esperados de una
+  herramienta = `ToolResult::error()` (el modelo lo lee y decide), no
+  excepciones.
+- **`ToolContext` lo construye el backend, nunca la IA**: empresa, email
+  procesado, remitente, `aiRequestId`. Las herramientas acotan los datos
+  con el contexto, no con argumentos que el modelo podría inventar.
+- **Datos de pedidos:** aún no hay integraciones reales (Fase 14) →
+  interfaz `OrderProvider` en `app/ERP/` (sección 20) con un **proveedor
+  demo** que lee pedidos de ejemplo de un JSON para "Empresa Demo", con
+  los mismos números que los emails de prueba (#45821, #78123, #76540,
+  #75555). En la Fase 14 se sustituye por Shopify/WooCommerce/API del ERP
+  sin tocar las herramientas.
+- **Herramientas de pedidos atadas al remitente del email**: un pedido de
+  otro cliente se responde como "no encontrado" (un email malicioso no
+  puede sacar datos de otros clientes).
+
+**Tareas (commit):**
+- [x] 1. `App\Tools\Contracts\AITool` (`name()` snake_case,
+  `description()` para el modelo, `inputSchema()` JSON Schema,
+  `execute($arguments, ToolContext)`), `App\Tools\ToolContext` (tenant,
+  ?email, ?aiRequestId; `senderEmail()` normalizado en minúsculas) y
+  `App\Tools\ToolResult` (`success($data)` / `error($message)`,
+  `toArray()` = lo que verá el modelo)
+- [ ] 2. Tabla y modelo `ai_tool_calls`
+- [ ] 3. `ToolRegistry`
+- [ ] 4. `ToolExecutor` (JSON Schema, permisos, errores, límites, registro)
+- [ ] 5. Herramienta `search_company_documents`
+- [ ] 6. `OrderProvider` + proveedor demo
+- [ ] 7. Herramientas `get_order` y `get_customer_orders`
+- [ ] 8. Comando `ai:tool`
+- [ ] 9. Prueba en el stack, README
+
 ### Pendientes anotados para más adelante
 
 - **Autodetección de configuración IMAP/SMTP (Fase 10, panel)** — pedido
