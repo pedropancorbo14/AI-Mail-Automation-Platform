@@ -2182,7 +2182,22 @@ ven).
   El script de capturas admite pasos (`STEPS`: rellenar, pulsar, esperar).
   Vitest: lista con estados y error, sin permiso solo lectura, búsqueda
   con fuente y %, `isIndexing`
-- [ ] 13. Páginas: usuarios y empresa
+- [x] 13. **Página: empresa y usuarios** (`CompanyPage`, `/empresa`,
+  `tenant.view`, menú "Empresa y usuarios"; API de la Fase 2; una sola
+  página: son pocas cosas). Empresa: nombre (editable con
+  `tenant.update`, actualiza también la cabecera), identificador y alta.
+  Usuarios (`users.view`): nombre ("(tú)" en el propio), email, rol y
+  alta; según permisos: **Añadir** (`users.create`), **Editar**
+  (`users.update`) y **Eliminar** con confirmación (`users.delete`).
+  Formulario `components/company/UserForm.vue` (cajón): nombre, email,
+  rol, contraseña (inicial, o vacía = no cambiarla al editar). Reglas de
+  la Fase 2 reflejadas en la interfaz (la API las vuelve a imponer): un
+  administrador no ve acciones sobre propietarios ni puede ofrecer el
+  rol propietario (`assignableRoles`), nadie se borra a sí mismo ni
+  cambia su propio rol (selector deshabilitado con explicación); errores
+  422/403 de la API se muestran. `roleLabels` tipado por rol. Vitest:
+  admin vs. propietarios y él mismo, agente solo lectura, roles
+  asignables, contraseña vacía fuera (54 tests)
 - [ ] 14. Prueba en el navegador, README
 
 ### Pendientes anotados para más adelante

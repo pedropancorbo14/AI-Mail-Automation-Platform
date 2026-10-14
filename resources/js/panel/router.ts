@@ -50,6 +50,12 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Configuración de la IA', permission: 'tenant.view' },
             },
             {
+                path: 'empresa',
+                name: 'company',
+                component: () => import('@/pages/CompanyPage.vue'),
+                meta: { title: 'Empresa y usuarios', permission: 'tenant.view' },
+            },
+            {
                 path: 'sin-permiso',
                 name: 'forbidden',
                 component: () => import('@/pages/ForbiddenPage.vue'),

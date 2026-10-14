@@ -68,7 +68,7 @@ async function onUserAction(key: string): Promise<void> {
                 <NDropdown :options="userOptions" trigger="click" @select="onUserAction">
                     <NButton quaternary icon-placement="right">
                         {{ auth.user?.name }}
-                        <NText depth="3" class="layout__role">· {{ roleLabels[auth.user?.role ?? ''] }}</NText>
+                        <NText depth="3" class="layout__role">· {{ auth.user ? roleLabels[auth.user.role] : '' }}</NText>
                         <template #icon>
                             <NIcon><ChevronDownOutline /></NIcon>
                         </template>

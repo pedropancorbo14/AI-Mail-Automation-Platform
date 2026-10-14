@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { BookOutline, FileTrayStackedOutline, HomeOutline, MailOutline, SparklesOutline } from '@vicons/ionicons5';
+import { BookOutline, BusinessOutline, FileTrayStackedOutline, HomeOutline, MailOutline, SparklesOutline } from '@vicons/ionicons5';
 
 export interface MenuEntry {
     /** Nombre de la ruta del panel. */
@@ -17,6 +17,7 @@ export const menuEntries: MenuEntry[] = [
     { route: 'mail-connections', label: 'Buzones', icon: FileTrayStackedOutline, permission: 'mail_connections.view' },
     { route: 'documents', label: 'Documentación', icon: BookOutline, permission: 'documents.view' },
     { route: 'ai-settings', label: 'Ajustes de la IA', icon: SparklesOutline, permission: 'tenant.view' },
+    { route: 'company', label: 'Empresa y usuarios', icon: BusinessOutline, permission: 'tenant.view' },
 ];
 
 /** Solo las secciones que el usuario puede usar. */
@@ -24,7 +25,7 @@ export function visibleMenu(entries: MenuEntry[], can: (permission: string) => b
     return entries.filter((entry) => !entry.permission || can(entry.permission));
 }
 
-export const roleLabels: Record<string, string> = {
+export const roleLabels: Record<'owner' | 'admin' | 'agent', string> = {
     owner: 'Propietario',
     admin: 'Administrador',
     agent: 'Agente',
