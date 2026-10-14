@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { createMemoryHistory } from 'vue-router';
-import { createPanelRouter, safeRedirect } from '@/router';
+import { createMemoryHistory, createRouter } from 'vue-router';
+import { createPanelRouter, installAuthGuard, safeRedirect } from '@/router';
 
 const user = {
     id: 1,
@@ -64,6 +64,28 @@ describe('router del panel', () => {
         await router.push('/no/existe');
 
         expect(router.currentRoute.value.name).toBe('not-found');
+    });
+
+    it('manda a la página 403 las secciones que el rol no permite', async () => {
+        session(true);
+        const page = { template: '<div />' };
+        const router = createRouter({
+            history: createMemoryHistory(),
+            routes: [
+                { path: '/', name: 'home', component: page },
+                { path: '/login', name: 'login', component: page, meta: { public: true } },
+                { path: '/sin-permiso', name: 'forbidden', component: page },
+                { path: '/usuarios', name: 'users', component: page, meta: { permission: 'users.view' } },
+                { path: '/ia', name: 'ai', component: page, meta: { permission: 'automation.manage' } },
+            ],
+        });
+        installAuthGuard(router);
+
+        await router.push('/usuarios');
+        expect(router.currentRoute.value.name).toBe('users');
+
+        await router.push('/ia');
+        expect(router.currentRoute.value.name).toBe('forbidden');
     });
 
     it('solo redirige a rutas internas del panel tras el login', () => {

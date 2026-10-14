@@ -9,16 +9,29 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Iniciar sesión', public: true },
     },
     {
+        // Todo lo que requiere sesión va dentro de la estructura del panel.
         path: '/',
-        name: 'home',
-        component: () => import('@/pages/HomePage.vue'),
-        meta: { title: 'Inicio' },
-    },
-    {
-        path: '/:pathMatch(.*)*',
-        name: 'not-found',
-        component: () => import('@/pages/NotFoundPage.vue'),
-        meta: { title: 'Página no encontrada' },
+        component: () => import('@/layouts/AppLayout.vue'),
+        children: [
+            {
+                path: '',
+                name: 'home',
+                component: () => import('@/pages/HomePage.vue'),
+                meta: { title: 'Inicio' },
+            },
+            {
+                path: 'sin-permiso',
+                name: 'forbidden',
+                component: () => import('@/pages/ForbiddenPage.vue'),
+                meta: { title: 'Sin permiso' },
+            },
+            {
+                path: ':pathMatch(.*)*',
+                name: 'not-found',
+                component: () => import('@/pages/NotFoundPage.vue'),
+                meta: { title: 'Página no encontrada' },
+            },
+        ],
     },
 ];
 
@@ -32,7 +45,7 @@ export function safeRedirect(value: unknown): string {
         : '/';
 }
 
-/** Sin sesión, todo (salvo las rutas públicas) lleva al login. */
+/** Sin sesión, todo (salvo las rutas públicas) lleva al login; sin permiso, a la página 403. */
 export function installAuthGuard(router: Router): void {
     router.beforeEach(async (to) => {
         const auth = useAuthStore();
@@ -47,6 +60,11 @@ export function installAuthGuard(router: Router): void {
 
         if (!auth.isAuthenticated) {
             return { name: 'login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } };
+        }
+
+        // Solo para la interfaz: la API vuelve a comprobar el permiso (403).
+        if (to.meta.permission && !auth.can(to.meta.permission)) {
+            return { name: 'forbidden' };
         }
 
         return true;

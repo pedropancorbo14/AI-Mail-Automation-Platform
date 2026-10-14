@@ -1951,7 +1951,19 @@ ven).
   curl contra el stack: cookie de sesión **HttpOnly**, login → `/me` 200 →
   logout → 401, sin token CSRF → 419. Tests: `SessionLoginTest` (8),
   Vitest `http.test.ts` (6) y `router.test.ts` (5)
-- [ ] 3. Estructura: menú según permisos, cabecera, páginas de error
+- [x] 3. **Estructura del panel.** `@vicons/ionicons5` (iconos que
+  recomienda Naive UI; solo se importan los usados). `layouts/AppLayout`:
+  menú lateral plegable, cabecera con la empresa y el usuario (rol en
+  español y "Cerrar sesión"), contenido con `RouterView`. Todas las rutas
+  con sesión cuelgan de ese layout (también la 404). `menu.ts`:
+  `menuEntries` (ruta, etiqueta, icono, permiso) + `visibleMenu()` (solo
+  lo que permite el rol) + `roleLabels`; cada tarea añade su sección.
+  `RouteMeta` tipado: `title`, `public`, `permission`, `menu` (sección
+  que se marca, p. ej. el detalle marca su listado). Guard: sin permiso →
+  página **403** `ForbiddenPage` (solo interfaz: la API vuelve a
+  comprobarlo). El script de commit ejecuta también `vue-tsc` y Vitest
+  en el contenedor `vite`. Tests Vitest: `menu.test.ts`, guard de
+  permisos en `router.test.ts`
 - [ ] 4. API: listado de emails con filtros
 - [ ] 5. API: detalle del email, HTML saneado y adjuntos
 - [ ] 6. Página: listado de emails
