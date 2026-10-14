@@ -1813,7 +1813,21 @@ clasificación y el agente existían por separado y nada se enviaba.
   `redis-long` (timeout 650) y `ClassifyEmailJob` también; `waits`
   `redis-long:ai`. El test E2E de ingesta IMAP ahora espera
   `human_review` (sin API key en los tests)
-- [ ] 7. Comando `ai:process` (`ai:automation` se hizo en la tarea 3)
+- [x] 7. Comando **`php artisan ai:process {email?} [--now] [--reprocess]
+  [--pending] [--failed]`** (`ProcessEmails`; `ai:automation` se hizo en la
+  tarea 3): un email → encola `ProcessEmailJob` o, con `--now`, lo procesa
+  al momento y muestra el **historial de estados** (cuándo, de, a, motivo)
+  y la pista `ai:reply {id} --last` para la traza del agente; ya decidido
+  sin `--reprocess` → lo explica; IA caída → lo dice y el email sigue en
+  processing; sin API key → aviso (irá a revisión humana). `--pending`:
+  emails `received` con ingesta completa de todas las empresas; `--failed`:
+  emails `failed` (con `reprocess`). Consultas globales deliberadas.
+  **Seguridad añadida al procesador:** nunca se reprocesa un email con una
+  respuesta en `sending`/`sent`/`failed` (`EmailProcessor::
+  sendWasAttempted()`): un envío fallido puede haber llegado y se
+  enviaría dos veces; lo resuelve una persona. **Lección de tests:**
+  `expectsOutputToContain` consume cada línea escrita con una sola
+  expectativa: no esperar dos textos de la misma fila de una tabla
 - [ ] 8. Prueba de extremo a extremo con GreenMail
 - [ ] 9. Prueba real con Claude, README
 

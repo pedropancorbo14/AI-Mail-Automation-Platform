@@ -92,9 +92,22 @@ class EmailProcessor
             $email->status === EmailStatus::Received => tap(true, fn () => $email->transitionTo(EmailStatus::Processing, 'Procesamiento automático.')),
             // Reintento del job: sigue donde estaba.
             $email->status === EmailStatus::Processing => true,
-            $reprocess && $email->status->canTransitionTo(EmailStatus::Processing) => tap(true, fn () => $email->transitionTo(EmailStatus::Processing, 'Reprocesado a mano.')),
+            $reprocess && $email->status->canTransitionTo(EmailStatus::Processing) && ! self::sendWasAttempted($email)
+                => tap(true, fn () => $email->transitionTo(EmailStatus::Processing, 'Reprocesado a mano.')),
             default => false,
         };
+    }
+
+    /**
+     * Si ya se intentó enviar una respuesta, no se reprocesa: podría llegar
+     * dos veces al cliente (un envío fallido puede haber salido). Lo
+     * resuelve una persona.
+     */
+    public static function sendWasAttempted(Email $email): bool
+    {
+        return $email->replies()
+            ->whereIn('status', [EmailReplyStatus::Sending, EmailReplyStatus::Sent, EmailReplyStatus::Failed])
+            ->exists();
     }
 
     private function run(Email $email, bool $reprocess): void
