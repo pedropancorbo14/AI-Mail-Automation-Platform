@@ -28,6 +28,12 @@ function respond(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), { status });
 }
 
+/** API simulada que responde según la URL (la cookie CSRF puede pedirse o no según el estado del cliente). */
+function stubApi(answer: (url: string) => Response): void {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(url === '/sanctum/csrf-cookie' ? new Response(null, { status: 204 }) : answer(url))));
+}
+
 function loginAs(permissions: string[]): void {
     useAuthStore().user = { id: 1, name: 'Ana', email: 'ana@acme.test', role: 'admin', permissions, tenant: { id: 1, name: 'Acme', slug: 'acme' } };
 }
@@ -78,21 +84,49 @@ describe('buzones de correo', () => {
 describe('formulario de buzón IMAP', () => {
     afterEach(() => vi.unstubAllGlobals());
 
-    it('rellena los usuarios con el email', async () => {
-        const wrapper = mount(ImapConnectionForm);
-        const email = wrapper.findAll('input')[1];
+    /** El cliente escribe su email y sale del campo. */
+    async function typeEmail(email: string, detected: object) {
+        stubApi(() => respond({ data: detected }));
 
-        await email.setValue('ventas@empresa.test');
-        await email.trigger('blur');
+        const wrapper = mount(ImapConnectionForm);
+        const input = wrapper.findAll('input')[1];
+        await input.setValue(email);
+        await input.trigger('blur');
+        await flushPromises();
+
+        return wrapper;
+    }
+
+    const notFound = { found: false, source: null, provider_hint: null, imap: null, smtp: null };
+
+    it('rellena los usuarios con el email', async () => {
+        const wrapper = await typeEmail('ventas@empresa.test', notFound);
 
         expect(wrapper.vm.form.imap.username).toBe('ventas@empresa.test');
         expect(wrapper.vm.form.smtp.username).toBe('ventas@empresa.test');
+        expect(wrapper.get('[data-test="detect-result"]').text()).toContain('escríbela a mano');
+    });
+
+    it('propone servidores, puertos y cifrado a partir del email', async () => {
+        const wrapper = await typeEmail('ana@gmx.es', {
+            found: true, source: 'ispdb', provider_hint: null,
+            imap: { host: 'imap.gmx.com', port: 993, encryption: 'ssl', username: 'ana@gmx.es' },
+            smtp: { host: 'mail.gmx.com', port: 587, encryption: 'starttls', username: 'ana@gmx.es' },
+        });
+
+        expect(wrapper.vm.form.imap).toMatchObject({ host: 'imap.gmx.com', port: 993, encryption: 'ssl' });
+        expect(wrapper.vm.form.smtp).toMatchObject({ host: 'mail.gmx.com', port: 587, encryption: 'starttls' });
+        expect(wrapper.get('[data-test="detect-result"]').text()).toContain('base de datos de Thunderbird');
+    });
+
+    it('recomienda OAuth si el correo está en Microsoft 365', async () => {
+        const wrapper = await typeEmail('ana@empresa.test', { ...notFound, provider_hint: 'microsoft' });
+
+        expect(wrapper.get('[data-test="provider-hint"]').text()).toContain('Conectar Microsoft 365');
     });
 
     it('muestra los errores de validación de la API bajo cada campo', async () => {
-        vi.stubGlobal('fetch', vi.fn()
-            .mockResolvedValueOnce(new Response(null, { status: 204 }))
-            .mockResolvedValueOnce(respond({ message: 'Los datos proporcionados no son válidos.', errors: { 'imap.host': ['El servidor apunta a una dirección interna no permitida.'] } }, 422)));
+        stubApi(() => respond({ message: 'Los datos proporcionados no son válidos.', errors: { 'imap.host': ['El servidor apunta a una dirección interna no permitida.'] } }, 422));
 
         const wrapper = mount(ImapConnectionForm);
         await wrapper.get('form').trigger('submit');

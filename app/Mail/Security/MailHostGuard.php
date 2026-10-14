@@ -51,6 +51,22 @@ class MailHostGuard
         return null;
     }
 
+    /**
+     * IPs del host ya comprobadas, para fijar la conexión a ellas (CURLOPT_RESOLVE)
+     * y que el DNS no pueda cambiar entre la comprobación y la petición.
+     * Vacío si no resuelve o si alguna IP es interna.
+     *
+     * @return list<string>
+     */
+    public function allowedIps(string $host): array
+    {
+        if (! $this->allowPrivateHosts && $this->reject($host) !== null) {
+            return [];
+        }
+
+        return $this->resolve($host);
+    }
+
     /** @return list<string> */
     private function resolve(string $host): array
     {

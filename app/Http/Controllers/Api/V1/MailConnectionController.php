@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\MailConnections\StoreMailConnectionRequest;
 use App\Http\Requests\MailConnections\UpdateMailConnectionRequest;
 use App\Http\Resources\MailConnectionResource;
+use App\Mail\Autodetect\MailAutodetector;
 use App\Mail\Enums\MailConnectionStatus;
 use App\Mail\Enums\MailProviderType;
 use App\Mail\MailConnectionService;
@@ -106,5 +107,19 @@ class MailConnectionController extends Controller
         $mailConnection->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * Propone la configuración IMAP/SMTP de una dirección (ISPDB de
+     * Thunderbird, autoconfig del dominio, DNS SRV, nombres habituales) y
+     * avisa si el dominio está en Microsoft 365 o Google. No guarda nada.
+     */
+    public function autodetect(Request $request, MailAutodetector $autodetector): JsonResponse
+    {
+        Gate::authorize('create', MailConnection::class);
+
+        $email = $request->validate(['email' => ['required', 'email:rfc', 'max:255']])['email'];
+
+        return response()->json(['data' => $autodetector->detect($email)->toArray()]);
     }
 }

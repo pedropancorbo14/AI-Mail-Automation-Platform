@@ -2128,7 +2128,40 @@ ven).
   `?status=connected|error&message=`, avisa y limpia la URL. Vitest:
   listado con estado y error, sin permiso solo lectura, usuario
   autocompletado, errores 422 por campo, contraseñas vacías fuera
-- [ ] 11. Autodetección de la configuración IMAP/SMTP
+- [x] 11. **Autodetección de la configuración IMAP/SMTP** (pedida en la
+  Fase 3). `App\Mail\Autodetect\MailAutodetector::detect($email)` →
+  `AutodetectResult` (`found`, `source`, `provider_hint`, `imap`, `smtp`),
+  en orden: **ISPDB de Thunderbird**
+  (`autoconfig.thunderbird.net/v1.1/{dominio}`), **autoconfig del dominio**
+  (`autoconfig.{dominio}/mail/config-v1.1.xml?emailaddress=` y
+  `{dominio}/.well-known/autoconfig/...`), **DNS SRV** (`_imaps`/`_imap`,
+  `_submissions`/`_submission`; "." = no ofrecido) y **nombres
+  habituales** (`imap.`/`smtp.`/`mail.` solo si existen y son públicos);
+  y los **MX** para avisar de Microsoft 365 (`*.mail.protection.outlook.
+  com`) o Google (`*.google.com`): ahí mejor OAuth. Del XML: solo IMAP y
+  SMTP con **SSL o STARTTLS** (nunca sin cifrar) y con contraseña
+  (**un servidor puede listar varios métodos**: vale si alguno es con
+  contraseña — bug encontrado al probar contra la ISPDB real, que lista
+  `OAuth2` + `password-cleartext`; el fixture del test ya lo refleja),
+  prefiriendo SSL; plantillas `%EMAILADDRESS%`/`%EMAILLOCALPART%`/
+  `%EMAILDOMAIN%`. **Anti-SSRF** (el dominio lo escribe el usuario): solo
+  HTTPS, IPs comprobadas por `MailHostGuard::allowedIps()` (nuevo) y
+  **fijadas con `CURLOPT_RESOLVE`** (sin DNS rebinding entre la
+  comprobación y la petición), sin redirecciones, 4 s, máx. 64 KB, XML
+  con `LIBXML_NONET`. `DnsLookup` (MX/SRV) separado para simularlo en
+  tests. Endpoint **`POST /api/v1/mail-connections/autodetect`**
+  (`email`; permiso de crear conexiones; throttle `mail-connection-test`
+  10/min). Prueba real contra internet: gmail.com → ISPDB + aviso Google;
+  outlook.com → aviso Microsoft; yahoo.es → `imap.mail.yahoo.com`; gmx.es
+  → `imap.gmx.com`/`mail.gmx.com`; fastmail.com → SRV. Panel: en el
+  formulario IMAP la detección se lanza al salir del email (si los
+  servidores están vacíos) y con el botón "Detectar configuración";
+  rellena servidores/puertos/cifrado/usuario y explica de dónde sale
+  (la de "nombres habituales" avisa de que es una suposición) o, si el
+  dominio es de Microsoft/Google, recomienda "Conectar …". Tests:
+  `MailAutodetectTest` (15: cada fuente, avisos, **nunca pide nada a
+  hosts internos**, respuestas no válidas/enormes/sin cifrar, emails no
+  válidos, endpoint y permisos) y Vitest del formulario (46 en total)
 - [ ] 12. Página: documentación (RAG) y buscador
 - [ ] 13. Páginas: usuarios y empresa
 - [ ] 14. Prueba en el navegador, README
@@ -2153,18 +2186,8 @@ ven).
   anti-SSRF como `MailHostGuard`, credenciales cifradas, atadura al
   remitente y límites de respuesta.
 
-- **Autodetección de configuración IMAP/SMTP (Fase 10, panel)** — pedido
-  por el usuario (2026-09-30). Que el cliente solo escriba email y
-  contraseña y la app proponga servidores/puertos/cifrado, como
-  Thunderbird: 1) base de datos pública de autoconfig de Thunderbird
-  (ISPDB, `autoconfig.thunderbird.net/v1.1/{dominio}`), 2) autoconfig del
-  propio dominio (`autoconfig.{dominio}/mail/config-v1.1.xml`), 3)
-  registros DNS SRV (`_imaps._tcp`, `_submission._tcp`, RFC 6186), 4)
-  heurística `imap.`/`smtp.`/`mail.{dominio}`. Probar la propuesta con
-  `testConnection()` antes de guardar y dejar corregir a mano si falla.
-  Detectar dominios de Microsoft 365/Google (MX) para ofrecer OAuth en
-  vez de IMAP. Cuidado anti-SSRF: las URLs/hosts detectados pasan por
-  `MailHostGuard` igual que los introducidos a mano.
+- ~~Autodetección de configuración IMAP/SMTP~~: **hecha en la Fase 10,
+  tarea 11**.
 - **Registrar apps OAuth y probar con cuentas reales**: Microsoft (Entra
   ID, gratis; en empresas cliente puede requerir consentimiento del
   admin) y Google (modo pruebas: máx. 100 usuarios de prueba y refresh

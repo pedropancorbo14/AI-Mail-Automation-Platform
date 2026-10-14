@@ -80,3 +80,17 @@ export function withoutEmptyPasswords(input: ImapConnectionInput): ImapConnectio
 
     return { ...input, imap: clean(input.imap), smtp: clean(input.smtp) };
 }
+
+export interface AutodetectResult {
+    found: boolean;
+    /** ispdb (Thunderbird) | domain (autoconfig del dominio) | srv (DNS) | guess (nombres habituales) */
+    source: 'ispdb' | 'domain' | 'srv' | 'guess' | null;
+    /** El correo del dominio está en Microsoft 365 o Google: mejor conectar con OAuth. */
+    provider_hint: 'microsoft' | 'google' | null;
+    imap: ServerSettings | null;
+    smtp: ServerSettings | null;
+}
+
+export async function autodetectSettings(email: string): Promise<AutodetectResult> {
+    return (await api.post<{ data: AutodetectResult }>('/mail-connections/autodetect', { email })).data;
+}

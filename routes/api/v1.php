@@ -38,6 +38,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::apiResource('mail-connections', MailConnectionController::class)
         ->parameters(['mail-connections' => 'mailConnection']);
     Route::post('/mail-connections/oauth/{provider}/start', [MailOAuthController::class, 'start']);
+    // Hace peticiones a servidores de fuera: mismo límite que probar una conexión.
+    Route::post('/mail-connections/autodetect', [MailConnectionController::class, 'autodetect'])
+        ->middleware('throttle:mail-connection-test');
     Route::post('/mail-connections/{mailConnection}/test', [MailConnectionController::class, 'test'])
         ->middleware('throttle:mail-connection-test');
 

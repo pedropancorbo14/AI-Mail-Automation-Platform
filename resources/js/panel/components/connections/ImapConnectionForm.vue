@@ -3,9 +3,11 @@ import { computed, reactive, ref } from 'vue';
 import { NAlert, NButton, NDivider, NForm, NFormItem, NGrid, NGridItem, NInput, NInputNumber, NSelect, NSpace } from 'naive-ui';
 import { ApiError } from '@/api/http';
 import {
+    autodetectSettings,
     createImapConnection,
     updateMailConnection,
     withoutEmptyPasswords,
+    type AutodetectResult,
     type Encryption,
     type ImapConnectionInput,
     type MailConnection,
@@ -40,12 +42,51 @@ const encryptions = [
     { label: 'Sin cifrar (solo pruebas)', value: 'none' },
 ];
 
-// El usuario suele ser el propio email: se rellena si aún está vacío.
+const detecting = ref(false);
+const detected = ref<AutodetectResult | null>(null);
+
+const sourceLabels: Record<NonNullable<AutodetectResult['source']>, string> = {
+    ispdb: 'Configuración conocida del proveedor (base de datos de Thunderbird).',
+    domain: 'Configuración publicada por el propio dominio.',
+    srv: 'Configuración publicada en el DNS del dominio.',
+    guess: 'Servidores con nombres habituales: es una suposición, pruébala.',
+};
+
+/** Propone servidores, puertos y cifrado a partir del email. */
+async function detect(): Promise<void> {
+    if (!form.email.includes('@')) {
+        return;
+    }
+
+    detecting.value = true;
+
+    try {
+        detected.value = await autodetectSettings(form.email);
+
+        for (const key of ['imap', 'smtp'] as const) {
+            const settings = detected.value[key];
+
+            if (settings) {
+                Object.assign(form[key], settings);
+            }
+        }
+    } catch {
+        detected.value = null;
+    } finally {
+        detecting.value = false;
+    }
+}
+
+// El usuario suele ser el propio email; y si aún no hay servidores, se intentan detectar.
 function onEmailBlur(): void {
     for (const key of ['imap', 'smtp'] as const) {
         if (!form[key].username) {
             form[key].username = form.email;
         }
+    }
+
+    if (!editing.value && !form.imap.host) {
+        void detect();
     }
 }
 
@@ -88,7 +129,22 @@ defineExpose({ form });
             </NGridItem>
         </NGrid>
 
-        <slot name="detect" :form="form" />
+        <NSpace v-if="!editing" align="center" class="form__detect">
+            <NButton size="small" :loading="detecting" :disabled="!form.email.includes('@')" data-test="detect" @click="detect">
+                Detectar configuración
+            </NButton>
+            <span class="form__hint">Propone servidores, puertos y cifrado a partir del email.</span>
+        </NSpace>
+        <NAlert v-if="detected?.provider_hint" type="warning" class="form__error" data-test="provider-hint">
+            Este correo está en {{ detected.provider_hint === 'microsoft' ? 'Microsoft 365' : 'Google' }}: es mejor usar
+            «Conectar {{ detected.provider_hint === 'microsoft' ? 'Microsoft 365' : 'Gmail' }}».
+            {{ detected.provider_hint === 'microsoft'
+                ? 'Microsoft desactivó el acceso con contraseña por IMAP en las cuentas de empresa.'
+                : 'Por IMAP solo funciona con una contraseña de aplicación de Google.' }}
+        </NAlert>
+        <NAlert v-else-if="detected" :type="detected.found ? 'success' : 'info'" :show-icon="false" class="form__error" data-test="detect-result">
+            {{ detected.found && detected.source ? sourceLabels[detected.source] : 'No se ha encontrado la configuración: escríbela a mano (te la da tu proveedor de correo).' }}
+        </NAlert>
 
         <template v-for="key in (['imap', 'smtp'] as const)" :key="key">
             <NDivider title-placement="left">{{ key === 'imap' ? 'Recepción (IMAP)' : 'Envío (SMTP)' }}</NDivider>
@@ -137,5 +193,14 @@ defineExpose({ form });
 <style scoped>
 .form__error {
     margin-bottom: 12px;
+}
+
+.form__detect {
+    margin-bottom: 8px;
+}
+
+.form__hint {
+    color: #888;
+    font-size: 12px;
 }
 </style>
