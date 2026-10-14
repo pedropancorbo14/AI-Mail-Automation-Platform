@@ -2162,7 +2162,26 @@ ven).
   `MailAutodetectTest` (15: cada fuente, avisos, **nunca pide nada a
   hosts internos**, respuestas no válidas/enormes/sin cifrar, emails no
   válidos, endpoint y permisos) y Vitest del formulario (46 en total)
-- [ ] 12. Página: documentación (RAG) y buscador
+- [x] 12. **Página: documentación (RAG)** (`DocumentsPage`,
+  `/documentacion`, `documents.view`, menú "Documentación"; API de la
+  Fase 6). Tabla con título y fichero original, tipo, tamaño, estado (En
+  cola / Indexando / Listo con nº de fragmentos / Error con el motivo, p.
+  ej. "PDF sin texto") y fecha; con `documents.manage`: **subir** (título
+  opcional; `NUpload` con petición propia multipart vía el cliente
+  `api`, que ya envía `FormData` sin `Content-Type` JSON; formatos PDF,
+  TXT, Markdown, HTML), **reindexar** y **eliminar** con confirmación;
+  errores 422 del servidor (duplicado, formato, tamaño) como mensaje.
+  **La lista se refresca cada 3 s mientras haya documentos indexándose**
+  (el indexado va en cola) y deja de hacerlo al terminar. **"Probar la
+  búsqueda: lo que encontraría la IA"**: pregunta → `POST
+  /knowledge-base/search` → fragmentos con su fuente citable y % de
+  parecido; sin resultados explica que la IA no inventará y pasará a una
+  persona. Verificado con Chromium contra Ollama real: "¿Cuántos días
+  tengo para devolver un producto?" → "Política de devoluciones, sección
+  «Plazo para devolver»" 76 % (la primera tardó por la carga del modelo).
+  El script de capturas admite pasos (`STEPS`: rellenar, pulsar, esperar).
+  Vitest: lista con estados y error, sin permiso solo lectura, búsqueda
+  con fuente y %, `isIndexing`
 - [ ] 13. Páginas: usuarios y empresa
 - [ ] 14. Prueba en el navegador, README
 

@@ -38,6 +38,12 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Buzones de correo', permission: 'mail_connections.view' },
             },
             {
+                path: 'documentacion',
+                name: 'documents',
+                component: () => import('@/pages/DocumentsPage.vue'),
+                meta: { title: 'Documentación', permission: 'documents.view' },
+            },
+            {
                 path: 'configuracion/ia',
                 name: 'ai-settings',
                 component: () => import('@/pages/AiSettingsPage.vue'),

@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { FileTrayStackedOutline, HomeOutline, MailOutline, SparklesOutline } from '@vicons/ionicons5';
+import { BookOutline, FileTrayStackedOutline, HomeOutline, MailOutline, SparklesOutline } from '@vicons/ionicons5';
 
 export interface MenuEntry {
     /** Nombre de la ruta del panel. */
@@ -15,6 +15,7 @@ export const menuEntries: MenuEntry[] = [
     { route: 'home', label: 'Resumen', icon: HomeOutline },
     { route: 'emails', label: 'Emails', icon: MailOutline, permission: 'emails.view' },
     { route: 'mail-connections', label: 'Buzones', icon: FileTrayStackedOutline, permission: 'mail_connections.view' },
+    { route: 'documents', label: 'Documentación', icon: BookOutline, permission: 'documents.view' },
     { route: 'ai-settings', label: 'Ajustes de la IA', icon: SparklesOutline, permission: 'tenant.view' },
 ];
 
