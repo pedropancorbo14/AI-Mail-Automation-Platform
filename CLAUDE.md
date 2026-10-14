@@ -1726,11 +1726,25 @@ clasificación y el agente existían por separado y nada se enviaba.
   (`WHERE status = actual`) en la misma transacción que el historial: si
   otro proceso lo movió antes, lanza en vez de pisarlo.
   `Email::statusChanges()`
-- [ ] 3. Modo de automatización por empresa
+- [x] 3. **Modo de automatización por empresa** (código del módulo en
+  **`app/Automation/`**: orquesta Mail + AI). Enum `AutomationMode`
+  (`off` sin IA → todo a revisión humana; **`draft` por defecto**: la IA
+  clasifica y propone, una persona revisa siempre; `auto`: además se
+  envían solas las respuestas seguras de las intenciones permitidas).
+  Columnas `tenants.automation_mode` (default draft) y
+  `auto_send_intents` jsonb (null = `ai.automation.
+  default_auto_send_intents`: `order_status`, `product_question`).
+  `EmailIntent::allowsAutoSend()`: **nunca** complaint, billing_issue,
+  auto_reply, spam, other. `Tenant::autoSendIntents()` (enums válidos y
+  permitidos, también filtra la config) y `configureAutomation($mode,
+  ?$intents)` (valida antes de cambiar nada; `[]` = volver a los de la
+  config). No son asignables en masa (el PATCH `/tenant` sigue cambiando
+  solo `name`). Comando **`php artisan ai:automation <tenant> [--mode=]
+  [--intents=a,b]`** (tabla de intenciones: se envía sola / no / nunca)
 - [ ] 4. `EmailProcessor` + `ProcessEmailJob`: clasificación → agente → decisión
 - [ ] 5. Política de envío automático (intenciones, anti-bucles, límites)
 - [ ] 6. Envío de la respuesta en el hilo (`ReplySender` + `SendReplyJob`)
-- [ ] 7. Comandos `ai:process` y `ai:automation`
+- [ ] 7. Comando `ai:process` (`ai:automation` se hizo en la tarea 3)
 - [ ] 8. Prueba de extremo a extremo con GreenMail
 - [ ] 9. Prueba real con Claude, README
 

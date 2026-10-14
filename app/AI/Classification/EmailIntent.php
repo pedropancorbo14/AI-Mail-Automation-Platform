@@ -44,6 +44,16 @@ enum EmailIntent: string
         };
     }
 
+    /**
+     * Si una empresa puede permitir que la IA responda sola a esta
+     * intención. Nunca a quejas ni a problemas de cobro (los ve una
+     * persona), ni a lo que no necesita respuesta o no se ha entendido.
+     */
+    public function allowsAutoSend(): bool
+    {
+        return ! in_array($this, [self::Complaint, self::BillingIssue, self::AutoReply, self::Spam, self::Other], true);
+    }
+
     /** @return list<string> */
     public static function values(): array
     {

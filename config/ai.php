@@ -122,6 +122,12 @@ return [
         'min_confidence' => (float) env('AI_AGENT_MIN_CONFIDENCE', 0.75),
     ],
 
+    'automation' => [
+        // Intenciones a las que la IA responde sola en modo "auto" si la
+        // empresa no ha elegido otras (ai:automation --intents=...).
+        'default_auto_send_intents' => ['order_status', 'product_question'],
+    ],
+
     'classification' => [
         // Clasificar al guardar cada email (evento EmailIngested).
         'on_ingest' => (bool) env('AI_CLASSIFY_ON_INGEST', true),
