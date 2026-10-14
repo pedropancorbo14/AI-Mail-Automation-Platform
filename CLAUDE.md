@@ -1828,7 +1828,18 @@ clasificación y el agente existían por separado y nada se enviaba.
   enviaría dos veces; lo resuelve una persona. **Lección de tests:**
   `expectsOutputToContain` consume cada línea escrita con una sola
   expectativa: no esperar dos textos de la misma fila de una tabla
-- [ ] 8. Prueba de extremo a extremo con GreenMail
+- [x] 8. **`AutomationEndToEndTest`** (grupo `greenmail`): el MVP completo
+  contra GreenMail real, con soporte y cliente como cuentas reales y la
+  IA simulada; todo ocurre dentro de `mail:sync` (colas sync). El cliente
+  escribe → ingesta IMAP → `ProcessEmailJob` → clasificación + agente →
+  reglas → `SendReplyJob` → **SMTP** → en el buzón del cliente llega
+  "Re: …" del buzón de soporte (con su nombre), con `In-Reply-To` y
+  `References` del original, el texto propuesto y `Auto-Submitted`
+  (nuestro propio detector la reconoce como automática); historial
+  processing → ai_review → approved → sent y `sent_message_id` = el
+  Message-ID recibido. **Anti-bucle real:** el autorespondedor del
+  cliente contesta con `Auto-Submitted` → `ignored` sin llamar a la IA y
+  sin segunda respuesta. Modo draft → `human_review` y nada enviado
 - [ ] 9. Prueba real con Claude, README
 
 ### Pendientes anotados para más adelante
