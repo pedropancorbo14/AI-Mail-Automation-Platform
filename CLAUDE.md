@@ -1527,7 +1527,21 @@ la Fase 9.
   [--enable=*] [--disable=*]`** (tabla activada / disponible / origen /
   "la IA la ve"). Helper de tests `enableTools($tenant, ...$tools)` en
   `tests/Pest.php`
-- [ ] 2. Tool calling en `LLMProvider` / `AnthropicProvider`
+- [x] 2. **Tool calling en la capa de IA.** DTOs `LLMToolCall` (id del
+  proveedor, nombre, input) y `LLMToolResult` (toolCallId, content JSON,
+  isError). `LLMRequest`: `tools` (definiciones de `ToolRegistry`) y
+  conversación **solo-añadir** con 3 formas de mensaje: usuario texto,
+  `['role' => 'assistant', 'content' => opaco]` y `['role' => 'user',
+  'tool_results' => [...]]`. `LLMResponse`: `toolCalls`,
+  `assistantContent` (turno del modelo tal cual, opaco), `wantsTools()`,
+  `withData()`. `AnthropicProvider`: herramientas con **`strict: true`**
+  (`inputSchema`), resultados como bloques `tool_result` (`toolUseID`,
+  `isError`) en un único mensaje de usuario, turno del asistente
+  devuelto **sin tocar** (`$message->content` del SDK, con sus bloques
+  `thinking`), `stop_reason` `tool_use` → devuelve las llamadas sin
+  interpretar JSON. Tests con el SDK real: la segunda petición lleva el
+  `thinking` con su `signature` intacta y los `tool_result` con
+  `tool_use_id`/`is_error`. `FakeLLMProvider::toolUse([[nombre, args]])`
 - [ ] 3. Prompt del agente v1 + esquema de la respuesta final
 - [ ] 4. Tablas `ai_agent_runs` y `email_replies`
 - [ ] 5. `AgentService` (bucle con límites y auditoría)

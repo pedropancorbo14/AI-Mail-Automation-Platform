@@ -21,6 +21,24 @@ final readonly class LLMResponse
         public ?string $requestId = null,
         public bool $usedFallback = false,
         public array $usageByModel = [],
+        /** @var list<LLMToolCall> Herramientas que pide el modelo (stopReason "tool_use"). */
+        public array $toolCalls = [],
+        /** Turno del modelo tal cual, para añadirlo a la conversación sin tocarlo (opaco). */
+        public mixed $assistantContent = null,
     ) {
+    }
+
+    public function wantsTools(): bool
+    {
+        return $this->toolCalls !== [];
+    }
+
+    /** Copia con los datos JSON ya interpretados. */
+    public function withData(array $data): self
+    {
+        return new self(
+            $this->provider, $this->model, $this->text, $data, $this->usage, $this->stopReason, $this->latencyMs,
+            $this->requestId, $this->usedFallback, $this->usageByModel, $this->toolCalls, $this->assistantContent,
+        );
     }
 }

@@ -204,3 +204,79 @@ it('is the configured llm provider', function () {
     expect(app(LLMProvider::class))->toBeInstanceOf(AnthropicProvider::class)
         ->and(app(LLMProvider::class)->name())->toBe('anthropic');
 });
+
+// --- Tool calling -----------------------------------------------------------
+
+function toolUseMessage(): Response
+{
+    return apiMessage([
+        'content' => [
+            ['type' => 'thinking', 'thinking' => '', 'signature' => 'firma-del-razonamiento'],
+            ['type' => 'tool_use', 'id' => 'toolu_01', 'name' => 'get_order', 'input' => ['order_number' => '45821']],
+            ['type' => 'tool_use', 'id' => 'toolu_02', 'name' => 'search_company_documents', 'input' => ['query' => 'plazo de entrega']],
+        ],
+        'stop_reason' => 'tool_use',
+    ]);
+}
+
+function agentTools(): array
+{
+    return [[
+        'name' => 'get_order',
+        'description' => 'Pedido del cliente.',
+        'input_schema' => ['type' => 'object', 'properties' => ['order_number' => ['type' => 'string']], 'required' => ['order_number'], 'additionalProperties' => false],
+    ]];
+}
+
+it('sends tools as strict definitions and returns the requested tool calls', function () {
+    $response = anthropicProvider([toolUseMessage()])->generate(new LLMRequest('Agente', [['role' => 'user', 'content' => '¿Mi pedido?']], 4096, tools: agentTools()));
+
+    $tool = sentBody()['tools'][0];
+    expect($tool)->toMatchArray(['name' => 'get_order', 'description' => 'Pedido del cliente.', 'strict' => true])
+        ->and($tool['input_schema']['required'])->toBe(['order_number'])
+        ->and($response->stopReason)->toBe('tool_use')
+        ->and($response->wantsTools())->toBeTrue()
+        ->and(array_map(fn ($call) => [$call->id, $call->name, $call->input], $response->toolCalls))->toBe([
+            ['toolu_01', 'get_order', ['order_number' => '45821']],
+            ['toolu_02', 'search_company_documents', ['query' => 'plazo de entrega']],
+        ])
+        ->and($response->data)->toBeNull();
+});
+
+it('does not try to parse json while the model is asking for tools', function () {
+    $schema = ['type' => 'object', 'properties' => ['reply' => ['type' => 'string']], 'required' => ['reply'], 'additionalProperties' => false];
+
+    $response = anthropicProvider([toolUseMessage()])->generate(new LLMRequest('Agente', [['role' => 'user', 'content' => 'x']], 4096, $schema, tools: agentTools()));
+
+    expect($response->wantsTools())->toBeTrue();
+});
+
+it('sends back the assistant turn untouched and the tool results in one user message', function () {
+    $provider = anthropicProvider([toolUseMessage(), apiMessage()]);
+    $first = $provider->generate(new LLMRequest('Agente', [['role' => 'user', 'content' => '¿Mi pedido?']], 4096, tools: agentTools()));
+
+    $provider->generate(new LLMRequest('Agente', [
+        ['role' => 'user', 'content' => '¿Mi pedido?'],
+        ['role' => 'assistant', 'content' => $first->assistantContent],
+        ['role' => 'user', 'tool_results' => [
+            new \App\AI\Data\LLMToolResult('toolu_01', '{"status":"shipped"}'),
+            new \App\AI\Data\LLMToolResult('toolu_02', '{"error":"no disponible"}', isError: true),
+        ]],
+    ], 4096, tools: agentTools()));
+
+    $messages = sentBody()['messages'];
+    expect($messages)->toHaveCount(3)
+        ->and($messages[1]['role'])->toBe('assistant')
+        ->and($messages[1]['content'][0])->toMatchArray(['type' => 'thinking', 'signature' => 'firma-del-razonamiento'])
+        ->and($messages[1]['content'][1])->toMatchArray(['type' => 'tool_use', 'id' => 'toolu_01', 'name' => 'get_order'])
+        ->and($messages[2])->toBe(['role' => 'user', 'content' => [
+            ['type' => 'tool_result', 'tool_use_id' => 'toolu_01', 'content' => '{"status":"shipped"}', 'is_error' => false],
+            ['type' => 'tool_result', 'tool_use_id' => 'toolu_02', 'content' => '{"error":"no disponible"}', 'is_error' => true],
+        ]]);
+});
+
+it('does not send tools when there are none', function () {
+    anthropicProvider([apiMessage()])->generate(classificationRequest());
+
+    expect(sentBody())->not->toHaveKey('tools');
+});

@@ -9,11 +9,20 @@ final readonly class LLMRequest
     public const array EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
     /**
+     * Conversación (siempre empieza por el usuario y solo se AÑADE: nunca se
+     * editan turnos anteriores, que invalidaría el razonamiento del modelo):
+     *  - ['role' => 'user', 'content' => string]
+     *  - ['role' => 'assistant', 'content' => mixed]  turno del modelo tal cual
+     *    (LLMResponse::$assistantContent, opaco: incluye su razonamiento)
+     *  - ['role' => 'user', 'tool_results' => list<LLMToolResult>]
+     *
      * @param  string  $system  Instrucciones del sistema (las de la plataforma, nunca texto del cliente).
-     * @param  list<array{role: 'user'|'assistant', content: string}>  $messages
+     * @param  list<array<string, mixed>>  $messages
      * @param  array<string, mixed>|null  $jsonSchema  Esquema JSON de la respuesta (structured outputs).
      * @param  string|null  $effort  Profundidad del razonamiento (self::EFFORTS); null = la del modelo.
      * @param  string|null  $model  Modelo concreto; null = el configurado.
+     * @param  list<array{name: string, description: string, input_schema: array<string, mixed>}>  $tools
+     *         Herramientas que puede pedir (ToolRegistry::definitions()).
      */
     public function __construct(
         public string $system,
@@ -22,6 +31,7 @@ final readonly class LLMRequest
         public ?array $jsonSchema = null,
         public ?string $effort = null,
         public ?string $model = null,
+        public array $tools = [],
     ) {
         if ($messages === [] || $messages[0]['role'] !== 'user') {
             throw new InvalidArgumentException('La conversación debe empezar con un mensaje del usuario.');

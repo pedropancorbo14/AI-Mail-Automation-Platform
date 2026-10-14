@@ -46,6 +46,35 @@ class FakeLLMProvider implements LLMProvider
         return $next instanceof LLMResponse ? $next : self::response($next);
     }
 
+    /**
+     * Respuesta en la que el modelo pide herramientas.
+     *
+     * @param  list<array{0: string, 1: array<string, mixed>}>  $calls  [nombre, argumentos]
+     */
+    public static function toolUse(array $calls, ?LLMUsage $usage = null): LLMResponse
+    {
+        $usage ??= new LLMUsage(1500, 120);
+        $toolCalls = array_map(
+            fn (array $call, int $i) => new LLMToolCall('toolu_fake_' . ($i + 1) . '_' . $call[0], $call[0], $call[1]),
+            $calls, array_keys($calls),
+        );
+
+        return new LLMResponse(
+            provider: 'fake',
+            model: 'claude-opus-5-5',
+            text: null,
+            data: null,
+            usage: $usage,
+            stopReason: 'tool_use',
+            latencyMs: 600,
+            requestId: 'req_fake_tools',
+            usageByModel: [['model' => 'claude-opus-5-5', 'usage' => $usage]],
+            toolCalls: $toolCalls,
+            // Turno opaco: en el proveedor real son los bloques del SDK (con su razonamiento).
+            assistantContent: ['fake_turn' => array_map(fn (LLMToolCall $c) => $c->id, $toolCalls)],
+        );
+    }
+
     /** Respuesta típica con datos JSON. */
     public static function response(array $data = [], string $model = 'claude-opus-5-5', ?LLMUsage $usage = null, int $latencyMs = 850): LLMResponse
     {

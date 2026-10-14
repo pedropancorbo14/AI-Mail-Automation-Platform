@@ -17,6 +17,8 @@ use Anthropic\Core\Exceptions\UnprocessableEntityException;
 use App\AI\Contracts\LLMProvider;
 use App\AI\Data\LLMRequest;
 use App\AI\Data\LLMResponse;
+use App\AI\Data\LLMToolCall;
+use App\AI\Data\LLMToolResult;
 use App\AI\Data\LLMUsage;
 use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Exceptions\LLMException;
@@ -88,6 +90,8 @@ class AnthropicProvider implements LLMProvider
                 "La respuesta se cortó al llegar a max_tokens ({$request->maxTokens}).",
                 $response,
             ),
+            // Pide herramientas: aún no hay respuesta final que interpretar.
+            'tool_use' => $response,
             default => $this->withData($response, $request),
         };
     }
@@ -104,20 +108,51 @@ class AnthropicProvider implements LLMProvider
             'model' => $model,
             'maxTokens' => $request->maxTokens,
             'system' => $request->system,
-            'messages' => $request->messages,
+            'messages' => self::messages($request->messages),
+            'tools' => $request->tools === [] ? null : array_map(fn (array $tool) => [
+                'name' => $tool['name'],
+                'description' => $tool['description'],
+                'inputSchema' => $tool['input_schema'],
+                // Argumentos que cumplen siempre el esquema (no se puede forzar
+                // el uso de una herramienta en Opus 5.5; sí su forma).
+                'strict' => true,
+            ], $request->tools),
             'outputConfig' => $outputConfig ?: null,
             'fallbacks' => $this->fallbacks ? 'default' : null,
             'betas' => $this->fallbacks ? [AnthropicBeta::SERVER_SIDE_FALLBACK_2026_07_01->value] : null,
         ], fn ($value) => $value !== null);
     }
 
+    /**
+     * Conversación de LLMRequest → formato del SDK. Los turnos del asistente
+     * se devuelven TAL CUAL (bloques del SDK con su razonamiento): editarlos
+     * invalidaría el razonamiento y la API lo rechaza.
+     *
+     * @param  list<array<string, mixed>>  $messages
+     * @return list<array<string, mixed>>
+     */
+    private static function messages(array $messages): array
+    {
+        return array_map(fn (array $message) => isset($message['tool_results'])
+            ? ['role' => 'user', 'content' => array_map(fn (LLMToolResult $result) => [
+                'type' => 'tool_result',
+                'toolUseID' => $result->toolCallId,
+                'content' => $result->content,
+                'isError' => $result->isError,
+            ], $message['tool_results'])]
+            : ['role' => $message['role'], 'content' => $message['content']], $messages);
+    }
+
     private function toResponse(BetaMessage $message, string $requestedModel, int $latencyMs): LLMResponse
     {
+        $toolCalls = [];
         $text = '';
 
         foreach ($message->content as $block) {
             if ($block->type === 'text') {
                 $text .= $block->text;
+            } elseif ($block->type === 'tool_use') {
+                $toolCalls[] = new LLMToolCall($block->id, $block->name, (array) $block->input);
             }
         }
 
@@ -134,6 +169,8 @@ class AnthropicProvider implements LLMProvider
             requestId: $message->id,
             usedFallback: $usedFallback,
             usageByModel: $usageByModel,
+            toolCalls: $toolCalls,
+            assistantContent: $message->content,
         );
     }
 
@@ -191,10 +228,7 @@ class AnthropicProvider implements LLMProvider
             throw new LLMInvalidResponseException('La respuesta del modelo no es el JSON esperado.', $response);
         }
 
-        return new LLMResponse(
-            $response->provider, $response->model, $response->text, $data, $response->usage, $response->stopReason,
-            $response->latencyMs, $response->requestId, $response->usedFallback, $response->usageByModel,
-        );
+        return $response->withData($data);
     }
 
     private static function refusalCategory(BetaMessage $message): string
