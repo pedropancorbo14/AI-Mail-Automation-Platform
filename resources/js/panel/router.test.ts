@@ -1,21 +1,77 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory } from 'vue-router';
-import { createPanelRouter } from '@/router';
+import { createPanelRouter, safeRedirect } from '@/router';
+
+const user = {
+    id: 1,
+    name: 'Ana',
+    email: 'ana@acme.test',
+    role: 'admin',
+    permissions: ['users.view'],
+    tenant: { id: 1, name: 'Acme', slug: 'acme' },
+};
+
+/** Simula /auth/me: con sesión (200) o sin ella (401). */
+function session(loggedIn: boolean): void {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(loggedIn ? { data: user } : { message: 'Unauthenticated.' }), { status: loggedIn ? 200 : 401 }),
+    ));
+}
 
 describe('router del panel', () => {
-    it('resuelve la página de inicio', () => {
-        expect(createPanelRouter(createMemoryHistory()).resolve('/').name).toBe('home');
+    beforeEach(() => {
+        setActivePinia(createPinia());
     });
 
-    it('manda las rutas desconocidas a la página 404', () => {
-        expect(createPanelRouter(createMemoryHistory()).resolve('/no/existe').name).toBe('not-found');
+    afterEach(() => {
+        vi.unstubAllGlobals();
     });
 
-    it('pone el título de la página', async () => {
+    it('manda al login sin sesión, recordando a dónde iba', async () => {
+        session(false);
+        const router = createPanelRouter(createMemoryHistory());
+
+        await router.push('/emails/12');
+
+        expect(router.currentRoute.value.name).toBe('login');
+        expect(router.currentRoute.value.query.redirect).toBe('/emails/12');
+        expect(document.title).toBe('Iniciar sesión · AI Mail');
+    });
+
+    it('deja entrar con sesión', async () => {
+        session(true);
+        const router = createPanelRouter(createMemoryHistory());
+
+        await router.push('/');
+
+        expect(router.currentRoute.value.name).toBe('home');
+    });
+
+    it('saca del login a quien ya tiene sesión', async () => {
+        session(true);
+        const router = createPanelRouter(createMemoryHistory());
+
+        await router.push('/login?redirect=/emails');
+
+        expect(router.currentRoute.value.fullPath).toBe('/emails');
+    });
+
+    it('manda las rutas desconocidas a la página 404', async () => {
+        session(true);
         const router = createPanelRouter(createMemoryHistory());
 
         await router.push('/no/existe');
 
-        expect(document.title).toBe('Página no encontrada · AI Mail');
+        expect(router.currentRoute.value.name).toBe('not-found');
+    });
+
+    it('solo redirige a rutas internas del panel tras el login', () => {
+        expect(safeRedirect('/emails?status=sent')).toBe('/emails?status=sent');
+        expect(safeRedirect('https://malo.test')).toBe('/');
+        expect(safeRedirect('//malo.test')).toBe('/');
+        expect(safeRedirect('/\\malo.test')).toBe('/');
+        expect(safeRedirect(undefined)).toBe('/');
+        expect(safeRedirect(['/a'])).toBe('/');
     });
 });

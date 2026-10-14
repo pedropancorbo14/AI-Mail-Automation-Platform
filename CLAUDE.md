@@ -1927,7 +1927,30 @@ ven).
   `PanelTest` (rutas del panel con `withoutVite()`; la API, `/up` y la
   health siguen respondiendo) y `router.test.ts`. Verificado: build 90 KB
   gzip; `http://localhost:8080/emails/3` carga el panel desde Vite
-- [ ] 2. Login del panel con cookie de sesión de Sanctum
+- [x] 2. **Login del panel con cookie de sesión.** API: **`POST
+  /api/v1/auth/session`** (mismas credenciales, mismo error para email o
+  contraseña, empresa desactivada → 403, throttle `login` compartido):
+  solo si la petición es *stateful* de Sanctum (Origin/Referer de
+  `SANCTUM_STATEFUL_DOMAINS`; si no → 400 "usa /auth/login"),
+  `Auth::guard('web')->login` + **`session()->regenerate()`** (contra
+  fijación de sesión), devuelve el usuario como `/auth/me`; sin token. El
+  logout existente ya cerraba sesiones. Excepciones API: **419** (CSRF
+  ausente o caducado) → JSON limpio "La sesión ha caducado. Recarga la
+  página." (antes, con debug, salía la traza). Frontend:
+  `api/http.ts` (cliente `fetch`: `credentials: same-origin`, pide
+  `/sanctum/csrf-cookie` antes de la primera petición que modifica,
+  cabecera `X-XSRF-TOKEN`, `ApiError` con `status`, mensaje y
+  `fieldError()`, 419 → renueva el token y reintenta una vez, 401 → avisa
+  a la app, sin conexión → status 0); store Pinia **`auth`** (`load`,
+  `login`, `logout`, `forget`, `can(permiso)` — solo para la interfaz: la
+  autorización real es de la API); **`LoginPage`**; guard en el router
+  (sin sesión → login con `?redirect=`; con sesión, fuera del login);
+  **`safeRedirect()`**: tras el login solo rutas internas (`/x`, no
+  `//otro`, `/\otro` ni URLs: evita *open redirect*); `main.ts`: sesión
+  caducada → al login volviendo después a donde estaba. Verificado con
+  curl contra el stack: cookie de sesión **HttpOnly**, login → `/me` 200 →
+  logout → 401, sin token CSRF → 419. Tests: `SessionLoginTest` (8),
+  Vitest `http.test.ts` (6) y `router.test.ts` (5)
 - [ ] 3. Estructura: menú según permisos, cabecera, páginas de error
 - [ ] 4. API: listado de emails con filtros
 - [ ] 5. API: detalle del email, HTML saneado y adjuntos

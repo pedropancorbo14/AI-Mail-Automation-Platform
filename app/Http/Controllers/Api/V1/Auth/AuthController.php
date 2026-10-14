@@ -30,6 +30,33 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Inicio de sesión del panel (misma web): cookie de sesión httpOnly en
+     * vez de token, así un XSS no puede llevarse la credencial. Solo para
+     * peticiones "stateful" de Sanctum (del dominio del panel); el resto de
+     * clientes usa /auth/login.
+     */
+    public function session(LoginRequest $request): JsonResponse|UserResource
+    {
+        if (! $request->hasSession()) {
+            return response()->json([
+                'message' => 'Este inicio de sesión es solo para el panel. Las integraciones usan /api/v1/auth/login.',
+            ], 400);
+        }
+
+        $user = $request->authenticate();
+
+        if (! $user->tenant->is_active) {
+            return response()->json(['message' => 'La empresa está desactivada.'], 403);
+        }
+
+        Auth::guard('web')->login($user);
+        // Nueva sesión tras autenticarse: evita la fijación de sesión.
+        $request->session()->regenerate();
+
+        return new UserResource($user->load(['tenant', 'role.permissions']));
+    }
+
     public function me(Request $request): UserResource
     {
         return new UserResource($request->user()->load(['tenant', 'role.permissions']));

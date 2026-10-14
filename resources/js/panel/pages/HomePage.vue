@@ -1,9 +1,23 @@
 <script setup lang="ts">
-import { NCard, NResult } from 'naive-ui';
+import { useRouter } from 'vue-router';
+import { NButton, NCard, NResult } from 'naive-ui';
+import { useAuthStore } from '@/stores/auth';
+
+const auth = useAuthStore();
+const router = useRouter();
+
+async function logout(): Promise<void> {
+    await auth.logout();
+    await router.push({ name: 'login' });
+}
 </script>
 
 <template>
     <NCard>
-        <NResult status="info" title="Panel de AI Mail" description="El panel se está construyendo (Fase 10)." />
+        <NResult status="info" :title="`Hola, ${auth.user?.name}`" :description="`Panel de ${auth.user?.tenant.name} (en construcción, Fase 10).`">
+            <template #footer>
+                <NButton @click="logout">Cerrar sesión</NButton>
+            </template>
+        </NResult>
     </NCard>
 </template>

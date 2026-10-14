@@ -70,6 +70,8 @@ return Application::configure(basePath: dirname(__DIR__))
             return match ($e->getStatusCode()) {
                 403 => response()->json(['message' => 'No autorizado.'], 403, $e->getHeaders()),
                 404 => response()->json(['message' => 'Recurso no encontrado.'], 404, $e->getHeaders()),
+                // Token CSRF ausente o caducado (panel con cookie de sesión).
+                419 => response()->json(['message' => 'La sesión ha caducado. Recarga la página.'], 419, $e->getHeaders()),
                 default => null,
             };
         });

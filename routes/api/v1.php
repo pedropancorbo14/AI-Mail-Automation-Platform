@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', [HealthController::class, 'index']);
 
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
+// Panel de administración: sesión por cookie (Sanctum SPA) en vez de token.
+Route::post('/auth/session', [AuthController::class, 'session'])->middleware('throttle:login');
 
 // Vuelta del navegador desde Microsoft/Google: pública (sin nuestro token);
 // empresa y usuario salen del "state" guardado al iniciar el flujo.
