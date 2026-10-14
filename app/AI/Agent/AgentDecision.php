@@ -34,7 +34,7 @@ class AgentDecision
         $reasons = [];
 
         if ($reply->needsHuman) {
-            $reasons[] = 'La IA lo pide: ' . ($reply->needsHumanReason ?? 'sin motivo indicado') . '.';
+            $reasons[] = 'La IA lo pide: ' . rtrim($reply->needsHumanReason ?? 'sin motivo indicado', '. ') . '.';
         }
 
         if ($reply->confidence < $minConfidence) {
@@ -46,11 +46,11 @@ class AgentDecision
         }
 
         if ($email->needs_human) {
-            $reasons[] = 'La clasificación lo marcó para revisión: ' . ($email->needs_human_reason ?? 'sin motivo') . '.';
+            $reasons[] = 'La clasificación lo marcó para revisión: ' . rtrim($email->needs_human_reason ?? 'sin motivo', '. ') . '.';
         }
 
         if ($reply->pendingActions !== []) {
-            $reasons[] = 'Requiere acciones de una persona: ' . implode('; ', $reply->pendingActions) . '.';
+            $reasons[] = 'Requiere acciones de una persona: ' . rtrim(implode('; ', $reply->pendingActions), '. ') . '.';
         }
 
         $failedTools = AiToolCall::query()

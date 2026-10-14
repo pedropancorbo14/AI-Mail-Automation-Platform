@@ -1476,7 +1476,7 @@ Fase 8.
 
 **Pendiente para dar la Fase 7 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde.
-### Fase 8 (AI Agent): EN CURSO (desde 2026-10-14)
+### Fase 8 (AI Agent): COMPLETADA Y PROBADA CON CLAUDE REAL (2026-10-14), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push.
@@ -1626,7 +1626,48 @@ la Fase 9.
   la última ejecución guardada sin volver a llamar a la IA. Sin API key
   → error claro; error temporal → lo muestra junto a la ejecución
   registrada; sin propuesta → explica el motivo y termina con fallo
-- [ ] 8. Prueba real con Claude, README
+- [x] Fix detectado en la prueba real: la tabla de decisión de `ai:reply`
+  se salía de la terminal (textos partidos a 90 columnas, fuentes y
+  acciones una por línea) y los motivos de `AgentDecision` acababan en
+  ".." cuando el texto del modelo ya terminaba en punto
+- [x] 8. **Prueba real con Claude (2026-10-14, `claude-opus-5-5`)**: BD de
+  desarrollo migrada (`tenant_tools`, `ai_agent_runs`, `email_replies`),
+  `ai:tools 1 --enable=get_order --enable=get_customer_orders`.
+  **Structured outputs + herramientas funcionan juntos** (no hizo falta
+  la alternativa `submit_reply`) y **ningún 400 por historial/thinking**
+  en conversaciones de hasta 3 pasos. Resultados (`ai:reply`):
+  - Email 1 (#45821, SEUR): `get_order` + RAG "Retrasos e incidencias";
+    detecta el retraso respecto a la fecha prevista → persona (abrir
+    incidencia), confianza 0,60.
+  - Email 3 (#78123, en preparación): `get_order` + RAG en paralelo
+    (2 herramientas en un turno) → persona (retraso sin causa).
+  - Email 5 (doble cobro + amenaza legal): `get_order` + FAQ "Me habéis
+    cobrado dos veces"; pide el extracto, **no promete el reembolso** →
+    persona (IA + clasificación + acciones pendientes).
+  - Email 8 (inglés, producto roto): 3 herramientas en 2 pasos; responde
+    **en inglés**; detecta que el aviso llegó fuera del plazo de 48 h →
+    persona (decidir devolución o garantía).
+  - Email 9 (prompt injection): **no obedece ni revela nada**, 0
+    herramientas, respuesta genérica → persona (injection + IA).
+  - Email 10 (nuevo por SMTP → ingerido y clasificado `product_question`
+    automáticamente: "¿envíos a Canarias?"): RAG → 14,95 €, 5–7 días,
+    DUA (**comprobado contra `envios.md`: nada inventado**) →
+    **confianza 0,93, sin persona**: el camino automático funciona.
+  - 6 ejecuciones, 13/13 pasos `success`, **0,302 $ en total (~0,05 $
+    por respuesta**, 0,02–0,07 según consultas) + ~0,012 $ de
+    clasificación; 13–27 s por email. Para abaratar: Sonnet 5.5 (mitad)
+    o `effort` low — medirlo con dataset en la Fase 15.
+  - **Observación para la Fase 9/13:** a veces la respuesta anuncia que
+    "una persona revisará tu caso" (cierto solo si va a revisión): la
+    decisión del backend y el texto deben ser coherentes al enviar.
+  README: sección "9. Agente: propuesta de respuesta" (cómo funciona,
+  quién decide la revisión humana, límites, auditoría, probarlo,
+  resultados reales, detalles técnicos), "Herramientas por empresa" en la
+  sección 8, estado, comandos, estructura, tests, problemas frecuentes;
+  secciones siguientes renumeradas (API = #11)
+
+**Pendiente para dar la Fase 8 por cerrada:** push (lo hace el usuario) y
+GitHub Actions en verde.
 
 ### Pendientes anotados para más adelante
 

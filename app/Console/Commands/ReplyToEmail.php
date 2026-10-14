@@ -117,13 +117,14 @@ class ReplyToEmail extends Command
         $this->info('Propuesta de respuesta:');
         $this->line(preg_replace('/^/m', '  │ ', $reply->body));
         $this->newLine();
-        $this->table(['Decisión', ''], [
+        // Textos largos partidos en líneas: la tabla no se sale de la terminal.
+        $this->table(['Decisión', ''], array_map(fn (array $row) => [$row[0], wordwrap((string) $row[1], 90, "\n", true)], [
             ['Confianza', $reply->confidence],
             ['¿Necesita persona?', $reply->needs_human ? 'SÍ' : 'no (se podría enviar sola)'],
             ['Motivos', $reply->needs_human_reason ?? '-'],
-            ['Fuentes', collect($reply->sources)->map(fn ($s) => "{$s['type']}: {$s['reference']}")->implode(' | ') ?: '-'],
-            ['Acciones pendientes', implode(' | ', $reply->pending_actions ?? []) ?: '-'],
+            ['Fuentes', collect($reply->sources)->map(fn ($s) => "{$s['type']}: {$s['reference']}")->implode("\n") ?: '-'],
+            ['Acciones pendientes', collect($reply->pending_actions ?? [])->map(fn ($a) => "- {$a}")->implode("\n") ?: '-'],
             ['Nota interna', $reply->internal_note ?? '-'],
-        ]);
+        ]));
     }
 }

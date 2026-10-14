@@ -28,8 +28,9 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 5 | IA con Claude (Anthropic): clasificación de cada email (intención, confianza, resumen, datos), registro de cada petición con tokens, coste y latencia | ✅ Hecha (probada con Claude real: ~0,012 $ por email) |
 | 6 | Base de conocimiento (RAG): documentos de la empresa (PDF, TXT, Markdown, HTML), troceado, embeddings **locales** (Ollama + bge-m3) y búsqueda por significado con pgvector, citando la fuente | ✅ Hecha |
 | 7 | Tools: herramientas controladas que la IA puede pedir (documentación, pedidos del cliente), validadas, con permisos y auditadas en `ai_tool_calls` | ✅ Hecha |
-| 8 | Agente: Claude usa las herramientas en cadena para preparar la respuesta de cada email | ⏳ Siguiente |
-| 9–17 | Automatización, panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
+| 8 | Agente: Claude usa las herramientas en cadena, prepara una propuesta de respuesta citando sus fuentes y el backend decide si necesita revisión humana | ✅ Hecha (probada con Claude real: ~0,05 $ por respuesta) |
+| 9 | Automatización: procesar cada email de principio a fin (clasificar → agente → enviar o revisión humana) | ⏳ Siguiente |
+| 10–17 | Panel de administración, Grafana, seguridad, human-in-the-loop, integraciones… | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
@@ -38,9 +39,12 @@ y adjuntos) y los **clasifica con Claude**: intención, confianza, idioma,
 resumen, si necesita una persona y datos como el número de pedido. Cada
 empresa puede además subir su **documentación** (políticas, FAQs,
 manuales), que se indexa en local y se puede consultar por significado,
-y la IA ya tiene **herramientas controladas** para consultar esa
-documentación y los pedidos del cliente que escribe. Todavía no responde
-los emails: eso llega con el agente (Fase 8). La hoja de ruta completa y las
+y la IA tiene **herramientas controladas** para consultar esa
+documentación y los pedidos del cliente que escribe. Con ellas, el
+**agente** prepara una **propuesta de respuesta** para cada email, citando
+de dónde saca cada dato, y el backend decide si una persona debe revisarla.
+Todavía **no se envía nada**: el envío automático y la bandeja de revisión
+llegan en las Fases 9 y 13. La hoja de ruta completa y las
 decisiones de arquitectura están en [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -93,7 +97,7 @@ docker compose exec app php artisan test            # todos los tests en verde
 
 | Servicio | URL | Acceso |
 |---|---|---|
-| API | http://localhost:8080/api/v1 | ver [API](#10-api) |
+| API | http://localhost:8080/api/v1 | ver [API](#11-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
 | Grafana | http://localhost:3000 | `admin` / `admin` |
 | Prometheus | http://localhost:9090 | — |
@@ -121,6 +125,8 @@ docker compose exec app php artisan mail:sync              # sincronizar ya los 
 docker compose exec app php artisan ai:classify 2 --now    # clasificar el email 2 con la IA y ver resultado y coste
 docker compose exec app php artisan kb:search "¿cómo devuelvo un producto?" --tenant=1   # buscar en la documentación
 docker compose exec app php artisan ai:tool --list         # herramientas de la IA (y ejecutarlas a mano)
+docker compose exec app php artisan ai:tools 1             # herramientas activadas para la empresa 1
+docker compose exec app php artisan ai:reply 1             # el agente prepara la respuesta al email 1 y muestra la traza
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
 ```
 
@@ -623,8 +629,8 @@ en CPU y cada búsqueda menos de 1 s.
 
 La IA **nunca accede a los datos por su cuenta**: solo puede pedir una
 herramienta por su nombre con unos argumentos, y el backend decide si la
-ejecuta. Es la base del agente de la Fase 8, que encadenará herramientas
-para preparar la respuesta de cada email.
+ejecuta. Es la base del [agente](#9-agente-propuesta-de-respuesta), que
+encadena herramientas para preparar la respuesta de cada email.
 
 ### Herramientas disponibles
 
@@ -633,6 +639,21 @@ para preparar la respuesta de cada email.
 | `search_company_documents` | Busca en la documentación de la empresa (RAG) y devuelve fragmentos con su fuente para citarla | no |
 | `get_order` | Detalle de un pedido del cliente: estado, productos, total, envío y seguimiento | sí |
 | `get_customer_orders` | Últimos pedidos del cliente (cuando no da el número) | sí |
+
+### Herramientas por empresa
+
+No todas las empresas tienen pedidos (una clínica o una consultoría no los
+tienen), así que cada empresa activa solo las herramientas que le sirven.
+Por defecto solo `search_company_documents` (`ai.tools.default_enabled`).
+La IA ve una herramienta solo si está **activada** para la empresa **y
+disponible** (p. ej. las de pedidos necesitan una fuente de pedidos
+configurada); si aun así la pidiera, el `ToolExecutor` la rechaza.
+
+```bash
+docker compose exec app php artisan ai:tools 1                                            # estado
+docker compose exec app php artisan ai:tools 1 --enable=get_order --enable=get_customer_orders
+docker compose exec app php artisan ai:tools 1 --disable=get_order
+```
 
 ### Cómo se controlan
 
@@ -683,11 +704,126 @@ Crear una clase que implemente [`AITool`](app/Tools/Contracts/AITool.php)
 `additionalProperties: false`, `execute()` que devuelve
 `ToolResult::success()` o `ToolResult::error()`), marcarla con
 `RequiresSender` si devuelve datos de un cliente, y añadirla a
-`ai.tools.available` en [`config/ai.php`](config/ai.php).
+`ai.tools.available` en [`config/ai.php`](config/ai.php). Si depende de
+una configuración de la empresa, implementar también `HasAvailability`.
 
 ---
 
-## 9. Estructura del proyecto
+## 9. Agente: propuesta de respuesta
+
+El agente junta todo lo anterior: lee el email (con su clasificación),
+**decide qué consultar**, usa las herramientas las veces que necesite y
+termina con una **propuesta de respuesta** que cita sus fuentes. Ahora
+mismo **no envía nada**: deja un borrador en `email_replies`. Enviarlo
+solo o pasarlo a una persona es la Fase 9.
+
+### Cómo funciona
+
+```
+Email (+ clasificación) ─► AgentService
+   ┌──────────────────────────────────────────────────────────────┐
+   │ 1. Claude recibe el email como DATO NO FIABLE + herramientas  │
+   │    de la empresa                                              │
+   │ 2. ¿Pide herramientas? → ToolExecutor las ejecuta (validadas, │
+   │    atadas al remitente, en ai_tool_calls) → resultados a      │
+   │    Claude → vuelta a 1                                        │
+   │ 3. ¿Responde? → propuesta en JSON (structured outputs)        │
+   └──────────────────────────────────────────────────────────────┘
+   Límites en cada vuelta: pasos, nº de herramientas, tiempo y gasto
+        │
+        ▼
+AgentDecision (backend, no la IA) ─► email_replies (borrador)
+                                     needs_human + motivos
+```
+
+La propuesta trae: texto de la respuesta (en el idioma del cliente),
+confianza, si la IA cree que necesita una persona y por qué, **fuentes**
+(pedidos y secciones de documentos usados), **acciones pendientes** (lo que
+el agente no puede hacer: tramitar un reembolso, abrir una incidencia…) y
+una nota interna para quien la revise. El agente **solo informa**: no
+puede prometer ni ejecutar acciones (las herramientas son de solo lectura).
+
+### Quién decide si la revisa una persona
+
+La IA propone; **el backend decide**. Va a revisión humana si se cumple
+**cualquiera** de estas condiciones (se guardan todos los motivos), aunque
+el modelo diga estar seguro:
+
+- el modelo lo pide;
+- confianza menor que `ai.agent.min_confidence` (0,75);
+- sospecha de prompt injection en el email;
+- la clasificación ya lo marcó para una persona (queja, amenaza legal…);
+- quedan acciones pendientes para una persona;
+- alguna herramienta falló o fue rechazada durante la ejecución;
+- el email era demasiado largo y la IA no lo leyó entero.
+
+### Límites y errores
+
+Configurables en `ai.agent` ([`config/ai.php`](config/ai.php)):
+`max_iterations` 6 pasos, `max_tool_calls` 10, `timeout_seconds` 120,
+`max_cost_usd` 0,25 por email, `effort` medium, `max_tokens` 8000. Si se
+alcanza un límite, el agente se para **sin propuesta** y queda registrado
+el motivo (`ai_agent_runs.stop_reason`): ese email lo atiende una persona.
+Un rechazo de seguridad del modelo o una respuesta inválida tampoco dejan
+propuesta; los errores temporales de Anthropic (429, 529) se relanzan para
+que la cola los reintente.
+
+### Auditoría
+
+Todo queda en la base de datos y enlazado:
+
+| Tabla | Qué guarda |
+|---|---|
+| `ai_agent_runs` | Una fila por ejecución: estado, motivo de fin, pasos, herramientas, tokens, coste total, duración, salida final |
+| `ai_requests` | Una fila por paso (`agent_run_id`): tokens, coste, latencia y las herramientas que pidió |
+| `ai_tool_calls` | Cada herramienta ejecutada: argumentos, resultado, estado, paso que la pidió |
+| `email_replies` | La propuesta: texto, confianza, `needs_human` + motivos, fuentes, acciones pendientes, nota interna, estado (`draft`) |
+
+### Probarlo
+
+```bash
+# Una vez: activar las herramientas de pedidos para Empresa Demo
+docker compose exec app php artisan ai:tools 1 --enable=get_order --enable=get_customer_orders
+
+docker compose exec app php artisan ai:reply 1          # ejecuta el agente y muestra la traza
+docker compose exec app php artisan ai:reply 1 --last   # vuelve a ver la última ejecución (sin gastar)
+```
+
+`ai:reply` muestra cada paso (tokens, latencia, coste) con las herramientas
+que pidió y lo que devolvieron, el resumen (motivo de fin, coste, duración)
+y la propuesta con la decisión y sus motivos.
+
+### Resultados de la prueba real (`claude-opus-5-5`)
+
+| Email | Qué hizo el agente | Decisión |
+|---|---|---|
+| "¿Dónde está mi pedido #45821?" | `get_order` + política de retrasos: envío con SEUR, seguimiento, retraso respecto a la fecha prevista | Persona (hay que abrir incidencia con SEUR) |
+| "¿Cuándo llega mi pedido?" (78123) | `get_order` + plazos: sigue en preparación, aún sin seguimiento | Persona (retraso sin causa conocida) |
+| Reclamación por doble cobro con amenaza legal | `get_order` + FAQ "Me habéis cobrado dos veces": pide el extracto, sin prometer el reembolso | Persona (reembolso, amenaza legal) |
+| Email en inglés, producto roto | `get_order` + devoluciones + garantía; responde **en inglés** y detecta que el aviso llegó fuera del plazo de 48 h | Persona (decidir devolución o garantía) |
+| Prompt injection | **No obedece ni revela nada**, no usa herramientas, respuesta genérica | Persona (injection) |
+| "¿Hacéis envíos a Canarias?" | Documentación de envíos: 14,95 €, 5–7 días, aranceles (DUA); todo comprobado contra el documento | **Se podría enviar sola** (confianza 0,93) |
+
+Coste: **~0,05 $ por respuesta** con Opus 5.5 (0,02–0,07 según cuántas
+consultas haga), más ~0,012 $ de la clasificación. Para abaratarlo:
+`ANTHROPIC_MODEL=claude-sonnet-5-5` (la mitad de precio) o `effort` más
+bajo; conviene medirlo con un conjunto de emails de prueba (Fase 15).
+
+### Detalles técnicos
+
+- **Tool calling con historial solo-añadir:** cada vuelta reenvía la
+  conversación anterior **tal cual** (incluido el razonamiento del modelo,
+  que no se puede editar) más los resultados de herramientas; el prompt de
+  sistema y la lista de herramientas no cambian durante la ejecución.
+- La respuesta final usa **structured outputs** (esquema JSON) a la vez que
+  las herramientas.
+- El prompt del agente está versionado igual que el de clasificación
+  (`email_agent` v1 en [`EmailAgentPrompt`](app/AI/Agent/EmailAgentPrompt.php)):
+  cambiarlo obliga a subir la versión.
+
+---
+
+## 10. Estructura del proyecto
 
 ```
 app/
@@ -715,7 +851,8 @@ app/
 │   ├── Prompts/              Prompt (interfaz) + PromptRegistry (versiones en BD)
 │   ├── Classification/       Prompt de clasificación, EmailClassifier, ClassifyEmailJob
 │   ├── Embeddings/           EmbeddingProvider, OllamaEmbeddingProvider, EmbeddingService
-│   ├── AIService             Ejecuta prompts y registra cada petición en ai_requests
+│   ├── Agent/                Agente (Fase 8): prompt, contexto, AgentService (bucle), AgentDecision, AgentReply
+│   ├── AIService             Ejecuta prompts (y conversaciones con herramientas) y registra cada petición en ai_requests
 │   └── CostCalculator        Coste en USD por modelo
 ├── Documents/                Base de conocimiento / RAG (Fase 6)
 │   ├── Extraction/           Texto de PDF, TXT, Markdown y HTML por secciones citables
@@ -724,15 +861,17 @@ app/
 │   ├── DocumentService       Subir, indexar (ProcessDocumentJob) y borrar documentos
 │   └── KnowledgeBaseService  Documentación relevante para un email, lista para el prompt
 ├── Tools/                    Herramientas de la IA (Fase 7)
-│   ├── Contracts/            AITool, RequiresSender
+│   ├── Contracts/            AITool, RequiresSender, HasAvailability
 │   ├── Builtin/              search_company_documents, get_order, get_customer_orders
 │   ├── ToolRegistry          Catálogo de herramientas disponibles
+│   ├── TenantToolService     Herramientas activadas y disponibles para cada empresa
 │   └── ToolExecutor          Valida, controla permisos, ejecuta y registra (ai_tool_calls)
 ├── ERP/                      Pedidos: OrderProvider + DemoOrderProvider (integraciones reales en la Fase 14)
-├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search, ai:tool
+├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search, ai:tool, ai:tools, ai:reply
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
 │                             EmailRecipient, EmailAttachment, MailSyncState,
-│                             AiRequest, AiPromptVersion, Document, DocumentChunk, AiToolCall
+│                             AiRequest, AiPromptVersion, Document, DocumentChunk, AiToolCall,
+│                             TenantTool, AiAgentRun, EmailReply
 ├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy, DocumentPolicy
 ├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders, AI
 ├── Tenancy/                  TenantService, BelongsToTenant, TenantScope
@@ -754,9 +893,10 @@ tests/
 ├── Feature/Users/            Gestión de usuarios y empresa
 ├── Feature/Mail/             Conexiones: Imap/, Smtp/ (GreenMail real), Microsoft/, Google/ (APIs simuladas)
 ├── Feature/Emails/           Tablas y modelos de emails; Ingestion/ (servicio, sync, job, comando, E2E con GreenMail)
-├── Feature/AI/               Proveedor Anthropic (HTTP simulado), AIService, costes, prompts, clasificación, embeddings (Ollama simulado)
+├── Feature/AI/               Proveedor Anthropic (HTTP simulado, también tool calling), AIService, costes, prompts, clasificación,
+│                             embeddings (Ollama simulado), Agent/ (bucle, límites, decisión humana, comando ai:reply)
 ├── Feature/Documents/        Documentos: extracción, troceado, indexado, búsqueda, API, aislamiento, comandos
-├── Feature/Tools/            Registro, ejecutor (validación, permisos, errores), herramientas, comando ai:tool
+├── Feature/Tools/            Registro, ejecutor (validación, permisos, errores), herramientas por empresa, comandos ai:tool/ai:tools
 ├── Feature/ERP/              Proveedor de pedidos de demostración
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
 ├── Support/                  GreenMail (buzones de prueba) y Pdf (PDFs generados al vuelo)
@@ -768,7 +908,7 @@ lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 10. API
+## 11. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -830,7 +970,7 @@ para el futuro panel de administración (SPA).
 
 ---
 
-## 11. Tests
+## 12. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -861,27 +1001,29 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
   `phpunit.xml` fuerza `ANTHROPIC_API_KEY` vacía. `AnthropicProvider` se
   prueba con el SDK real y un cliente HTTP simulado (Guzzle `MockHandler`);
   el resto, con `FakeLLMProvider` (respuestas o errores encolados) y el
-  helper `classificationData()`. Los embeddings se prueban con
+  helpers `classificationData()` y `agentReplyData()`; para el agente,
+  `FakeLLMProvider::toolUse([[herramienta, argumentos]])` simula que el
+  modelo pide herramientas. Los embeddings se prueban con
   `FakeEmbeddingProvider` (vectores deterministas: textos con palabras en
   común se parecen) y `Http::fake` para Ollama: los tests no necesitan el
   modelo descargado.
 - Las funciones de ayuda de los archivos de test son **globales** en Pest:
   no repitas un nombre ya usado en otro archivo.
 
-## 12. CI
+## 13. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 13. Entornos
+## 14. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 14. Problemas frecuentes
+## 15. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -898,6 +1040,8 @@ prepararán en la fase de producción.
 | Un documento se queda en `failed`: "El modelo bge-m3 no está descargado en Ollama" | Falta descargarlo: `docker compose exec ollama ollama pull bge-m3` y después `POST /documents/{id}/reindex`. |
 | Un documento se queda en `pending` | Horizon no procesa la cola `documents`: `horizon:supervisors` debe mostrar `supervisor-documents` (si no, `horizon:terminate`). |
 | "El PDF no contiene texto extraíble" | Es un PDF escaneado (solo imágenes). El OCR no está soportado todavía: súbelo en texto o PDF con texto. |
+| El agente no consulta pedidos (solo documentación) | Las herramientas de pedidos no están activadas para la empresa: `ai:tools 1 --enable=get_order --enable=get_customer_orders`. |
+| `ai:reply` → "Sin propuesta de respuesta: Límite de…" | El agente llegó a un límite de `ai.agent` (pasos, herramientas, tiempo o gasto). Es el comportamiento previsto: el email lo atiende una persona. Si pasa a menudo, revisa la traza y los límites. |
 | `ai:classify` → "Anthropic rechazó la API key (401)" | La clave es incorrecta o se revocó: revisa `ANTHROPIC_API_KEY` y reinicia Horizon. |
 | "La conexión con microsoft/google no está configurada en este servidor" | Faltan `MICROSOFT_CLIENT_ID/SECRET` o `GOOGLE_CLIENT_ID/SECRET` (ver [Conexiones de correo](#4-conexiones-de-correo)). |
 
