@@ -1579,7 +1579,29 @@ la Fase 9.
   y 13). Modelos `AiAgentRun` (`aiRequests()`, `reply()`, `email()`) y
   `EmailReply` (`email()`, `agentRun()`); `Email::replies()` /
   `agentRuns()`, `AiRequest::agentRun()`
-- [ ] 5. `AgentService` (bucle con límites y auditoría)
+- [x] 5. `AIService::converse($prompt, $messages, $maxTokens, $effort,
+  $tools, ?$email, ?$agentRunId)` (paso de conversación con herramientas;
+  `run()` lo usa por dentro; si el modelo pide herramientas, `response` =
+  las llamadas pedidas). **`App\AI\Agent\AgentService::run($email)`**
+  (dentro del tenant del email): herramientas = `TenantToolService::
+  toolsFor()`; crea `ai_agent_runs`; mensaje inicial de
+  `EmailAgentContext`; bucle: límites → `converse` → si pide herramientas,
+  añade el turno **tal cual** + **un único mensaje** con todos los
+  `tool_results` (vía `ToolExecutor` con `ToolContext` del email y el
+  `aiRequestId` del paso; errores de herramienta → `isError`) → si no,
+  `AgentReply` y fin. **Límites** (`config ai.agent`): `max_iterations` 6,
+  `max_tool_calls` 10 (no ejecuta un lote que lo supere), `timeout_seconds`
+  120 (entre pasos), `max_cost_usd` 0,25 (suma de `cost_usd` de sus pasos);
+  `effort` medium, `max_tokens` 8000; `min_confidence` 0,75 (tarea 6). Al
+  terminar: totales del run (pasos, herramientas, tokens, coste,
+  duración, `final_output`) y, si hay respuesta, `email_replies` (draft)
+  con `needs_human` según `AgentDecision` (de momento, lo que diga el
+  modelo). Rechazo de seguridad → `refusal` sin reintentar; respuesta
+  inválida → `error` sin propuesta; error reintentable → run `failed`
+  + se relanza (el job reintentará con otra ejecución). Tests: traza
+  completa, historial **solo-añadir** comprobado petición a petición
+  (mismo system y herramientas), herramientas en paralelo, solo las de la
+  empresa, cada límite, rechazo, errores
 - [ ] 6. Reglas de decisión (confianza, revisión humana)
 - [ ] 7. Comando `ai:reply`
 - [ ] 8. Prueba real con Claude, README

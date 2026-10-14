@@ -105,6 +105,23 @@ return [
         'max_result_chars' => (int) env('AI_TOOLS_MAX_RESULT_CHARS', 8000),
     ],
 
+    'agent' => [
+        // Esfuerzo de razonamiento del agente (uso de herramientas en varios pasos: "medium").
+        'effort' => env('AI_AGENT_EFFORT', 'medium'),
+
+        // Tokens por paso (incluye el razonamiento interno y la respuesta final).
+        'max_tokens' => (int) env('AI_AGENT_MAX_TOKENS', 8000),
+
+        // Límites duros por email: al superarlos no hay propuesta y va a una persona.
+        'max_iterations' => (int) env('AI_AGENT_MAX_ITERATIONS', 6),
+        'max_tool_calls' => (int) env('AI_AGENT_MAX_TOOL_CALLS', 10),
+        'timeout_seconds' => (int) env('AI_AGENT_TIMEOUT_SECONDS', 120),
+        'max_cost_usd' => (float) env('AI_AGENT_MAX_COST_USD', 0.25),
+
+        // Por debajo de esta confianza, la respuesta siempre la revisa una persona.
+        'min_confidence' => (float) env('AI_AGENT_MIN_CONFIDENCE', 0.75),
+    ],
+
     'classification' => [
         // Clasificar al guardar cada email (evento EmailIngested).
         'on_ingest' => (bool) env('AI_CLASSIFY_ON_INGEST', true),

@@ -6,6 +6,7 @@ use App\AI\Contracts\LLMProvider;
 use App\AI\Data\AIResult;
 use App\AI\Data\LLMRequest;
 use App\AI\Data\LLMResponse;
+use App\AI\Data\LLMToolCall;
 use App\AI\Enums\AiRequestStatus;
 use App\AI\Exceptions\LLMException;
 use App\AI\Exceptions\LLMRefusalException;
@@ -45,10 +46,33 @@ class AIService
      */
     public function run(Prompt $prompt, string $userContent, int $maxTokens, ?string $effort = null, ?Email $email = null): AIResult
     {
+        return $this->converse($prompt, [['role' => 'user', 'content' => $userContent]], $maxTokens, $effort, email: $email);
+    }
+
+    /**
+     * Un paso de una conversación (p. ej. del agente): mismos registros que
+     * run(), con herramientas y enlazado a la ejecución del agente. La
+     * conversación solo se AÑADE (ver LLMRequest).
+     *
+     * @param  list<array<string, mixed>>  $messages
+     * @param  list<array{name: string, description: string, input_schema: array<string, mixed>}>  $tools
+     *
+     * @throws LLMException ya registrado en ai_requests.
+     */
+    public function converse(
+        Prompt $prompt,
+        array $messages,
+        int $maxTokens,
+        ?string $effort = null,
+        array $tools = [],
+        ?Email $email = null,
+        ?int $agentRunId = null,
+    ): AIResult {
         $version = $this->prompts->resolve($prompt);
-        $request = LLMRequest::single($prompt->system(), $userContent, $maxTokens, $prompt->outputSchema(), $effort);
+        $request = new LLMRequest($prompt->system(), $messages, $maxTokens, $prompt->outputSchema(), $effort, tools: $tools);
         $base = [
             'email_id' => $email?->id,
+            'agent_run_id' => $agentRunId,
             'ai_prompt_version_id' => $version->id,
             'purpose' => $prompt->key(),
             'provider' => $this->provider->name(),
@@ -81,7 +105,10 @@ class AIService
             // Si la respuesta trae intención/confianza (clasificación), se guardan para métricas.
             'intent' => is_string($response->data['intent'] ?? null) ? $response->data['intent'] : null,
             'confidence' => is_numeric($response->data['confidence'] ?? null) ? max(0, min(1, (float) $response->data['confidence'])) : null,
-            'response' => $response->data,
+            // Si pide herramientas, se registra qué pidió (los resultados van a ai_tool_calls).
+            'response' => $response->wantsTools()
+                ? ['tool_calls' => array_map(fn (LLMToolCall $call) => ['name' => $call->name, 'input' => $call->input], $response->toolCalls)]
+                : $response->data,
         ]);
         $this->log('info', 'Petición a la IA', $record);
 
