@@ -89,6 +89,7 @@ return [
         // Herramientas que la IA puede usar (App\Tools\Contracts\AITool). Una
         // herramienta que no esté aquí no existe para la IA.
         'available' => [
+            App\Tools\Builtin\SearchCompanyDocumentsTool::class,
         ],
 
         // Tamaño máximo (caracteres JSON) del resultado que se devuelve al

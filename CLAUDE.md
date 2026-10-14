@@ -1402,7 +1402,17 @@ Fase 8.
   `partial`). Siempre registra en `ai_tool_calls` (argumentos, resultado
   que vio el modelo, estado, error, duración, ai_request_id, email_id) +
   log
-- [ ] 5. Herramienta `search_company_documents`
+- [x] 5. Herramientas en `app/Tools/Builtin/`. **`search_company_documents`**
+  (`SearchCompanyDocumentsTool`, registrada en `ai.tools.available`):
+  argumentos `query` (obligatorio) y `limit` (por defecto 5, **acotado a
+  1–8 en código**: el esquema no usa `minimum/maximum` porque Claude no
+  los admite en herramientas estrictas). Devuelve `results[]` (`source`
+  citable, `document_id`, `similarity`, `content`) vía
+  `SemanticSearchService` (búsqueda enlazada al email del contexto); sin
+  resultados → `results: []` + `note` "No inventes…"; embeddings caídos →
+  error "La búsqueda en la documentación no está disponible…". La
+  descripción le pide al modelo responder solo con lo que digan los
+  fragmentos y citar la fuente
 - [ ] 6. `OrderProvider` + proveedor demo
 - [ ] 7. Herramientas `get_order` y `get_customer_orders`
 - [ ] 8. Comando `ai:tool`
