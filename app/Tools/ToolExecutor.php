@@ -17,7 +17,7 @@ use Throwable;
 
 /**
  * Único punto por el que se ejecuta una herramienta de la IA:
- * 1. existe en el catálogo (ToolRegistry);
+ * 1. existe en el catálogo (ToolRegistry) y está activada y disponible para la empresa (TenantToolService);
  * 2. los argumentos cumplen su esquema JSON;
  * 3. se puede usar en este contexto (p. ej. necesita remitente);
  * 4. se ejecuta dentro de la empresa del contexto, capturando cualquier
@@ -31,6 +31,7 @@ class ToolExecutor
     public function __construct(
         private readonly ToolRegistry $registry,
         private readonly TenantService $tenants,
+        private readonly TenantToolService $tenantTools,
     ) {
     }
 
@@ -46,6 +47,11 @@ class ToolExecutor
             if ($tool === null) {
                 return $this->record($name, $arguments, $context, ToolCallStatus::Rejected,
                     ToolResult::error("La herramienta {$name} no existe."), $startedAt);
+            }
+
+            if (! $this->tenantTools->isUsable($context->tenant, $name)) {
+                return $this->record($name, $arguments, $context, ToolCallStatus::Rejected,
+                    ToolResult::error("La herramienta {$name} no está disponible para esta empresa."), $startedAt);
             }
 
             if (($validationError = self::validate($tool, $arguments)) !== null) {

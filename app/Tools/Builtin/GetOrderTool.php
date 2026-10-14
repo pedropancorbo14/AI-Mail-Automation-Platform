@@ -4,6 +4,7 @@ namespace App\Tools\Builtin;
 
 use App\ERP\Contracts\OrderProvider;
 use App\Tools\Contracts\AITool;
+use App\Tools\Contracts\HasAvailability;
 use App\Tools\Contracts\RequiresSender;
 use App\Tools\ToolContext;
 use App\Tools\ToolResult;
@@ -13,10 +14,16 @@ use App\Tools\ToolResult;
  * remitente del email. Un pedido inexistente y uno de otro cliente reciben
  * la misma respuesta: un email no puede ni averiguar si un número existe.
  */
-class GetOrderTool implements AITool, RequiresSender
+class GetOrderTool implements AITool, HasAvailability, RequiresSender
 {
     public function __construct(private readonly OrderProvider $orders)
     {
+    }
+
+    /** Solo si la empresa tiene una fuente de pedidos. */
+    public function isAvailable(): bool
+    {
+        return $this->orders->isConfigured();
     }
 
     public function name(): string

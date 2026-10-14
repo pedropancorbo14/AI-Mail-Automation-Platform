@@ -94,6 +94,12 @@ return [
             App\Tools\Builtin\GetCustomerOrdersTool::class,
         ],
 
+        // Activadas para todas las empresas salvo que una las desactive
+        // (tabla tenant_tools). El resto hay que activarlas por empresa.
+        'default_enabled' => [
+            'search_company_documents',
+        ],
+
         // Tamaño máximo (caracteres JSON) del resultado que se devuelve al
         // modelo: protege el contexto y el coste. Si se supera, se recorta y se avisa.
         'max_result_chars' => (int) env('AI_TOOLS_MAX_RESULT_CHARS', 8000),

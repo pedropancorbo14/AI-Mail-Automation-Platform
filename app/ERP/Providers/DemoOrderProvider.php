@@ -28,6 +28,14 @@ class DemoOrderProvider implements OrderProvider
     ) {
     }
 
+    /** Solo las empresas que aparecen en el fichero de demostración tienen pedidos. */
+    public function isConfigured(): bool
+    {
+        $this->orders ??= $this->load();
+
+        return isset($this->orders[$this->tenants->currentOrFail()->slug]);
+    }
+
     public function findOrder(string $number): ?Order
     {
         $number = ltrim(trim($number), '#');

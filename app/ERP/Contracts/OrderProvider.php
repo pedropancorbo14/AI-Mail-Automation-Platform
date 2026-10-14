@@ -11,6 +11,9 @@ use App\ERP\Data\Order;
  */
 interface OrderProvider
 {
+    /** ¿La empresa actual tiene una fuente de pedidos configurada? Si no, no se ofrecen herramientas de pedidos. */
+    public function isConfigured(): bool;
+
     /** Pedido por su número (sin "#"), o null si no existe. */
     public function findOrder(string $number): ?Order;
 

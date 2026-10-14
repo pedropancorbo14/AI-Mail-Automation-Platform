@@ -11,6 +11,7 @@ use App\Tools\ToolResult;
 
 beforeEach(function () {
     $this->tenant = Tenant::factory()->create(['slug' => 'empresa-demo']);
+    enableTools($this->tenant, 'get_order', 'get_customer_orders');
 });
 
 /** Ejecuta una herramienta como si la IA procesara un email de $sender. */

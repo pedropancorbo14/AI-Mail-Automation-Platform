@@ -6,6 +6,7 @@ use App\Models\Tenant;
 
 beforeEach(function () {
     $this->tenant = Tenant::factory()->create(['slug' => 'empresa-demo']);
+    enableTools($this->tenant, 'get_order', 'get_customer_orders');
     $this->email = inTenant($this->tenant, fn () => Email::factory()->create(['from_email' => 'cliente@cliente.test']));
 });
 

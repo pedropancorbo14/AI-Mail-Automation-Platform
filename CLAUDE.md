@@ -1476,19 +1476,64 @@ Fase 8.
 
 **Pendiente para dar la Fase 7 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde.
-### Fase 8 (AI Agent): SIGUIENTE, no empezada.
+### Fase 8 (AI Agent): EN CURSO (desde 2026-10-14)
 
-**Primera tarea acordada con el usuario (2026-10-14): herramientas por
-empresa.** Hoy `ai.tools.available` es global (todas las empresas tienen
-las mismas). Antes del agente: tabla `tenant_tools` (o configuración del
-tenant) con las herramientas activadas por empresa, y el agente solo
-ofrece a Claude las de esa empresa **y** solo si tiene configurada su
-fuente de datos (p. ej. `get_order` solo si hay `OrderProvider` para
-ella; `search_company_documents` para todas). Motivo: no todas las
-empresas tienen pedidos (servicios, clínicas, gestorías...); ofrecer
-herramientas que no aplican confunde al modelo y gasta tokens. El
-`ToolExecutor` debe rechazar también (`rejected`) una herramienta no
-activada para la empresa del contexto, aunque exista en el catálogo.
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit, sin push.
+
+**Objetivo:** dado un email, Claude usa las herramientas en cadena
+(pedido → política vía RAG → …) y redacta una **propuesta de respuesta**
+con confianza y fuentes. **No se envía nada**: queda como borrador
+(`email_replies`); decidir envío automático o revisión humana y enviar es
+la Fase 9.
+
+**Decisiones tomadas:**
+- **Bucle propio** (no el Tool Runner del SDK): control de cada paso,
+  límites, auditoría por iteración y ejecución siempre vía `ToolExecutor`.
+- **Historial solo-añadir (preserved thinking):** la cuenta del usuario
+  es posterior al 2026-08-31 → Opus 5.5 aplica la comprobación de
+  historial (editar turnos anteriores = 400). `system` y conjunto de
+  herramientas congelados durante la conversación; el turno del
+  asistente se devuelve **tal cual** (`content` del SDK, con sus bloques
+  `thinking`); resultados como bloques `tool_result` (`toolUseID`,
+  `isError`) en un único mensaje de usuario por turno.
+- **Sin `tool_choice` forzado** (400 en Opus 5.5): `auto` + instrucción
+  en el prompt; herramientas con **`strict: true`**. Respuesta final con
+  structured outputs (`output_config.format`) junto con `tools`
+  (verificar en la prueba real; alternativa: herramienta `submit_reply`).
+- **Límites duros:** iteraciones, llamadas a herramientas, tiempo y gasto
+  por email; superarlos → revisión humana.
+- **Revisión humana obligatoria** si: confianza < umbral, Claude lo pide,
+  sospecha de prompt injection, la clasificación ya lo marcó, falla una
+  herramienta clave o se agota un límite.
+- Auditoría: `ai_agent_runs` (pasos, tokens, coste, duración, motivo de
+  parada) enlazada a sus `ai_requests` y `ai_tool_calls`.
+
+**Tareas (commit):**
+- [x] 1. **Herramientas por empresa** (acordado con el usuario
+  2026-10-14): tabla `tenant_tools` (tenant cascade, `tool`, `enabled`,
+  único tenant+tool) y modelo `TenantTool` (`BelongsToTenant`). Sin fila
+  manda **`ai.tools.default_enabled`** (hoy solo
+  `search_company_documents`); el resto se activa por empresa. Interfaz
+  **`App\Tools\Contracts\HasAvailability`** (`isAvailable()`, dentro del
+  tenant): `get_order`/`get_customer_orders` solo si
+  `OrderProvider::isConfigured()` (nuevo; demo: la empresa está en el
+  JSON). **`App\Tools\TenantToolService`**: `toolsFor($tenant)` (activadas
+  **y** disponibles, orden alfabético estable — lo que se ofrecerá a
+  Claude —), `isUsable()`, `statusFor()`, `enable()`/`disable()` (solo
+  herramientas del catálogo). **`ToolExecutor` rechaza** (`rejected`, "no
+  está disponible para esta empresa") las no activadas/no disponibles
+  aunque existan. Comando **`php artisan ai:tools <tenant>
+  [--enable=*] [--disable=*]`** (tabla activada / disponible / origen /
+  "la IA la ve"). Helper de tests `enableTools($tenant, ...$tools)` en
+  `tests/Pest.php`
+- [ ] 2. Tool calling en `LLMProvider` / `AnthropicProvider`
+- [ ] 3. Prompt del agente v1 + esquema de la respuesta final
+- [ ] 4. Tablas `ai_agent_runs` y `email_replies`
+- [ ] 5. `AgentService` (bucle con límites y auditoría)
+- [ ] 6. Reglas de decisión (confianza, revisión humana)
+- [ ] 7. Comando `ai:reply`
+- [ ] 8. Prueba real con Claude, README
 
 ### Pendientes anotados para más adelante
 

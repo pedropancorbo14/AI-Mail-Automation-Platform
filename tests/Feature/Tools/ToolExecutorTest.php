@@ -14,6 +14,8 @@ use Tests\Fakes\FakeTool;
 
 beforeEach(function () {
     $this->tenant = Tenant::factory()->create();
+    // Herramientas de prueba activadas "por defecto" para todas las empresas.
+    config(['ai.tools.default_enabled' => ['echo', 'customer_data', 'get_order', 'broken', 'big', 'whoami']]);
     $this->echo = new FakeTool('echo');
     $this->registry = new ToolRegistry([$this->echo]);
     app()->instance(ToolRegistry::class, $this->registry);

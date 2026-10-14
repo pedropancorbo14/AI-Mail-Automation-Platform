@@ -64,3 +64,11 @@ function classificationData(array $overrides = []): array
         'entities' => ['order_numbers' => ['45821'], 'invoice_numbers' => [], 'customer_name' => 'Cliente Pérez'],
     ], $overrides);
 }
+
+/** Activa herramientas de la IA para una empresa (las que no son "por defecto" vienen desactivadas). */
+function enableTools(Tenant $tenant, string ...$tools): void
+{
+    foreach ($tools as $tool) {
+        app(App\Tools\TenantToolService::class)->enable($tenant, $tool);
+    }
+}

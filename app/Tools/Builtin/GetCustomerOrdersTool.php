@@ -5,6 +5,7 @@ namespace App\Tools\Builtin;
 use App\ERP\Contracts\OrderProvider;
 use App\ERP\Data\Order;
 use App\Tools\Contracts\AITool;
+use App\Tools\Contracts\HasAvailability;
 use App\Tools\Contracts\RequiresSender;
 use App\Tools\ToolContext;
 use App\Tools\ToolResult;
@@ -14,12 +15,18 @@ use App\Tools\ToolResult;
  * argumento a propósito: siempre es el remitente (contexto del backend),
  * así la IA no puede consultar los pedidos de otra persona.
  */
-class GetCustomerOrdersTool implements AITool, RequiresSender
+class GetCustomerOrdersTool implements AITool, HasAvailability, RequiresSender
 {
     private const int MAX_ORDERS = 10;
 
     public function __construct(private readonly OrderProvider $orders)
     {
+    }
+
+    /** Solo si la empresa tiene una fuente de pedidos. */
+    public function isAvailable(): bool
+    {
+        return $this->orders->isConfigured();
     }
 
     public function name(): string
