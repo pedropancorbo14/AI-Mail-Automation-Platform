@@ -35,6 +35,9 @@ class Permission extends Model
     /** Ver los emails recibidos, su clasificación, la respuesta propuesta y lo que hizo la IA. */
     public const string EMAILS_VIEW = 'emails.view';
 
+    /** Cambiar el modo de automatización, las intenciones que se responden solas y las herramientas de la IA. */
+    public const string AUTOMATION_MANAGE = 'automation.manage';
+
     /**
      * Catálogo completo (nombre => descripción). Cada permiso se registra
      * como Gate en AppServiceProvider y se guarda en BD con el seeder.
@@ -51,6 +54,7 @@ class Permission extends Model
         self::DOCUMENTS_VIEW => 'Ver y buscar en la documentación',
         self::DOCUMENTS_MANAGE => 'Gestionar la documentación',
         self::EMAILS_VIEW => 'Ver los emails y lo que hizo la IA con ellos',
+        self::AUTOMATION_MANAGE => 'Configurar la automatización y las herramientas de la IA',
     ];
 
     /** @return BelongsToMany<Role, $this> */

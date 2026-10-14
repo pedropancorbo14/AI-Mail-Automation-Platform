@@ -32,6 +32,12 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Email', permission: 'emails.view', menu: 'emails' },
             },
             {
+                path: 'configuracion/ia',
+                name: 'ai-settings',
+                component: () => import('@/pages/AiSettingsPage.vue'),
+                meta: { title: 'Configuración de la IA', permission: 'tenant.view' },
+            },
+            {
                 path: 'sin-permiso',
                 name: 'forbidden',
                 component: () => import('@/pages/ForbiddenPage.vue'),

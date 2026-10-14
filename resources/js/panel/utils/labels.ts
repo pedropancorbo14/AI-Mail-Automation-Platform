@@ -49,3 +49,21 @@ export const sentimentLabels: Record<string, string> = { positive: 'Positivo', n
 export function options<T extends string>(labels: Record<T, string>): { label: string; value: T }[] {
     return (Object.entries(labels) as [T, string][]).map(([value, label]) => ({ value, label }));
 }
+
+/** Herramientas del agente: nombre y para qué sirven, en palabras de la empresa. */
+export const toolLabels: Record<string, { label: string; description: string }> = {
+    search_company_documents: {
+        label: 'Buscar en la documentación',
+        description: 'Consulta las políticas, FAQs y manuales subidos en "Documentación" para responder con lo que dicen.',
+    },
+    get_order: {
+        label: 'Consultar pedido',
+        description: 'Estado, productos, envío y seguimiento de un pedido. Solo de los pedidos del cliente que escribe.',
+    },
+    get_customer_orders: {
+        label: 'Pedidos del cliente',
+        description: 'Últimos pedidos del cliente que escribe, cuando no indica el número.',
+    },
+};
+
+export const toolLabel = (tool: string): string => toolLabels[tool]?.label ?? tool;

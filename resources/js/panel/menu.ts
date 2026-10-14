@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { HomeOutline, MailOutline } from '@vicons/ionicons5';
+import { HomeOutline, MailOutline, SparklesOutline } from '@vicons/ionicons5';
 
 export interface MenuEntry {
     /** Nombre de la ruta del panel. */
@@ -14,6 +14,7 @@ export interface MenuEntry {
 export const menuEntries: MenuEntry[] = [
     { route: 'home', label: 'Resumen', icon: HomeOutline },
     { route: 'emails', label: 'Emails', icon: MailOutline, permission: 'emails.view' },
+    { route: 'ai-settings', label: 'Ajustes de la IA', icon: SparklesOutline, permission: 'tenant.view' },
 ];
 
 /** Solo las secciones que el usuario puede usar. */

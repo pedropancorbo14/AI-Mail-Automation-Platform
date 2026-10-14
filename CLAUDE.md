@@ -2079,8 +2079,33 @@ ven).
   con captura). Tests: `DashboardApiTest` (periodo, tasa, pendientes de
   cualquier fecha, costes y latencia, cambio de periodo y 422, empresa
   sin datos, aislamiento, 401), Vitest `intentBars`
-- [ ] 9. API + página: configuración de la IA (modo, intenciones,
-  herramientas)
+- [x] 9. **Configuración de la IA.** Permiso nuevo **`automation.manage`**
+  (owner y admin; sembrado en la BD de desarrollo). API (siempre la
+  empresa del usuario, sin id en la URL): **`GET /api/v1/automation`**
+  (`tenant.view`: todos los roles) → modo + los 3 modos con etiqueta y
+  descripción, intenciones de envío automático efectivas y si son
+  propias o las de la plataforma, catálogo de intenciones con
+  `allows_auto_send`, herramientas (`TenantToolService::statusFor`:
+  activada, disponible, origen `company|default`) y estado de la
+  plataforma (IA configurada, freno de emergencia, modelo, confianza
+  mínima, límite por dirección); **`PATCH /automation`**
+  (`UpdateAutomationRequest`, autoriza `automation.manage` antes de
+  validar: `mode`, `auto_send_intents` — `[]` = las de la plataforma —;
+  intención prohibida → 422 en `auto_send_intents`); **`PATCH
+  /automation/tools/{tool}`** (`enabled` booleano; herramienta fuera del
+  catálogo → 404). Cada cambio queda en el log con el usuario (auditoría
+  completa en la Fase 12). Página **`AiSettingsPage`** (`/configuracion/
+  ia`, menú "Ajustes de la IA"): avisos si la IA no está configurada o el
+  envío automático está frenado en la plataforma; modo con
+  **confirmación al activar el automático**; intenciones (las prohibidas,
+  deshabilitadas con "siempre una persona"; guardar / volver a las de
+  por defecto) con las reglas de seguridad explicadas; interruptores de
+  herramientas con descripción en lenguaje de empresa (`toolLabels` en
+  `utils/labels.ts`, también los usa la traza) y "sin datos
+  configurados" si no están disponibles. Sin `automation.manage` se ve
+  todo y no se puede cambiar nada. Tests: `AutomationApiTest` (11) y
+  Vitest `AiSettingsPage.test.ts` (solo lectura sin permiso, activar una
+  herramienta llama al PATCH, intenciones prohibidas marcadas)
 - [ ] 10. Página: conexiones de correo (IMAP, OAuth, prueba)
 - [ ] 11. Autodetección de la configuración IMAP/SMTP
 - [ ] 12. Página: documentación (RAG) y buscador

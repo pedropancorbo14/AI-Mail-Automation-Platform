@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\AutomationController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\EmailController;
@@ -39,6 +40,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/mail-connections/oauth/{provider}/start', [MailOAuthController::class, 'start']);
     Route::post('/mail-connections/{mailConnection}/test', [MailConnectionController::class, 'test'])
         ->middleware('throttle:mail-connection-test');
+
+    // Configuración de la IA de la empresa (modo, intenciones, herramientas).
+    Route::get('/automation', [AutomationController::class, 'show']);
+    Route::patch('/automation', [AutomationController::class, 'update']);
+    Route::patch('/automation/tools/{tool}', [AutomationController::class, 'updateTool']);
 
     // Inicio del panel: resumen del periodo.
     Route::get('/dashboard', DashboardController::class);

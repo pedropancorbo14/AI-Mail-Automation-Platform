@@ -2,6 +2,7 @@
 import { NCode, NCollapse, NCollapseItem, NEmpty, NSpace, NTag, NText } from 'naive-ui';
 import type { AgentRun, ToolCall } from '@/api/types';
 import { formatDateTime, formatUsd } from '@/utils/format';
+import { toolLabel } from '@/utils/labels';
 
 defineProps<{ runs: AgentRun[] }>();
 
@@ -11,11 +12,6 @@ const toolStatus: Record<ToolCall['status'], { label: string; type: 'success' | 
     rejected: { label: 'Rechazada', type: 'error' },
 };
 
-const toolLabels: Record<string, string> = {
-    get_order: 'Consultar pedido',
-    get_customer_orders: 'Pedidos del cliente',
-    search_company_documents: 'Buscar en la documentación',
-};
 
 const json = (value: unknown) => JSON.stringify(value, null, 2);
 const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} s`);
@@ -49,7 +45,7 @@ const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toL
                         <template #header>
                             <NSpace size="small" align="center">
                                 <NTag :type="toolStatus[call.status].type" size="tiny">{{ toolStatus[call.status].label }}</NTag>
-                                <strong>{{ toolLabels[call.tool] ?? call.tool }}</strong>
+                                <strong>{{ toolLabel(call.tool) }}</strong>
                                 <NText depth="3" code>{{ JSON.stringify(call.arguments) }}</NText>
                             </NSpace>
                         </template>
