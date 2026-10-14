@@ -123,6 +123,20 @@ return [
     ],
 
     'automation' => [
+        // Procesar solo cada email al terminar su ingesta (clasificación →
+        // agente → envío o revisión humana). AI_CLASSIFY_ON_INGEST es el
+        // nombre antiguo (Fase 5) y se sigue aceptando.
+        'process_on_ingest' => (bool) env('AI_PROCESS_ON_INGEST', env('AI_CLASSIFY_ON_INGEST', true)),
+
+        // Conexión de cola de los jobs de IA (cola "ai"): redis-long porque
+        // procesar un email (clasificación + agente con reintentos del SDK)
+        // puede superar los 300 s de retry_after de "redis".
+        'queue_connection' => env('AI_QUEUE_CONNECTION', 'redis-long'),
+
+        // Spam y respuestas automáticas solo se descartan sin persona con
+        // esta confianza mínima de la clasificación; por debajo, revisión humana.
+        'ignore_min_confidence' => (float) env('AI_IGNORE_MIN_CONFIDENCE', 0.8),
+
         // Freno de emergencia de la plataforma: false = ninguna empresa
         // envía respuestas sin revisión humana (aunque esté en modo "auto").
         'auto_send_enabled' => (bool) env('AI_AUTO_SEND', true),
@@ -137,9 +151,6 @@ return [
     ],
 
     'classification' => [
-        // Clasificar al guardar cada email (evento EmailIngested).
-        'on_ingest' => (bool) env('AI_CLASSIFY_ON_INGEST', true),
-
         // Esfuerzo de razonamiento: clasificar es sencillo → "low" (menos tokens y latencia).
         'effort' => env('AI_CLASSIFICATION_EFFORT', 'low'),
 

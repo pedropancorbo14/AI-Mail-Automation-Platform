@@ -4,13 +4,13 @@ namespace App\Providers;
 
 use Anthropic\Client;
 use Anthropic\RequestOptions;
-use App\AI\Classification\QueueEmailClassification;
 use App\AI\Contracts\LLMProvider;
 use App\AI\Embeddings\EmbeddingProvider;
 use App\AI\Embeddings\OllamaEmbeddingProvider;
 use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Prompts\PromptRegistry;
 use App\AI\Providers\Anthropic\AnthropicProvider;
+use App\Automation\QueueEmailProcessing;
 use App\Documents\Chunking\TextChunker;
 use App\ERP\Contracts\OrderProvider;
 use App\ERP\Providers\DemoOrderProvider;
@@ -74,8 +74,8 @@ class AIServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Ingesta completa → clasificación con IA (cola "ai").
-        Event::listen(EmailIngested::class, QueueEmailClassification::class);
+        // Ingesta completa → procesamiento automático (clasificación → agente → envío o persona).
+        Event::listen(EmailIngested::class, QueueEmailProcessing::class);
     }
 
     /** @return \Closure(): Client */

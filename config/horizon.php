@@ -99,7 +99,7 @@ return [
     'waits' => [
         'redis:default' => 60,
         'redis:mail' => 120,
-        'redis:ai' => 300,
+        'redis-long:ai' => 300,
         'redis-long:documents' => 900,
     ],
 
@@ -235,7 +235,8 @@ return [
         // latencia de la IA no frene la ingesta ni el resto de jobs. Pocos
         // procesos a propósito: limita el gasto y los 429 del proveedor.
         'supervisor-ai' => [
-            'connection' => 'redis',
+            // redis-long (retry_after 1900): procesar un email puede tardar minutos.
+            'connection' => 'redis-long',
             'queue' => ['ai'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
@@ -244,7 +245,7 @@ return [
             'maxJobs' => 0,
             'memory' => 256,
             'tries' => 4,
-            'timeout' => 250,
+            'timeout' => 650,
             'nice' => 0,
         ],
 

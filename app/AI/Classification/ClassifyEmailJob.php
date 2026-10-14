@@ -39,6 +39,7 @@ class ClassifyEmailJob implements ShouldQueue, ShouldBeUnique
         /** Volver a clasificar aunque ya tenga clasificación. */
         public readonly bool $force = false,
     ) {
+        $this->onConnection(config('ai.automation.queue_connection'));
         $this->onQueue('ai');
     }
 

@@ -1783,8 +1783,36 @@ clasificación y el agente existían por separado y nada se enviaba.
   `AI_MAX_AUTO_REPLIES_PER_ADDRESS`) respuestas automáticas en 24 h
   (anti-bucles; sin distinguir mayúsculas; solo de la propia empresa; las
   enviadas por personas no cuentan); sin remitente
-- [ ] 6. `EmailProcessor` + `ProcessEmailJob`: clasificación → agente → decisión
-  (reordenadas: el procesador usa la política y el envío, que van antes)
+- [x] 6. **`App\Automation\EmailProcessor::process($email, $reprocess)`**
+  (dentro del tenant; reordenada: usa la política y el envío). Arranca
+  desde `received` (o sigue en `processing` si es un reintento; con
+  `$reprocess`, también desde human_review/ignored/failed) y recorre:
+  correo automático → `ignored` **sin IA**; empresa en modo `off` o **sin
+  API key** → `human_review` (ya no se queda en received); clasifica si no
+  lo estaba (**nunca dos veces**); spam / respuesta automática con
+  confianza ≥ `ai.automation.ignore_min_confidence` (0,8) → `ignored` (por
+  debajo sigue: un cliente real nunca se ignora por un error del
+  clasificador); **sospecha de injection → `human_review` sin ejecutar el
+  agente**; agente (reutiliza un borrador de un intento anterior salvo
+  `$reprocess`: no se paga dos veces); sin propuesta → `human_review` con el
+  error del agente; con propuesta → `ai_review` → `AutoSendPolicy` →
+  `ReplySender::approve()` (→ approved → `SendReplyJob` → sent) o
+  `human_review` con todos los motivos. Errores: IA temporal → se relanza
+  y el email sigue en `processing`; `LLMConfigurationException` (clave,
+  saldo) → `failed` (arreglar y reprocesar); rechazo o respuesta inválida
+  del clasificador → `human_review`; inesperado → `failed` + relanza.
+  **`ProcessEmailJob`** (ids, cola `ai`, `tries` 3, `backoff [60, 300]`,
+  `timeout` 600, único 1 h; `failed()` → email `failed` "No se pudo
+  procesar tras varios intentos"). Listener **`QueueEmailProcessing`**
+  sustituye a `QueueEmailClassification` (`EmailIngested` → job siempre,
+  también sin API key; `ai.automation.process_on_ingest`,
+  **`AI_PROCESS_ON_INGEST`**, acepta el antiguo `AI_CLASSIFY_ON_INGEST`).
+  **Cola de IA en `redis-long`** (`ai.automation.queue_connection`,
+  `AI_QUEUE_CONNECTION`; `sync` en phpunit): procesar un email puede pasar
+  de los 300 s de `retry_after` de `redis`; `supervisor-ai` pasa a
+  `redis-long` (timeout 650) y `ClassifyEmailJob` también; `waits`
+  `redis-long:ai`. El test E2E de ingesta IMAP ahora espera
+  `human_review` (sin API key en los tests)
 - [ ] 7. Comando `ai:process` (`ai:automation` se hizo en la tarea 3)
 - [ ] 8. Prueba de extremo a extremo con GreenMail
 - [ ] 9. Prueba real con Claude, README

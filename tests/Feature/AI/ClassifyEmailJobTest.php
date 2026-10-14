@@ -7,7 +7,6 @@ use App\AI\Enums\AiRequestStatus;
 use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Exceptions\LLMRefusalException;
 use App\AI\Exceptions\LLMUnavailableException;
-use App\Mail\Ingestion\Events\EmailIngested;
 use App\Models\AiRequest;
 use App\Models\Email;
 use App\Models\Tenant;
@@ -50,7 +49,9 @@ it('retries with backoff within the queue timeout', function () {
 
     expect($job->tries)->toBe(4)
         ->and($job->backoff())->toBe([30, 120, 300])
-        ->and($job->timeout)->toBeLessThan(config('queue.connections.redis.retry_after'))
+        ->and($job->connection)->toBe(config('ai.automation.queue_connection'))
+        ->and($job->timeout)->toBeLessThan(config('queue.connections.redis-long.retry_after'))
+        ->and(config('horizon.defaults.supervisor-ai.connection'))->toBe('redis-long')
         ->and(config('horizon.defaults.supervisor-ai.queue'))->toBe(['ai'])
         ->and(config('horizon.defaults.supervisor-ai.timeout'))->toBeGreaterThan($job->timeout);
 });
@@ -107,24 +108,4 @@ it('does nothing for deleted emails or inactive companies', function () {
     runClassifyJob()->assertNotFailed();
 
     expect($this->llm->requests)->toBe([]);
-});
-
-it('queues the classification when an email is ingested', function () {
-    Queue::fake();
-    config(['ai.anthropic.api_key' => 'sk-ant-x']);
-
-    EmailIngested::dispatch($this->tenant->id, $this->email->id);
-
-    Queue::assertPushed(ClassifyEmailJob::class, fn (ClassifyEmailJob $job) => $job->emailId === $this->email->id && $job->tenantId === $this->tenant->id);
-});
-
-it('leaves emails unclassified while the ai is not configured or disabled', function () {
-    Queue::fake();
-
-    EmailIngested::dispatch($this->tenant->id, $this->email->id);
-
-    config(['ai.anthropic.api_key' => 'sk-ant-x', 'ai.classification.on_ingest' => false]);
-    EmailIngested::dispatch($this->tenant->id, $this->email->id);
-
-    Queue::assertNotPushed(ClassifyEmailJob::class);
 });
