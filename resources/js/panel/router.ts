@@ -16,8 +16,8 @@ export const routes: RouteRecordRaw[] = [
             {
                 path: '',
                 name: 'home',
-                component: () => import('@/pages/HomePage.vue'),
-                meta: { title: 'Inicio' },
+                component: () => import('@/pages/DashboardPage.vue'),
+                meta: { title: 'Resumen' },
             },
             {
                 path: 'emails',

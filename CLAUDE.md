@@ -2057,7 +2057,28 @@ ven).
   `allow-scripts`/`allow-same-origin`, CSP en el documento, aviso de
   imágenes remotas, texto sin pedir HTML, enlaces de adjuntos, motivos
   separados, envío automático, traza con herramientas
-- [ ] 8. API + página: dashboard
+- [x] 8. **Dashboard.** `App\Observability\DashboardStats` (scope de
+  tenant en todo): emails del periodo por estado, enviados solos y **tasa
+  de automatización** (enviados solos / los que necesitaban respuesta =
+  recibidos − ignorados), **esperan a una persona** y con error *ahora
+  mismo* (de cualquier fecha), ranking de intenciones, IA del periodo
+  (llamadas, fallidas, coste del periodo, de hoy y del mes, **coste medio
+  por email** con IA, latencia media sin contar búsquedas de embeddings
+  locales) y los 5 últimos emails en revisión humana o error. **`GET
+  /api/v1/dashboard?days=7|30|90`** (`emails.view`; otro valor → 422).
+  Página **`DashboardPage`** (sustituye a `HomePage`; el menú dice
+  "Resumen"): selector de periodo, **6 tarjetas de cifras** (las de
+  "esperan a una persona" y "con error" enlazan al listado filtrado),
+  ranking de intenciones en **barras horizontales de un solo color**
+  (valor en texto normal, tooltip con nº y %, clic → listado filtrado),
+  estados con sus colores reservados y etiqueta, y "Necesitan atención".
+  **Sin gráficas temporales** (emails/coste por día): son de Grafana
+  (Fase 11) y así el panel no carga una librería de gráficas. Guía
+  aplicada: skill de visualización (forma: cifras = tarjetas; una serie =
+  un color; texto en tinta, no en el color de la serie; revisión visual
+  con captura). Tests: `DashboardApiTest` (periodo, tasa, pendientes de
+  cualquier fecha, costes y latencia, cambio de periodo y 422, empresa
+  sin datos, aislamiento, 401), Vitest `intentBars`
 - [ ] 9. API + página: configuración de la IA (modo, intenciones,
   herramientas)
 - [ ] 10. Página: conexiones de correo (IMAP, OAuth, prueba)

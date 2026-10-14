@@ -12,7 +12,7 @@ export interface MenuEntry {
 
 /** Secciones del menú lateral, en orden. */
 export const menuEntries: MenuEntry[] = [
-    { route: 'home', label: 'Inicio', icon: HomeOutline },
+    { route: 'home', label: 'Resumen', icon: HomeOutline },
     { route: 'emails', label: 'Emails', icon: MailOutline, permission: 'emails.view' },
 ];
 
