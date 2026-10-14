@@ -1981,7 +1981,34 @@ ven).
   **aislamiento** (ni con el id del buzón de otra empresa ni buscando su
   texto), 401 y 403 sin permiso. `PermissionsTest` cuenta los permisos
   del agente desde `Role::PERMISSIONS` (no un número fijo)
-- [ ] 5. API: detalle del email, HTML saneado y adjuntos
+- [x] 5. **API: detalle del email, HTML saneado y adjuntos.**
+  `composer require ezyang/htmlpurifier` (^4.18, LGPL).
+  **`App\Mail\Support\HtmlSanitizer`**: lista blanca de etiquetas de
+  formato (texto, listas, tablas, enlaces, imágenes) y de propiedades CSS
+  (sin `background`/`url()`), solo esquemas http/https/mailto (fuera
+  `javascript:` y `data:`), enlaces con `target=_blank` + `noopener
+  noreferrer nofollow`; fuera scripts, eventos `on*`, iframes,
+  formularios, `<style>`, `<meta>`, `<base>`; caché de definiciones en
+  `storage/framework/cache/htmlpurifier`. `hasRemoteImages()` (posibles
+  píxeles de rastreo). Endpoints (`emails.view`, otra empresa → 404 con
+  el mismo mensaje que un id inexistente): **`GET /emails/{id}`**
+  (`EmailDetailResource`, hereda del listado: destinatarios to/cc/
+  reply_to, Message-ID, `text_body`, `has_html` —nunca el HTML original—,
+  clasificación completa con entidades, modelo y coste, adjuntos sin
+  disco/ruta, **historial de estados** con motivo y usuario,
+  **propuestas** (`EmailReplyResource`) y **traza del agente**
+  (`AgentRunResource`: pasos con modelo, tokens, coste, latencia y
+  **herramientas** con argumentos, resultado, estado y duración), y
+  `ai_cost_usd` = suma de todas sus peticiones de IA); **`GET
+  /emails/{id}/html`** → `{html saneado | null, remote_images}`; **`GET
+  /emails/{id}/attachments/{adjunto}`** (`scopeBindings`: el adjunto tiene
+  que ser de ese email; solo `stored`) **siempre como descarga y
+  `application/octet-stream` + `nosniff`**: un adjunto `.html` abierto en
+  el navegador podría ejecutar código con la sesión del panel. Tests:
+  `HtmlSanitizerTest` (11 ataques + formato + enlaces + imágenes
+  remotas), `EmailDetailApiTest` (email procesado con el procesador real
+  e IA simulada, sin procesar, HTML saneado, descargas, adjunto de otro
+  email, aislamiento en los 3 endpoints, 403)
 - [ ] 6. Página: listado de emails
 - [ ] 7. Página: detalle del email (cuerpo, clasificación, propuesta,
   historial, traza del agente)
