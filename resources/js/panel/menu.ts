@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { HomeOutline } from '@vicons/ionicons5';
+import { HomeOutline, MailOutline } from '@vicons/ionicons5';
 
 export interface MenuEntry {
     /** Nombre de la ruta del panel. */
@@ -13,6 +13,7 @@ export interface MenuEntry {
 /** Secciones del menú lateral, en orden. */
 export const menuEntries: MenuEntry[] = [
     { route: 'home', label: 'Inicio', icon: HomeOutline },
+    { route: 'emails', label: 'Emails', icon: MailOutline, permission: 'emails.view' },
 ];
 
 /** Solo las secciones que el usuario puede usar. */

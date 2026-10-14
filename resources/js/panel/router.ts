@@ -20,6 +20,18 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Inicio' },
             },
             {
+                path: 'emails',
+                name: 'emails',
+                component: () => import('@/pages/EmailsPage.vue'),
+                meta: { title: 'Emails', permission: 'emails.view' },
+            },
+            {
+                path: 'emails/:id(\\d+)',
+                name: 'email',
+                component: () => import('@/pages/EmailPage.vue'),
+                meta: { title: 'Email', permission: 'emails.view', menu: 'emails' },
+            },
+            {
                 path: 'sin-permiso',
                 name: 'forbidden',
                 component: () => import('@/pages/ForbiddenPage.vue'),

@@ -8,7 +8,7 @@ const user = {
     name: 'Ana',
     email: 'ana@acme.test',
     role: 'admin',
-    permissions: ['users.view'],
+    permissions: ['users.view', 'emails.view'],
     tenant: { id: 1, name: 'Acme', slug: 'acme' },
 };
 
@@ -64,6 +64,14 @@ describe('router del panel', () => {
         await router.push('/no/existe');
 
         expect(router.currentRoute.value.name).toBe('not-found');
+    });
+
+    it('solo abre el detalle de un email con un id numérico', () => {
+        const router = createPanelRouter(createMemoryHistory());
+
+        expect(router.resolve('/emails/12').name).toBe('email');
+        expect(router.resolve('/emails/abc').name).toBe('not-found');
+        expect(router.resolve('/emails/12').meta.menu).toBe('emails');
     });
 
     it('manda a la página 403 las secciones que el rol no permite', async () => {

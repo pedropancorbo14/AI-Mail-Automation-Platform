@@ -2009,7 +2009,23 @@ ven).
   remotas), `EmailDetailApiTest` (email procesado con el procesador real
   e IA simulada, sin procesar, HTML saneado, descargas, adjunto de otro
   email, aislamiento en los 3 endpoints, 403)
-- [ ] 6. Página: listado de emails
+- [x] 6. **Página: listado de emails** (`pages/EmailsPage.vue`, ruta
+  `/emails`, permiso `emails.view`, entrada "Emails" en el menú; el
+  detalle `/emails/:id(\\d+)` marca "Emails" en el menú y de momento es
+  un marcador). Tabla con paginación en el servidor (`NDataTable remote`):
+  recibido, remitente, asunto (enlace: se puede abrir en otra pestaña) +
+  resumen de la IA, intención + confianza (o "Automático"), estado con
+  color (ámbar = revisión humana, rojo = error) y buzón; clic en la fila
+  → detalle. Filtros: búsqueda con espera de 350 ms, estado, intención,
+  buzón (solo si hay más de uno) y rango de fechas. **Los filtros viven
+  en la URL** (`utils/query.ts`: `filtersFromQuery` ignora lo inválido —la
+  URL la puede editar cualquiera—, `queryFromFilters` sin vacíos ni
+  página 1): enlaces compartibles y botón "atrás". `api/types.ts`,
+  `api/emails.ts`, `api/mailConnections.ts`, `utils/labels.ts` (estados,
+  intenciones, urgencia y sentimiento en español + color de cada estado)
+  y `utils/format.ts` (fecha, %, USD, bytes, remitente). **Ojo en rutas:**
+  en un string de JS el patrón es `'\\d+'` (con `'\d+'` el `\` se pierde).
+  Vitest: `query.test.ts`, `format.test.ts`, rutas del detalle (25 tests)
 - [ ] 7. Página: detalle del email (cuerpo, clasificación, propuesta,
   historial, traza del agente)
 - [ ] 8. API + página: dashboard
