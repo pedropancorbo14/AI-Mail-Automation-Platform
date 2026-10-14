@@ -1378,7 +1378,15 @@ Fase 8.
   `duration_ms`, `created_at`. Índices tenant+created_at, tenant+tool,
   ai_request_id. Modelo `AiToolCall` (`BelongsToTenant`), relación
   `AiRequest::toolCalls()`
-- [ ] 3. `ToolRegistry`
+- [x] 3. `App\Tools\ToolRegistry`: catálogo de herramientas (`register`,
+  `get`, `has`, `all`, `definitions()` → nombre/descripción/`input_schema`
+  en **orden alfabético estable**, bueno para la caché de prompts). Valida
+  nombres **únicos** en `snake_case` (máx. 64) y esquemas `type: object`
+  con `additionalProperties: false`. Singleton construido desde
+  **`config('ai.tools.available')`** (lista de clases; una herramienta
+  que no esté ahí no existe para la IA) + `ai.tools.max_result_chars`
+  (8000, `AI_TOOLS_MAX_RESULT_CHARS`). `tests/Fakes/FakeTool`
+  (nombre, esquema y manejador configurables; registra llamadas)
 - [ ] 4. `ToolExecutor` (JSON Schema, permisos, errores, límites, registro)
 - [ ] 5. Herramienta `search_company_documents`
 - [ ] 6. `OrderProvider` + proveedor demo

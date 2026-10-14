@@ -13,6 +13,7 @@ use App\AI\Prompts\PromptRegistry;
 use App\AI\Providers\Anthropic\AnthropicProvider;
 use App\Documents\Chunking\TextChunker;
 use App\Mail\Ingestion\Events\EmailIngested;
+use App\Tools\ToolRegistry;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -47,6 +48,11 @@ class AIServiceProvider extends ServiceProvider
             ),
             default => throw new LLMConfigurationException('Proveedor de embeddings no soportado: ' . config('ai.embeddings.provider') . '.'),
         });
+
+        // Herramientas de la IA: solo las de config('ai.tools.available'), construidas desde el contenedor.
+        $this->app->singleton(ToolRegistry::class, fn ($app) => new ToolRegistry(
+            array_map(fn (string $class) => $app->make($class), config('ai.tools.available', [])),
+        ));
 
         $this->app->bind(TextChunker::class, fn () => new TextChunker(
             (int) config('ai.rag.chunk_max_chars'),

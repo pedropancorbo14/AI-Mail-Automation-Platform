@@ -85,6 +85,17 @@ return [
         'min_similarity' => (float) env('RAG_MIN_SIMILARITY', 0.45),
     ],
 
+    'tools' => [
+        // Herramientas que la IA puede usar (App\Tools\Contracts\AITool). Una
+        // herramienta que no esté aquí no existe para la IA.
+        'available' => [
+        ],
+
+        // Tamaño máximo (caracteres JSON) del resultado que se devuelve al
+        // modelo: protege el contexto y el coste. Si se supera, se recorta y se avisa.
+        'max_result_chars' => (int) env('AI_TOOLS_MAX_RESULT_CHARS', 8000),
+    ],
+
     'classification' => [
         // Clasificar al guardar cada email (evento EmailIngested).
         'on_ingest' => (bool) env('AI_CLASSIFY_ON_INGEST', true),
