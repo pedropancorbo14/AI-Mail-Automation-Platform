@@ -232,7 +232,7 @@ services:
   # Metrics exporters
   # ---------------------------------------------------------------
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.20.1
     restart: unless-stopped
     environment:
       DATA_SOURCE_NAME: "postgresql://${DB_USERNAME:-app}:${DB_PASSWORD:-secret}@postgres:5432/${DB_DATABASE:-app}?sslmode=disable"
@@ -243,7 +243,7 @@ services:
       - observability-net
 
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.94.0
     restart: unless-stopped
     environment:
       REDIS_ADDR: "redis://redis:6379"
@@ -258,7 +258,7 @@ services:
   # Observability stack
   # ---------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.0
     restart: unless-stopped
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -268,14 +268,15 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=15d"
+      # 400 días: comparar costes y volumen mes a mes (las métricas ocupan poco).
+      - "--storage.tsdb.retention.time=400d"
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     networks:
       - observability-net
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.7.8
     restart: unless-stopped
     command: -config.file=/etc/loki/loki-config.yaml
     volumes:
@@ -287,7 +288,7 @@ services:
       - observability-net
 
   promtail:
-    image: grafana/promtail:latest
+    image: grafana/promtail:3.6.8
     restart: unless-stopped
     volumes:
       - ./docker/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
@@ -301,15 +302,18 @@ services:
       - observability-net
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.2.4
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # Al entrar, el dashboard General de la plataforma (Fase 11).
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ai-mail/general.json
     volumes:
       - grafana-data:/var/lib/grafana
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards/ai-mail:ro
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
     depends_on:

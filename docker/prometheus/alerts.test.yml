@@ -127,15 +127,15 @@ tests:
   # Un trabajo falla definitivamente; los que terminan bien no cuentan.
   - interval: 1m
     input_series:
-      - series: 'aimail_jobs_processed_total{queue="ai", job="ProcessEmailJob", result="failed"}'
+      - series: 'aimail_jobs_processed_total{queue="ai", job_class="ProcessEmailJob", result="failed", job="laravel", instance="nginx:80"}'
         values: "0 0 1 1 1"
-      - series: 'aimail_jobs_processed_total{queue="mail", job="FetchEmailsJob", result="success"}'
+      - series: 'aimail_jobs_processed_total{queue="mail", job_class="FetchEmailsJob", result="success", job="laravel", instance="nginx:80"}'
         values: "0+5x4"
     alert_rule_test:
       - eval_time: 4m
         alertname: TrabajosDeColaFallando
         exp_alerts:
-          - exp_labels: { severity: warning, queue: ai, job: ProcessEmailJob }
+          - exp_labels: { severity: warning, queue: ai, job_class: ProcessEmailJob }
             exp_annotations:
               summary: "El trabajo ProcessEmailJob ha fallado definitivamente en la cola ai"
               description: "1 fallos en 15 min (ya agotó sus reintentos). Ver Horizon → Failed Jobs y los logs en Grafana."
@@ -156,3 +156,17 @@ tests:
             exp_annotations:
               summary: "La cola redis-long:ai tiene 150 trabajos esperando"
               description: "Los workers no dan abasto o están parados (php artisan horizon:status)."
+
+  # Una sección del estado actual falla durante más de 5 min.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_state_metrics_ok{section="emails", job="laravel", instance="nginx:80"}'
+        values: "1 1 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: EstadoNoDisponible
+        exp_alerts:
+          - exp_labels: { severity: warning, section: emails, job: laravel, instance: "nginx:80" }
+            exp_annotations:
+              summary: "No se puede calcular el estado actual (emails)"
+              description: "Las consultas de /metrics a la base de datos o a las colas fallan. Ver el log (\"No se pudo calcular una métrica de estado\")."

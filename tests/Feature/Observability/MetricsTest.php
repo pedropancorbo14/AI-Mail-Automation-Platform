@@ -109,3 +109,9 @@ describe('GET /metrics', function () {
             ->assertCookieMissing('XSRF-TOKEN');
     });
 });
+
+it('never declares the labels Prometheus reserves for its targets', function () {
+    foreach (Metrics::DEFINITIONS as $name => $definition) {
+        expect(array_intersect($definition['labels'], ['job', 'instance']))->toBe([], "La métrica {$name} usa una etiqueta reservada");
+    }
+});

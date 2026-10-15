@@ -47,7 +47,7 @@ class QueueMetricsSubscriber
 
     private function finish(Job $job, string $result): void
     {
-        $labels = ['queue' => $job->getQueue() ?? 'none', 'job' => Str::afterLast($job->resolveName(), '\\')];
+        $labels = ['queue' => $job->getQueue() ?? 'none', 'job_class' => Str::afterLast($job->resolveName(), '\\')];
         $this->metrics->increment('jobs_processed_total', $labels + ['result' => $result]);
 
         $startedAt = $this->started[$key = $this->key($job)] ?? null;

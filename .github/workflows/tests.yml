@@ -145,3 +145,20 @@ jobs:
         run: >
           docker run --rm -v "$PWD/docker/prometheus:/etc/prometheus" -w /etc/prometheus
           --entrypoint promtool prom/prometheus:v3.15.0 test rules alerts.test.yml
+
+      - name: Validar los dashboards de Grafana
+        run: |
+          python3 - <<'PY'
+          import glob, json, sys
+          # JSON válido, uid único y solo los datasources provisionados (uid fijos).
+          uids, ok = set(), True
+          for f in sorted(glob.glob('docker/grafana/dashboards/*.json')):
+              d = json.load(open(f))
+              ok &= d['uid'] not in uids; uids.add(d['uid'])
+              for p in d['panels']:
+                  for t in p.get('targets', []) + [p]:
+                      ds = t.get('datasource')
+                      if ds and ds.get('uid') not in ('prometheus', 'loki'):
+                          print(f'{f}: datasource desconocido en "{p.get("title")}"'); ok = False
+          print(f'{len(uids)} dashboards'); sys.exit(0 if ok else 1)
+          PY

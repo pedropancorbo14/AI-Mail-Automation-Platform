@@ -48,8 +48,8 @@ describe('queues', function () {
     it('counts and times jobs that finish', function () {
         TestQueueJob::dispatch();
 
-        expect(metricSample('jobs_processed_total', ['job' => 'TestQueueJob', 'result' => 'success']))->toBe(1.0)
-            ->and(metricSample('job_duration_seconds_count', ['job' => 'TestQueueJob']))->toBe(1.0);
+        expect(metricSample('jobs_processed_total', ['job_class' => 'TestQueueJob', 'result' => 'success']))->toBe(1.0)
+            ->and(metricSample('job_duration_seconds_count', ['job_class' => 'TestQueueJob']))->toBe(1.0);
     });
 
     it('counts jobs that fail for good', function () {
@@ -58,7 +58,7 @@ describe('queues', function () {
         } catch (RuntimeException) {
         }
 
-        expect(metricSample('jobs_processed_total', ['job' => 'MetricsFailingJob', 'result' => 'failed']))->toBe(1.0);
+        expect(metricSample('jobs_processed_total', ['job_class' => 'MetricsFailingJob', 'result' => 'failed']))->toBe(1.0);
     });
 });
 
@@ -108,6 +108,23 @@ describe('current state', function () {
         inTenant($this->tenant, fn () => Document::factory()->create()->markFailed('PDF sin texto'));
 
         expect(metricSample('documents', ['tenant' => 'acme', 'status' => DocumentStatus::Failed->value]))->toBe(1.0);
+    });
+
+    it('keeps publishing the rest when a section fails (e.g. the database)', function () {
+        Log::spy();
+        inTenant($this->tenant, fn () => Email::factory()->create());
+        // La última sección con BD falla (en Postgres un error aborta la transacción del test).
+        Illuminate\Support\Facades\DB::statement('ALTER TABLE documents RENAME TO documents_renombrada');
+
+        $text = app(App\Observability\StateMetrics::class)->render(); // una sola vez: tras el fallo la transacción queda abortada
+
+        expect($text)->toContain('aimail_emails_current{tenant="acme",status="received"} 1')
+            ->toContain('aimail_state_metrics_ok{section="emails"} 1')
+            ->toContain('aimail_state_metrics_ok{section="documents"} 0')
+            ->toContain('aimail_state_metrics_ok{section="queues"} 1')
+            ->not->toContain('aimail_documents{');
+
+        Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context) => $message === 'No se pudo calcular una métrica de estado' && $context['section'] === 'documents');
     });
 
     it('publishes the queue sizes and survives a queue that does not answer', function () {

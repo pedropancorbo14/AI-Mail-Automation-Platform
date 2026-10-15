@@ -29,6 +29,8 @@ class Metrics
     private const array SECONDS = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600];
 
     /**
+     * Etiquetas prohibidas: "job" e "instance" (las pone Prometheus a cada target).
+     *
      * @var array<string, array{type: 'counter'|'histogram', help: string, labels: list<string>, buckets?: list<float>}>
      */
     public const array DEFINITIONS = [
@@ -56,8 +58,9 @@ class Metrics
         // --- Plataforma ---
         'http_requests_total' => ['type' => 'counter', 'help' => 'Peticiones HTTP atendidas.', 'labels' => ['method', 'route', 'status']],
         'http_request_duration_seconds' => ['type' => 'histogram', 'help' => 'Duración de las peticiones HTTP.', 'labels' => ['method', 'route'], 'buckets' => self::SECONDS],
-        'jobs_processed_total' => ['type' => 'counter', 'help' => 'Trabajos de cola terminados (o fallidos definitivamente).', 'labels' => ['queue', 'job', 'result']],
-        'job_duration_seconds' => ['type' => 'histogram', 'help' => 'Duración de los trabajos de cola.', 'labels' => ['queue', 'job'], 'buckets' => self::SECONDS],
+        // "job_class" y no "job": Prometheus reserva "job" (nombre del target) y renombraría la nuestra.
+        'jobs_processed_total' => ['type' => 'counter', 'help' => 'Trabajos de cola terminados (o fallidos definitivamente).', 'labels' => ['queue', 'job_class', 'result']],
+        'job_duration_seconds' => ['type' => 'histogram', 'help' => 'Duración de los trabajos de cola.', 'labels' => ['queue', 'job_class'], 'buckets' => self::SECONDS],
     ];
 
     private ?CollectorRegistry $registry = null;

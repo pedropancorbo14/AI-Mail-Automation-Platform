@@ -2311,6 +2311,29 @@ alertas.
   (`alerts.test.yml`, también en el CI). Se ven en Prometheus (`/alerts`) y
   en Grafana. **Sin Alertmanager todavía:** enviar avisos (email, Slack…)
   necesita un destino real; es de la Fase 16 (producción).
+- **Dashboards versionados en git** (`docker/grafana/dashboards/*.json`,
+  carpeta "AI Mail Automation"): se pueden editar en Grafana, pero manda el
+  fichero; para guardar un cambio se exporta el JSON. Datasources con
+  **`uid` fijos** (`prometheus`, `loki`). **Imágenes con versión fija**
+  (antes `latest`: una actualización podía romper el stack sin tocar nada):
+  Prometheus v3.15.0, Grafana 13.2.4, Loki 3.7.8, Promtail 3.6.8,
+  postgres-exporter v0.20.1, redis_exporter v1.94.0. Prometheus guarda
+  **400 días** (comparar costes mes a mes; ocupa poco).
+- Diseño de los dashboards (skill de visualización): cifras = tarjetas;
+  una sola serie en azul sin leyenda; **máximo 4 colores categóricos por
+  gráfica** (paleta validada contra el fondo oscuro de Grafana, en orden
+  fijo); los valores conocidos (decisiones, para qué se usa la IA) con
+  color fijo; los abiertos (empresas, modelos, herramientas, intenciones)
+  como **ranking de barras de un solo color**; ámbar/rojo **reservados** a
+  revisión humana / error y solo cuando el valor es ≥ 1; nunca dos ejes.
+  Recuentos como **barras por intervalo** (`increase`, mínimo 5 min), no
+  tasas "por hora": con pocos correos una tasa extrapolada convierte 16
+  correos en segundos en un pico de 1.300/h.
+- Limitación conocida de Prometheus: `increase()` no cuenta la **primera**
+  aparición de una serie (de 0 a N sin muestra previa). En uso continuo no
+  se nota; con datos de prueba recién creados los totales del periodo
+  pueden salir algo por debajo de la BD. La fuente exacta sigue siendo la
+  BD (panel de administración y `ai_requests`).
 
 **Tareas (commit):**
 - [x] 1. **IA simulada** (`SimulatedLLMProvider`, `config/ai.php` →
@@ -2416,6 +2439,51 @@ alertas.
   prueba. CI: job **`observability`** (`promtool check config` + `test
   rules`, `prom/prometheus:v3.15.0`). Verificado en el stack: 3 grupos, 10
   reglas `ok`
+- [x] 8. **Dashboards de Grafana** (sección 14): **General** (recibidos,
+  enviados solos, % automatizado, % a una persona, **tiempo ahorrado
+  estimado** = enviadas solas × variable "Minutos por respuesta manual",
+  coste; ahora mismo: esperan a una persona, con error, buzones con fallos,
+  alertas activas; evolución de entrada y decisiones; intenciones y volumen
+  por empresa), **Emails** (personas vs automáticos, decisiones, mediana y
+  p95 hasta la decisión, estado actual, respuestas solas / por personas /
+  fallidas, propuestas que piden persona, sincronizaciones y tabla de cada
+  buzón con fallos seguidos y último éxito), **IA** (peticiones, % de
+  error, tokens, confianza media, herramientas, ejecuciones; por propósito,
+  latencia p95, errores, tokens por tipo, intenciones, distribución de la
+  confianza, tabla de herramientas, cómo terminan las ejecuciones),
+  **Costes** (periodo, 24 h, 30 días, coste medio por email, por día —
+  siempre 30 días —, por hora y propósito, por modelo, por empresa, tokens
+  por tipo), **Errores** (tabla de alertas disparadas, contadores de error
+  ahora, evolución, trabajos fallidos y reintentos, **logs de Loki** de
+  error y aviso mostrando solo el mensaje) y **Rendimiento** (HTTP, rutas
+  más lentas, colas, duración y resultado de los trabajos, latencia de la
+  IA por modelo, PostgreSQL y Redis). Variable **Empresa** (multi) en
+  todos, enlaces entre ellos, el General como inicio de Grafana
+  (`GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH`). **Bug evitado:**
+  provisionar datasources con `uid` sobre un Grafana que ya los tenía con
+  otro → "data source not found" y Grafana no arranca →
+  `deleteDatasources` en el provisioning (se recrean en cada arranque). CI:
+  validación de los dashboards (JSON, uid únicos, solo datasources
+  provisionados). **Revisión visual** con Chromium headless contra el stack
+  con datos reales de la IA simulada (capturas de los 6) → corregido: picos
+  irreales por tasas "por hora", rojo en un 0, barras gigantes con una sola
+  empresa, decimales en recuentos, NaN en rutas sin peticiones, columna
+  cortada, logs en JSON crudo. Las **86 consultas** de los dashboards se
+  ejecutaron contra Prometheus y Loki sin errores.
+  **Arreglos detectados en la revisión:**
+  - La etiqueta `job` de `jobs_processed_total`/`job_duration_seconds`
+    chocaba con la que Prometheus pone a cada target (`job="laravel"`): la
+    nuestra acababa como `exported_job` y la alerta `TrabajosDeColaFallando`
+    agrupaba mal → renombrada a **`job_class`**; test que prohíbe declarar
+    `job` o `instance`; las pruebas de alertas usan series con las
+    etiquetas del target como las reales.
+  - El panel de logs de errores mostró un **reinicio de PostgreSQL** en la
+    sesión de la nube (un proceso terminó con "exit code 2" y la BD estuvo
+    16 s en recuperación; no se repitió) y que durante ese rato
+    `/metrics` fallaba entero → `StateMetrics` calcula **cada sección por
+    separado** (si falla una, el resto y los contadores se siguen
+    publicando) con `aimail_state_metrics_ok{section}` y la alerta
+    **`EstadoNoDisponible`** (5 min)
 
 ### Pendientes anotados para más adelante
 

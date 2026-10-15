@@ -29,10 +29,19 @@ class StateMetrics
     {
         $registry = new CollectorRegistry(new InMemory(), registerDefaultMetrics: false);
 
-        $this->emails($registry);
-        $this->mailboxes($registry);
-        $this->documents($registry);
-        $this->queues($registry);
+        $ok = $registry->registerGauge($this->namespace, 'state_metrics_ok', 'Si se pudo calcular cada sección del estado actual (1) o falló (0).', ['section']);
+
+        // Cada sección por separado: si la BD no responde, /metrics sigue
+        // publicando los contadores y el resto (y state_metrics_ok lo delata).
+        foreach (['emails', 'mailboxes', 'documents', 'queues'] as $section) {
+            try {
+                $this->{$section}($registry);
+                $ok->set(1, [$section]);
+            } catch (Throwable $e) {
+                $ok->set(0, [$section]);
+                Log::warning('No se pudo calcular una métrica de estado', ['section' => $section, 'detail' => $e->getMessage()]);
+            }
+        }
 
         return (new RenderTextFormat())->render($registry->getMetricFamilySamples());
     }
