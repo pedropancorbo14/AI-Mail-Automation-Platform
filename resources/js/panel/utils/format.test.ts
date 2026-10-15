@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAddress, formatBytes, formatDateTime, formatPercent, formatUsd } from '@/utils/format';
+import { formatAddress, formatBytes, formatDateTime, formatPercent, formatSeconds } from '@/utils/format';
 
 describe('formato de datos en el panel', () => {
     it('formatea fechas en español y marca las vacías', () => {
@@ -12,11 +12,10 @@ describe('formato de datos en el panel', () => {
         expect(formatPercent(null)).toBe('—');
     });
 
-    it('muestra los costes con la precisión justa', () => {
-        expect(formatUsd(0.01102)).toBe('0,0110 $');
-        expect(formatUsd(1.5)).toBe('1,50 $');
-        expect(formatUsd(0)).toBe('0,00 $');
-        expect(formatUsd(null)).toBe('—');
+    it('muestra los segundos legibles', () => {
+        expect(formatSeconds(6000)).toBe('6 s');
+        expect(formatSeconds(2500)).toBe('2,5 s');
+        expect(formatSeconds(null)).toBe('—');
     });
 
     it('muestra tamaños legibles', () => {

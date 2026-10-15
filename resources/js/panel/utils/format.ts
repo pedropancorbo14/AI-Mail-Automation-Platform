@@ -10,15 +10,9 @@ export function formatPercent(value: number | null | undefined): string {
     return value === null || value === undefined ? '—' : `${Math.round(value * 100)} %`;
 }
 
-/** Coste en dólares con la precisión justa: 0.011020 → "0,0110 $", 1.5 → "1,50 $". */
-export function formatUsd(value: number | null | undefined): string {
-    if (value === null || value === undefined) {
-        return '—';
-    }
-
-    const digits = value !== 0 && Math.abs(value) < 1 ? 4 : 2;
-
-    return `${value.toLocaleString('es-ES', { minimumFractionDigits: digits, maximumFractionDigits: digits })} $`;
+/** Milisegundos como segundos legibles: 6000 → "6 s", 2500 → "2,5 s". */
+export function formatSeconds(ms: number | null | undefined): string {
+    return ms === null || ms === undefined ? '—' : `${(ms / 1000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} s`;
 }
 
 /** 2048 → "2 KB". */

@@ -59,7 +59,6 @@ export function emailFixture(overrides: Partial<EmailDetail> = {}): EmailDetail 
         status_history: [],
         replies: [],
         agent_runs: [],
-        ai_cost_usd: 0,
         ...overrides,
     };
 }

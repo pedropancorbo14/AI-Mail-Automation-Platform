@@ -51,12 +51,12 @@ class EmailController extends Controller
             'mailConnection:id,name,email',
             'recipients',
             'attachments',
-            'classificationRequest:id,model,cost_usd',
+            'classificationRequest:id,model',
             'statusChanges.user:id,name',
             'replies.approvedBy:id,name',
             'agentRuns.aiRequests' => fn ($q) => $q->orderBy('id'),
             'agentRuns.aiRequests.toolCalls' => fn ($q) => $q->orderBy('id'),
-        ])->loadCount('attachments')->loadSum('aiRequests', 'cost_usd');
+        ])->loadCount('attachments');
 
         return new EmailDetailResource($email);
     }

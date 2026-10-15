@@ -2,7 +2,8 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    # También las ramas de fase: se ve el CI en cuanto se publican, antes del PR.
+    branches: [main, "fase-*"]
   pull_request:
     branches: [main]
 

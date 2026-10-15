@@ -17,10 +17,6 @@ export interface Dashboard {
     ai: {
         requests: number;
         failed_requests: number;
-        cost_usd: number;
-        cost_today_usd: number;
-        cost_month_usd: number;
-        avg_cost_per_email_usd: number | null;
         avg_latency_ms: number | null;
     };
     needs_attention: EmailListItem[];

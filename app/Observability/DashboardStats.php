@@ -72,18 +72,12 @@ class DashboardStats
     /** @return array<string, mixed> */
     private function ai(Carbon $since): array
     {
+        // Sin costes ni tokens: son datos del operador de la plataforma (Grafana), no de los clientes.
         $period = AiRequest::query()->where('created_at', '>=', $since);
-        $cost = fn ($query) => round((float) $query->sum('cost_usd'), 6);
-        $emailsWithAi = (clone $period)->whereNotNull('email_id')->distinct()->count('email_id');
-        $periodCost = $cost(clone $period);
 
         return [
             'requests' => (clone $period)->count(),
             'failed_requests' => (clone $period)->where('status', '!=', 'success')->count(),
-            'cost_usd' => $periodCost,
-            'cost_today_usd' => $cost(AiRequest::query()->where('created_at', '>=', now()->startOfDay())),
-            'cost_month_usd' => $cost(AiRequest::query()->where('created_at', '>=', now()->startOfMonth())),
-            'avg_cost_per_email_usd' => $emailsWithAi > 0 ? round($periodCost / $emailsWithAi, 6) : null,
             'avg_latency_ms' => ($latency = (clone $period)->where('purpose', '!=', 'knowledge_search')->avg('latency_ms')) === null ? null : (int) round((float) $latency),
         ];
     }

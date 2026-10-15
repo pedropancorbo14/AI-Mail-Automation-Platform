@@ -12,7 +12,8 @@ use Illuminate\Http\Request;
  * Detalle de un email en el panel: lo del listado + destinatarios, cuerpo
  * en texto, clasificación completa, adjuntos, historial de estados,
  * respuestas propuestas y traza del agente. El HTML va aparte y saneado
- * (GET /emails/{id}/html).
+ * (GET /emails/{id}/html). Sin tokens ni costes de IA: son datos del
+ * operador de la plataforma (Grafana), no de los clientes.
  *
  * @mixin \App\Models\Email
  */
@@ -41,7 +42,6 @@ class EmailDetailResource extends EmailListResource
                 'entities' => $this->ai_entities ?? [],
                 'classified_at' => $this->classified_at->toIso8601String(),
                 'model' => $this->classificationRequest?->model,
-                'cost_usd' => $this->classificationRequest?->cost_usd === null ? null : (float) $this->classificationRequest->cost_usd,
             ],
             'attachments' => $this->attachments->map(fn (EmailAttachment $attachment) => [
                 'id' => $attachment->id,
@@ -62,8 +62,6 @@ class EmailDetailResource extends EmailListResource
             ])->all(),
             'replies' => EmailReplyResource::collection($this->replies),
             'agent_runs' => AgentRunResource::collection($this->agentRuns),
-            // Todo lo que ha costado este email en IA (clasificación + pasos del agente).
-            'ai_cost_usd' => round((float) ($this->ai_requests_sum_cost_usd ?? 0), 6),
         ];
     }
 }

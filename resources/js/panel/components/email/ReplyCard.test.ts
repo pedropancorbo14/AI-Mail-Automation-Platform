@@ -42,14 +42,14 @@ describe('traza del agente', () => {
             props: {
                 runs: [{
                     id: 1, status: 'completed', stop_reason: 'end_turn', stop_reason_label: 'Respuesta final', error: null,
-                    iterations: 2, tool_calls_count: 1, input_tokens: 2700, output_tokens: 300, cost_usd: 0.0478, duration_ms: 17400,
+                    iterations: 2, tool_calls_count: 1, duration_ms: 17400,
                     started_at: '2026-10-14T10:00:00Z', finished_at: '2026-10-14T10:00:17Z',
                     steps: [
                         {
-                            id: 10, status: 'success', model: 'claude-opus-5-5', input_tokens: 1500, output_tokens: 100, cost_usd: 0.008, latency_ms: 6000, error: null,
+                            id: 10, status: 'success', model: 'claude-opus-5-5', latency_ms: 6000, error: null,
                             tool_calls: [{ id: 5, tool: 'get_order', arguments: { order_number: '45821' }, result: { status: 'shipped' }, status: 'success', error: null, duration_ms: 12 }],
                         },
-                        { id: 11, status: 'success', model: 'claude-opus-5-5', input_tokens: 1200, output_tokens: 200, cost_usd: 0.0398, latency_ms: 9000, error: null, tool_calls: [] },
+                        { id: 11, status: 'success', model: 'claude-opus-5-5', latency_ms: 9000, error: null, tool_calls: [] },
                     ],
                 }],
             },
@@ -57,7 +57,8 @@ describe('traza del agente', () => {
 
         expect(wrapper.text()).toContain('Respuesta final');
         expect(wrapper.text()).toContain('2 pasos · 1 herramientas');
-        expect(wrapper.text()).toContain('0,0478 $');
+        // Costes y tokens son del operador (Grafana): el cliente no los ve.
+        expect(wrapper.text()).not.toMatch(/\$|tokens/);
         expect(wrapper.text()).toContain('17,4 s');
         expect(wrapper.get('[data-test="tool-call"]').text()).toContain('Consultar pedido');
         expect(wrapper.get('[data-test="tool-call"]').text()).toContain('{"order_number":"45821"}');

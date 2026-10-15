@@ -2520,8 +2520,29 @@ alertas.
   con consultas de Loki, alertas, probar con la IA simulada), estado,
   servicios, comandos, `AI_PROVIDER`, estructura, tests, CI, problemas
   frecuentes; secciones siguientes renumeradas (API = #14)
+- [x] 10. **Costes y tokens solo para el operador** (pedido por el
+  usuario, 2026-10-15): Grafana es del operador de la plataforma (ve todas
+  las empresas, costes reales = su margen); el panel es de las empresas
+  cliente. Se quitan **de la API del panel** (no solo de la pantalla:
+  estarían en las respuestas JSON): `GET /dashboard` sin `cost_usd`,
+  `cost_today_usd`, `cost_month_usd` ni `avg_cost_per_email_usd`;
+  `GET /emails/{id}` sin `ai_cost_usd` ni `classification.cost_usd`;
+  `AgentRunResource` sin tokens ni coste (ni de la ejecución ni de cada
+  paso). Panel: las tarjetas de coste del Resumen pasan a **Ignorados**
+  (automáticos, boletines, spam) y **Respuesta media de la IA**
+  (latencia, consultas y fallidas); fuera el coste del detalle y los
+  tokens/coste de la traza; `formatUsd` → `formatSeconds`. El modelo y la
+  latencia sí se siguen mostrando; el `unit_price` de los pedidos que
+  consultó la IA también (es dato del propio cliente). Siguen con costes
+  las herramientas del operador: Grafana y los comandos `ai:reply`,
+  `ai:classify`. Guarda de tests **`costOrTokenKeys()`** (`tests/Pest.php`):
+  recorre la respuesta JSON y lista cualquier clave con cost/token/usd;
+  Resumen y detalle del email deben dar `[]`. Vitest: la traza no muestra
+  `$` ni tokens. Verificado con Chromium en el panel. CI: el workflow se
+  lanza también con push a ramas **`fase-*`** (antes solo `main` y PR a
+  `main`: una rama de fase publicada no pasaba el CI hasta abrir el PR)
 
-**Resumen:** 9 tareas en 9 commits, 937+ tests PHP en verde (Vitest sin
+**Resumen:** 10 tareas en 10 commits, 937+ tests PHP en verde (Vitest sin
 cambios), alertas probadas con `promtool` (13 casos).
 **Pendiente para dar la Fase 11 por cerrada:** que el usuario revise la
 rama `fase-11-grafana`, el CI en verde (incluido el job nuevo
