@@ -5,7 +5,7 @@ import { NAlert, NCard, NEmpty, NGrid, NGridItem, NRadioButton, NRadioGroup, NSk
 import { ApiError } from '@/api/http';
 import { getDashboard, intentBars, type Dashboard, type DashboardPeriod } from '@/api/dashboard';
 import type { EmailStatus } from '@/api/types';
-import { formatDateTime, formatPercent, formatUsd } from '@/utils/format';
+import { formatDateTime, formatPercent, formatSeconds } from '@/utils/format';
 import { intentLabels, statusLabels, statusTagTypes } from '@/utils/labels';
 
 const days = ref<DashboardPeriod>(30);
@@ -76,15 +76,15 @@ const statuses = computed(() => statusOrder.filter((status) => (data.value?.emai
                 </NGridItem>
                 <NGridItem span="12 m:8 l:4">
                     <NCard size="small" class="tile">
-                        <NStatistic label="Coste de IA" :value="formatUsd(data.ai.cost_usd)" />
-                        <NText depth="3" class="tile__note">Hoy {{ formatUsd(data.ai.cost_today_usd) }} · mes {{ formatUsd(data.ai.cost_month_usd) }}</NText>
+                        <NStatistic label="Ignorados" :value="data.emails.by_status.ignored ?? 0" />
+                        <NText depth="3" class="tile__note">Correos automáticos, boletines o spam</NText>
                     </NCard>
                 </NGridItem>
                 <NGridItem span="12 m:8 l:4">
                     <NCard size="small" class="tile">
-                        <NStatistic label="Coste medio por email" :value="formatUsd(data.ai.avg_cost_per_email_usd)" />
+                        <NStatistic label="Respuesta media de la IA" :value="formatSeconds(data.ai.avg_latency_ms)" />
                         <NText depth="3" class="tile__note">
-                            {{ data.ai.requests }} llamadas{{ data.ai.failed_requests ? ` · ${data.ai.failed_requests} fallidas` : '' }}
+                            {{ data.ai.requests }} consultas{{ data.ai.failed_requests ? ` · ${data.ai.failed_requests} fallidas` : '' }}
                         </NText>
                     </NCard>
                 </NGridItem>

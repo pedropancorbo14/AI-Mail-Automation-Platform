@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { NCode, NCollapse, NCollapseItem, NEmpty, NSpace, NTag, NText } from 'naive-ui';
 import type { AgentRun, ToolCall } from '@/api/types';
-import { formatDateTime, formatUsd } from '@/utils/format';
+import { formatDateTime } from '@/utils/format';
 import { toolLabel } from '@/utils/labels';
 
 defineProps<{ runs: AgentRun[] }>();
@@ -24,8 +24,7 @@ const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toL
         <NSpace size="small" align="center" class="trace__summary">
             <NTag :type="run.status === 'completed' ? 'success' : 'error'" size="small">{{ run.stop_reason_label ?? run.status }}</NTag>
             <NText depth="3">
-                {{ formatDateTime(run.started_at) }} · {{ run.iterations }} pasos · {{ run.tool_calls_count }} herramientas ·
-                {{ (run.input_tokens + run.output_tokens).toLocaleString('es-ES') }} tokens · {{ formatUsd(run.cost_usd) }} · {{ seconds(run.duration_ms) }}
+                {{ formatDateTime(run.started_at) }} · {{ run.iterations }} pasos · {{ run.tool_calls_count }} herramientas · {{ seconds(run.duration_ms) }}
             </NText>
         </NSpace>
         <NText v-if="run.error" type="error" class="trace__error">{{ run.error }}</NText>
@@ -33,8 +32,7 @@ const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toL
         <ol class="trace__steps">
             <li v-for="step in run.steps" :key="step.id">
                 <NText depth="3">
-                    Paso: {{ step.model ?? '—' }} · {{ (step.input_tokens + step.output_tokens).toLocaleString('es-ES') }} tokens ·
-                    {{ formatUsd(step.cost_usd) }} · {{ seconds(step.latency_ms) }}
+                    Paso: {{ step.model ?? '—' }} · {{ seconds(step.latency_ms) }}
                 </NText>
                 <NText v-if="step.error" type="error"> · {{ step.error }}</NText>
                 <div v-if="!step.tool_calls.length" class="trace__final">

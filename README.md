@@ -966,7 +966,7 @@ por Laravel en `/`. Cada empresa ve y gestiona **solo lo suyo**.
 
 | Sección | Qué hace | Permiso |
 |---|---|---|
-| **Resumen** | Emails del periodo (7/30/90 días), respondidos solos y % de automatización, los que esperan a una persona, con error, coste de IA (periodo, hoy, mes, medio por email), intenciones más frecuentes, estados y "necesitan atención" | `emails.view` |
+| **Resumen** | Emails del periodo (7/30/90 días), respondidos solos y % de automatización, los que esperan a una persona, con error, ignorados, respuesta media de la IA, intenciones más frecuentes, estados y "necesitan atención" | `emails.view` |
 | **Emails** | Listado con filtros (estado, intención, buzón, texto, fechas; guardados en la URL) | `emails.view` |
 | Detalle del email | Mensaje (texto o formato original aislado), adjuntos, clasificación, **respuesta propuesta** con los motivos de revisión, **historial de estados** y **lo que hizo la IA** (cada paso y cada herramienta con lo que consultó y lo que vio) | `emails.view` |
 | **Buzones** | Añadir IMAP (con **autodetección**), conectar Microsoft 365 / Gmail (OAuth), probar, editar, desactivar, eliminar | `mail_connections.view` / `.manage` |
@@ -976,6 +976,12 @@ por Laravel en `/`. Cada empresa ve y gestiona **solo lo suyo**.
 
 Lo que el rol no permite no se muestra; aun así, **la API comprueba
 siempre los permisos** (la interfaz solo es comodidad).
+
+**Costes y tokens de la IA no aparecen en el panel ni en su API**: son
+información del operador de la plataforma (tu margen, tus proveedores), no
+de las empresas cliente. Se consultan en **Grafana** (dashboard Costes) y,
+por consola, en `ai:reply` / `ai:classify`. Un test recorre las respuestas
+de la API del panel y falla si aparece cualquier campo de coste o tokens.
 
 ### Seguridad del panel
 

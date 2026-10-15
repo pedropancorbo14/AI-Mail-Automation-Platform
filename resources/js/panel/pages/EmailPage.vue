@@ -27,7 +27,7 @@ import type { EmailDetail } from '@/api/types';
 import AgentTrace from '@/components/email/AgentTrace.vue';
 import EmailBody from '@/components/email/EmailBody.vue';
 import ReplyCard from '@/components/email/ReplyCard.vue';
-import { formatAddress, formatDateTime, formatPercent, formatUsd } from '@/utils/format';
+import { formatAddress, formatDateTime, formatPercent } from '@/utils/format';
 import { intentLabels, sentimentLabels, statusLabels, statusTagTypes, urgencyLabels } from '@/utils/labels';
 
 const route = useRoute();
@@ -125,7 +125,6 @@ const addresses = (list: { email: string | null; name: string | null }[]) => lis
                                 {{ email.classification.needs_human_reason }}
                             </NAlert>
                         </template>
-                        <NText depth="3" class="email__cost">Coste total de IA de este email: {{ formatUsd(email.ai_cost_usd) }}</NText>
                     </NCard>
 
                     <NCard title="Historial" size="small">
@@ -174,11 +173,5 @@ const addresses = (list: { email: string | null; name: string | null }[]) => lis
 
 .email__summary {
     margin: 0 0 12px;
-}
-
-.email__cost {
-    display: block;
-    margin-top: 12px;
-    font-size: 12px;
 }
 </style>

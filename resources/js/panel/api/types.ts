@@ -71,9 +71,6 @@ export interface AgentStep {
     id: number;
     status: 'success' | 'failed' | 'refused';
     model: string | null;
-    input_tokens: number;
-    output_tokens: number;
-    cost_usd: number | null;
     latency_ms: number | null;
     error: string | null;
     tool_calls: ToolCall[];
@@ -87,9 +84,6 @@ export interface AgentRun {
     error: string | null;
     iterations: number;
     tool_calls_count: number;
-    input_tokens: number;
-    output_tokens: number;
-    cost_usd: number | null;
     duration_ms: number | null;
     started_at: string | null;
     finished_at: string | null;
@@ -129,11 +123,9 @@ export interface EmailDetail extends EmailListItem {
         entities: { order_numbers?: string[]; invoice_numbers?: string[]; customer_name?: string | null };
         classified_at: string;
         model: string | null;
-        cost_usd: number | null;
     } | null;
     attachments: EmailAttachment[];
     status_history: StatusChange[];
     replies: EmailReply[];
     agent_runs: AgentRun[];
-    ai_cost_usd: number;
 }

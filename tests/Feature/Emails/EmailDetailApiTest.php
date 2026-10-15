@@ -124,7 +124,9 @@ it('shows everything that happened with an email', function () {
         ->assertJsonPath('data.agent_runs.0.steps.0.tool_calls.0.result.shipment.tracking_number', 'SEU123456789ES')
         ->assertJsonPath('data.agent_runs.0.steps.1.tool_calls', []);
 
-    expect($response->json('data.ai_cost_usd'))->toBeGreaterThan(0);
+    // Ni el coste ni los tokens de la IA (de la clasificación, de la ejecución ni de cada paso):
+    // son datos del operador (Grafana), no de los clientes.
+    expect(costOrTokenKeys($response->json('data')))->toBe([]);
 });
 
 it('shows an email that was not processed yet', function () {
@@ -134,7 +136,7 @@ it('shows an email that was not processed yet', function () {
         ->assertJsonPath('data.classification', null)
         ->assertJsonPath('data.replies', [])
         ->assertJsonPath('data.agent_runs', [])
-        ->assertJsonPath('data.ai_cost_usd', 0);
+        ->assertJsonMissingPath('data.ai_cost_usd');
 });
 
 it('only returns the html once sanitized', function () {

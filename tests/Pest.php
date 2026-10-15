@@ -131,3 +131,31 @@ function metricSample(string $name, array $labels = []): ?float
 
     return $total;
 }
+
+/**
+ * Claves de costes o tokens de IA en una respuesta (a cualquier profundidad;
+ * "unit_price" de un pedido es dato del propio cliente y no cuenta).
+ * Son datos del operador (Grafana): la API del panel no debe mostrarlos.
+ *
+ * @return list<string> rutas de las claves encontradas
+ */
+function costOrTokenKeys(mixed $data, string $path = ''): array
+{
+    if (! is_array($data)) {
+        return [];
+    }
+
+    $found = [];
+
+    foreach ($data as $key => $value) {
+        $here = ltrim("{$path}.{$key}", '.');
+
+        if (is_string($key) && preg_match('/cost|token|usd/i', $key)) {
+            $found[] = $here;
+        }
+
+        array_push($found, ...costOrTokenKeys($value, $here));
+    }
+
+    return $found;
+}

@@ -73,7 +73,7 @@ it('summarizes the emails of the period and what the automation did', function (
         ]);
 });
 
-it('adds up the ai costs and latency', function () {
+it('counts the ai requests and latency, never costs or tokens', function () {
     $email = dashboardEmail(EmailStatus::Sent);
     $other = dashboardEmail(EmailStatus::HumanReview);
     aiCall(0.012, $email, daysAgo: 0, latency: 3000, purpose: 'email_classification');
@@ -86,11 +86,9 @@ it('adds up the ai costs and latency', function () {
 
     expect($ai['requests'])->toBe(4)
         ->and($ai['failed_requests'])->toBe(1)
-        ->and($ai['cost_usd'])->toBe(0.09)
-        ->and($ai['cost_today_usd'])->toBe(0.06)
-        ->and($ai['cost_month_usd'])->toBe(0.09)
-        ->and($ai['avg_cost_per_email_usd'])->toBe(0.045)
-        ->and($ai['avg_latency_ms'])->toBe(6000);
+        ->and($ai['avg_latency_ms'])->toBe(6000)
+        // Costes y tokens: solo para el operador (Grafana), nunca para los clientes.
+        ->and(costOrTokenKeys(dashboard()->json('data')))->toBe([]);
 });
 
 it('lists the latest emails waiting for a person', function () {
@@ -117,7 +115,6 @@ it('works for a company without data', function () {
     expect(dashboard()->json('data'))
         ->emails->received->toBe(0)
         ->emails->automation_rate->toBeNull()
-        ->ai->avg_cost_per_email_usd->toBeNull()
         ->ai->avg_latency_ms->toBeNull()
         ->intents->toBe([])
         ->needs_attention->toBe([]);
@@ -131,7 +128,7 @@ it('only counts the company own data', function () {
     expect(dashboard()->json('data'))
         ->emails->received->toBe(0)
         ->emails->awaiting_human->toBe(0)
-        ->ai->cost_usd->toBe(0)
+        ->ai->requests->toBe(0)
         ->needs_attention->toBe([]);
 });
 
