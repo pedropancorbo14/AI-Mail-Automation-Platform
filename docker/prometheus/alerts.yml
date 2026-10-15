@@ -24,7 +24,11 @@ groups:
           description: "Las consultas de /metrics a la base de datos o a las colas fallan. Ver el log (\"No se pudo calcular una métrica de estado\")."
 
       - alert: TrabajosDeColaFallando
-        expr: sum by (queue, job_class) (increase(aimail_jobs_processed_total{result="failed"}[15m])) > 0
+        # increase() no ve la PRIMERA aparición de una serie (de nada a 1): si no
+        # existía hace 15 min, su valor total es el aumento ("unless ... offset").
+        expr: |
+          sum by (queue, job_class) (increase(aimail_jobs_processed_total{result="failed"}[15m])) > 0
+          or sum by (queue, job_class) (aimail_jobs_processed_total{result="failed"} unless aimail_jobs_processed_total{result="failed"} offset 15m)
         labels:
           severity: warning
         annotations:
@@ -72,7 +76,9 @@ groups:
           description: "¿Está corriendo el scheduler (mail:sync cada minuto) y el supervisor de la cola mail?"
 
       - alert: EmailsConError
-        expr: sum by (tenant) (increase(aimail_email_status_changes_total{to="failed"}[15m])) >= 3
+        expr: |
+          sum by (tenant) (increase(aimail_email_status_changes_total{to="failed"}[15m])) >= 3
+          or sum by (tenant) (aimail_email_status_changes_total{to="failed"} unless aimail_email_status_changes_total{to="failed"} offset 15m) >= 3
         labels:
           severity: warning
         annotations:

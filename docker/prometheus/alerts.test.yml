@@ -170,3 +170,36 @@ tests:
             exp_annotations:
               summary: "No se puede calcular el estado actual (emails)"
               description: "Las consultas de /metrics a la base de datos o a las colas fallan. Ver el log (\"No se pudo calcular una métrica de estado\")."
+
+  # El PRIMER fallo de un trabajo (la serie aparece ya en 1): increase() no lo
+  # vería; la alerta sí, porque la serie no existía hace 15 min.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_jobs_processed_total{queue="mail", job_class="FetchEmailsJob", result="failed", job="laravel", instance="nginx:80"}'
+        values: "_ _ _ 1 1 1"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TrabajosDeColaFallando
+        exp_alerts:
+          - exp_labels: { severity: warning, queue: mail, job_class: FetchEmailsJob }
+            exp_annotations:
+              summary: "El trabajo FetchEmailsJob ha fallado definitivamente en la cola mail"
+              description: "1 fallos en 15 min (ya agotó sus reintentos). Ver Horizon → Failed Jobs y los logs en Grafana."
+      # Pasados 15 min sin nuevos fallos, deja de alertar.
+      - eval_time: 25m
+        alertname: TrabajosDeColaFallando
+        exp_alerts: []
+
+  # Una empresa cuyos primeros emails con error llegan ya en 3.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_email_status_changes_total{tenant="nueva", to="failed", by="platform"}'
+        values: "_ _ 3 3 3"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EmailsConError
+        exp_alerts:
+          - exp_labels: { severity: warning, tenant: nueva }
+            exp_annotations:
+              summary: "3 emails de nueva han pasado a error en 15 min"
+              description: "Revisar en el panel los emails con estado Error (motivo en su historial) y reprocesarlos con ai:process --failed."

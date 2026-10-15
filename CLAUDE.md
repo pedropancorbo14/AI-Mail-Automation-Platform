@@ -2231,7 +2231,7 @@ ven).
 **Pendiente para dar la Fase 10 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde (incluido el job nuevo `frontend`).
 
-### Fase 11 (Grafana / observabilidad): EN CURSO (2026-10-15)
+### Fase 11 (Grafana / observabilidad): COMPLETADA Y PROBADA EN EL STACK CON IA SIMULADA (2026-10-15), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit. **Cambio acordado con el usuario
@@ -2334,6 +2334,16 @@ alertas.
   se nota; con datos de prueba recién creados los totales del periodo
   pueden salir algo por debajo de la BD. La fuente exacta sigue siendo la
   BD (panel de administración y `ai_requests`).
+- **No cambiar las etiquetas de una métrica que ya existe:** Redis guarda
+  su definición (nombres de etiquetas) y la librería la sigue usando, así
+  que las series salen con las etiquetas viejas. Una métrica con otras
+  etiquetas = **otro nombre** (o `Metrics::wipe()`, que borra todo lo
+  acumulado). Descubierto al renombrar `job` → `job_class` en el stack.
+- **Alertas de recuento y series nuevas:** `increase()` no cuenta la
+  primera aparición de una serie, así que el **primer** trabajo fallido de
+  la plataforma no avisaba. Las alertas de recuento añaden `or (serie
+  unless serie offset 15m)`: si no existía hace 15 min, su total es el
+  aumento.
 
 **Tareas (commit):**
 - [x] 1. **IA simulada** (`SimulatedLLMProvider`, `config/ai.php` →
@@ -2484,6 +2494,41 @@ alertas.
     separado** (si falla una, el resto y los contadores se siguen
     publicando) con `aimail_state_metrics_ok{section}` y la alerta
     **`EstadoNoDisponible`** (5 min)
+- [x] 9. **Prueba de extremo a extremo en el stack y README.** IA simulada
+  (`AI_PROVIDER=simulated`, `horizon:terminate`), buzón demo creado y
+  probado por la API, "Empresa Demo" en `auto` con herramientas de
+  pedidos. 32 correos por SMTP en dos tandas (pedidos propios y ajenos,
+  inglés, devolución, doble cobro, factura, injection, spam, fuera de la
+  oficina, boletín, `noreply`): 7 respuestas enviadas solas (pedidos del
+  propio cliente, también en inglés; **el límite anti-bucles frenó la
+  cuarta a la misma dirección**), el pedido ajeno, quejas, facturas,
+  injection y preguntas sin documentación (sin Ollama la búsqueda falla →
+  persona) a revisión humana, spam y automáticos ignorados sin IA.
+  Métricas, dashboards y logs con esos datos. **Alertas reales:** con
+  GreenMail parado, `BuzonAtascado` (≈ 10 min: 5 fallos + 5 min),
+  `BuzonSinSincronizar` y `TrabajosDeColaFallando` (`FetchEmailsJob` agotó
+  sus reintentos) se dispararon solas; al volver GreenMail, las de buzón se
+  resolvieron en 20 s. Encontrado y corregido en esta prueba: el primer
+  fallo de una serie no alertaba (ver decisiones) y las etiquetas viejas
+  en Redis tras el renombrado. **Lecciones del entorno:** Horizon lee el
+  `.env` al arrancar (cambiar `AI_PROVIDER` exige `horizon:terminate`);
+  Prometheus no relee `alerts.yml` solo (`docker compose restart
+  prometheus`); correos de prueba sin `Message-ID` ni `Date` tienen la
+  misma huella y se descartan como duplicados (la deduplicación funciona).
+  README: sección **"12. Observabilidad: métricas, Grafana y alertas"**
+  (cómo encaja, actualizar un entorno anterior, dashboards, métricas, logs
+  con consultas de Loki, alertas, probar con la IA simulada), estado,
+  servicios, comandos, `AI_PROVIDER`, estructura, tests, CI, problemas
+  frecuentes; secciones siguientes renumeradas (API = #14)
+
+**Resumen:** 9 tareas en 9 commits, 937+ tests PHP en verde (Vitest sin
+cambios), alertas probadas con `promtool` (13 casos).
+**Pendiente para dar la Fase 11 por cerrada:** que el usuario revise la
+rama `fase-11-grafana`, el CI en verde (incluido el job nuevo
+`observability`), la fusione, y la pruebe en su equipo (Docker Desktop):
+seguir "Actualizar un entorno que ya existía" del README. Pendiente para la
+Fase 16: Alertmanager (enviar avisos), token de métricas de producción,
+migrar Promtail (en fin de soporte) a Grafana Alloy.
 
 ### Pendientes anotados para más adelante
 

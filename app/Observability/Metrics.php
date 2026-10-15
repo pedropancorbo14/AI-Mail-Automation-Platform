@@ -119,7 +119,12 @@ class Metrics
         return (new RenderTextFormat())->render($this->registry()->getMetricFamilySamples());
     }
 
-    /** Borra todo lo acumulado (tests y comando de mantenimiento). */
+    /**
+     * Borra todo lo acumulado. Necesario si se cambian las etiquetas de una
+     * métrica que ya existía: Redis guarda su definición antigua y la seguiría
+     * usando (mejor aún: darle otro nombre). En local: php artisan tinker
+     * --execute="app(App\Observability\Metrics::class)->wipe();"
+     */
     public function wipe(): void
     {
         $this->registry()->wipeStorage();
