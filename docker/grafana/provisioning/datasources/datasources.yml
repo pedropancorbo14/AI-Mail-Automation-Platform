@@ -1,15 +1,29 @@
- 
 apiVersion: 1
+
+# uid fijos: los dashboards de docker/grafana/dashboards los referencian.
+# Hasta la Fase 11 se creaban sin uid (Grafana les daba uno aleatorio) y
+# provisionar el mismo nombre con otro uid falla ("data source not found"):
+# se borran y se vuelven a crear en cada arranque. Toda su configuración
+# vive en este fichero, así que no se pierde nada.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
 
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
     editable: true
+    jsonData:
+      timeInterval: 15s
 
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100

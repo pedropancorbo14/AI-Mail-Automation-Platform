@@ -23,9 +23,25 @@ scrape_configs:
       - source_labels: ["__meta_docker_container_log_stream"]
         target_label: stream
 
+  # Log de Laravel en JSON (canal "json", Fase 11): una línea por entrada con
+  # message, level_name, context (datos del log) y extra (Context de Laravel:
+  # tenant_id, request_id...). En Grafana: {job="laravel"} | json
+  # El nivel es etiqueta (pocos valores); tenant_id/request_id NO (serían
+  # demasiadas series): se filtran con | json | extra_tenant_id="1".
   - job_name: laravel-app-logs
     static_configs:
       - targets: ["localhost"]
         labels:
           job: laravel
-          __path__: /var/www/html/storage/logs/*.log
+          __path__: /var/www/html/storage/logs/json/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level_name
+            time: datetime
+      - labels:
+          level:
+      # La hora del log (no la de lectura): ordena bien aunque Promtail se retrase.
+      - timestamp:
+          source: time
+          format: RFC3339Nano

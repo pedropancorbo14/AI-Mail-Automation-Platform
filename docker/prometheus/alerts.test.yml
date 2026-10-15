@@ -1,0 +1,205 @@
+# Pruebas de las alertas: promtool test rules docker/prometheus/alerts.test.yml
+# (en el CI y con: docker compose exec prometheus promtool test rules
+#  /etc/prometheus/alerts.test.yml). Series simuladas cada minuto.
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # La app deja de responder: alerta solo tras 2 minutos seguidos.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="laravel", instance="nginx:80"}'
+        values: "1 1 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: MetricasNoDisponibles
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: MetricasNoDisponibles
+        exp_alerts:
+          - exp_labels: { severity: critical, job: laravel, instance: "nginx:80" }
+            exp_annotations:
+              summary: "Prometheus no puede leer /metrics de la aplicación"
+              description: "La app (nginx/PHP-FPM) no responde o el token de METRICS_TOKEN no coincide. Sin métricas, el resto de alertas no funcionan."
+
+  # Buzón con fallos seguidos (mensaje envenenado) y otro sano.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_mail_sync_consecutive_failures{tenant="empresa-demo", mailbox="3"}'
+        values: "1 2 3 4 5 6 7 8 9 10 11 12"
+      - series: 'aimail_mail_sync_consecutive_failures{tenant="empresa-demo", mailbox="4"}'
+        values: "0x12"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: BuzonAtascado
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: BuzonAtascado
+        exp_alerts:
+          - exp_labels: { severity: warning, tenant: empresa-demo, mailbox: "3" }
+            exp_annotations:
+              summary: "El buzón 3 de empresa-demo lleva 11 sincronizaciones fallidas seguidas"
+              description: "El cursor no avanza: puede haber un correo que siempre falla (mensaje envenenado) o el servidor no responde. Ver mail_sync_states.last_error."
+
+  # Última sincronización correcta en t=0 (timestamp 0): a los 20 min, >15 min.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_mail_sync_last_success_timestamp_seconds{tenant="acme", mailbox="7"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: BuzonSinSincronizar
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: BuzonSinSincronizar
+        exp_alerts:
+          - exp_labels: { severity: warning, tenant: acme, mailbox: "7" }
+            exp_annotations:
+              summary: "El buzón 7 de acme no se sincroniza desde hace más de 15 min"
+              description: "¿Está corriendo el scheduler (mail:sync cada minuto) y el supervisor de la cola mail?"
+
+  # 4 emails a error en pocos minutos en una empresa; 1 en otra (no alerta).
+  - interval: 1m
+    input_series:
+      - series: 'aimail_email_status_changes_total{tenant="acme", to="failed", by="platform"}'
+        values: "0 0 1 2 3 4 4 4"
+      - series: 'aimail_email_status_changes_total{tenant="globex", to="failed", by="platform"}'
+        values: "0 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: EmailsConError
+        exp_alerts:
+          - exp_labels: { severity: warning, tenant: acme }
+            exp_annotations:
+              summary: "4 emails de acme han pasado a error en 15 min"
+              description: "Revisar en el panel los emails con estado Error (motivo en su historial) y reprocesarlos con ai:process --failed."
+
+  # IA: 50 % de errores con volumen suficiente → alerta; casi sin tráfico → no.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_ai_requests_total{tenant="acme", provider="anthropic", model="claude-opus-5-5", purpose="email_agent", status="success"}'
+        values: "0+2x20"
+      - series: 'aimail_ai_requests_total{tenant="acme", provider="anthropic", model="claude-opus-5-5", purpose="email_agent", status="failed"}'
+        values: "0+2x20"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: IAConErrores
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Más del 20 % de las peticiones a la IA fallan o se rechazan"
+              description: "50% de errores. ¿Saldo de la API, clave, 429 o caída del proveedor? Ver el dashboard IA."
+  - interval: 1m
+    input_series:
+      - series: 'aimail_ai_requests_total{status="success"}'
+        values: "0x20"
+      - series: 'aimail_ai_requests_total{status="failed"}'
+        values: "0 0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: IAConErrores
+        exp_alerts: []
+
+  # Gasto: 0,15 $/min = 9 $/h → alerta; 0,05 $/min = 3 $/h → no.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_ai_cost_usd_total{tenant="acme", model="claude-opus-5-5", purpose="email_agent"}'
+        values: "0+0.15x70"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: GastoIAPorHoraAlto
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "La IA ha gastado 9.00 $ en la última hora"
+              description: "Por encima de 5 $/h. Revisar el dashboard Costes (por empresa y modelo) por si hay un bucle o un pico anómalo."
+  - interval: 1m
+    input_series:
+      - series: 'aimail_ai_cost_usd_total{tenant="acme", model="claude-opus-5-5", purpose="email_agent"}'
+        values: "0+0.05x70"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: GastoIAPorHoraAlto
+        exp_alerts: []
+
+  # Un trabajo falla definitivamente; los que terminan bien no cuentan.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_jobs_processed_total{queue="ai", job_class="ProcessEmailJob", result="failed", job="laravel", instance="nginx:80"}'
+        values: "0 0 1 1 1"
+      - series: 'aimail_jobs_processed_total{queue="mail", job_class="FetchEmailsJob", result="success", job="laravel", instance="nginx:80"}'
+        values: "0+5x4"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TrabajosDeColaFallando
+        exp_alerts:
+          - exp_labels: { severity: warning, queue: ai, job_class: ProcessEmailJob }
+            exp_annotations:
+              summary: "El trabajo ProcessEmailJob ha fallado definitivamente en la cola ai"
+              description: "1 fallos en 15 min (ya agotó sus reintentos). Ver Horizon → Failed Jobs y los logs en Grafana."
+
+  # Cola con 150 trabajos durante más de 10 min.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_queue_size{connection="redis-long", queue="ai"}'
+        values: "150x15"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ColaAtascada
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: ColaAtascada
+        exp_alerts:
+          - exp_labels: { severity: warning, connection: redis-long, queue: ai }
+            exp_annotations:
+              summary: "La cola redis-long:ai tiene 150 trabajos esperando"
+              description: "Los workers no dan abasto o están parados (php artisan horizon:status)."
+
+  # Una sección del estado actual falla durante más de 5 min.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_state_metrics_ok{section="emails", job="laravel", instance="nginx:80"}'
+        values: "1 1 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: EstadoNoDisponible
+        exp_alerts:
+          - exp_labels: { severity: warning, section: emails, job: laravel, instance: "nginx:80" }
+            exp_annotations:
+              summary: "No se puede calcular el estado actual (emails)"
+              description: "Las consultas de /metrics a la base de datos o a las colas fallan. Ver el log (\"No se pudo calcular una métrica de estado\")."
+
+  # El PRIMER fallo de un trabajo (la serie aparece ya en 1): increase() no lo
+  # vería; la alerta sí, porque la serie no existía hace 15 min.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_jobs_processed_total{queue="mail", job_class="FetchEmailsJob", result="failed", job="laravel", instance="nginx:80"}'
+        values: "_ _ _ 1 1 1"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TrabajosDeColaFallando
+        exp_alerts:
+          - exp_labels: { severity: warning, queue: mail, job_class: FetchEmailsJob }
+            exp_annotations:
+              summary: "El trabajo FetchEmailsJob ha fallado definitivamente en la cola mail"
+              description: "1 fallos en 15 min (ya agotó sus reintentos). Ver Horizon → Failed Jobs y los logs en Grafana."
+      # Pasados 15 min sin nuevos fallos, deja de alertar.
+      - eval_time: 25m
+        alertname: TrabajosDeColaFallando
+        exp_alerts: []
+
+  # Una empresa cuyos primeros emails con error llegan ya en 3.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_email_status_changes_total{tenant="nueva", to="failed", by="platform"}'
+        values: "_ _ 3 3 3"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EmailsConError
+        exp_alerts:
+          - exp_labels: { severity: warning, tenant: nueva }
+            exp_annotations:
+              summary: "3 emails de nueva han pasado a error en 15 min"
+              description: "Revisar en el panel los emails con estado Error (motivo en su historial) y reprocesarlos con ai:process --failed."

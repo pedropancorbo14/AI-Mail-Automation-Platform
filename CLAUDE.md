@@ -277,7 +277,7 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-10-14)
+## ESTADO ACTUAL (actualizado 2026-10-15)
 
 **Decisión ya tomada, distinta al plan original:** empezar la Fase 5 (AI
 Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
@@ -2230,6 +2230,305 @@ ven).
 **Resumen:** 14 tareas en 14 commits + 1 fix, 886 tests PHP + 54 Vitest en verde.
 **Pendiente para dar la Fase 10 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde (incluido el job nuevo `frontend`).
+
+### Fase 11 (Grafana / observabilidad): COMPLETADA Y PROBADA EN EL STACK CON IA SIMULADA (2026-10-15), pendiente de CI
+
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit. **Cambio acordado con el usuario
+(2026-10-15):** esta fase se hace en una sesión de Claude Code en la nube
+(contenedor temporal): los commits se suben a la rama **`fase-11-grafana`**
+(nunca a `main`); el usuario revisa el CI y la fusiona.
+
+**Entorno de la sesión en la nube:** su red bloquea `dl-cdn.alpinelinux.org`,
+`deb.debian.org`, `pecl.php.net` y `registry.ollama.ai`, así que la imagen
+`docker/php/Dockerfile` no se puede construir allí. Para probar se usó una
+imagen equivalente solo de esa sesión (`serversideup/php:8.4-fpm-alpine`:
+pdo_pgsql, redis, pcntl, zip, opcache; el código no usa intl ni bcmath) y
+`composer install` desde fuera del contenedor. El `Dockerfile` del proyecto
+no cambia. Sin Ollama (no se puede descargar `bge-m3`).
+
+**Objetivo:** ver en Grafana cómo funciona la plataforma (sección 14):
+emails (recibidos, procesados, automatizados, a personas, errores, tiempo
+de procesamiento), IA (peticiones, tokens, coste, latencia, errores,
+modelos, confianza, herramientas), negocio (% automatizado, % a personas,
+intenciones, volumen por empresa) y costes (por modelo, día, mes), con
+alertas.
+
+**Decisiones tomadas:**
+- **IA simulada para probar sin gastar** (pedido por el usuario):
+  `AI_PROVIDER=simulated` → `App\AI\Providers\Simulated\
+  SimulatedLLMProvider`. Reglas por palabras clave (no entiende el texto):
+  clasificación (intención, confianza, idioma, pedidos, sospecha de
+  injection) y agente (pide `get_order` si hay número de pedido o
+  `search_company_documents`, y responde con lo que devuelven). Modelo
+  `simulated` con **precio ficticio** (el de Opus 5.5) para ver costes en
+  las métricas sin confundirlos con gasto real. **Prohibida fuera de
+  `local`/`testing`** (`LLMConfigurationException`): respondería emails
+  reales sin modelo. Espera media `AI_SIMULATED_DELAY_MS` (800 ms) para
+  latencias realistas. `phpunit.xml` fuerza `AI_PROVIDER=anthropic` (un
+  `.env` local con `simulated` no debe cambiar los tests).
+- **Métricas con `promphp/prometheus_client_php`** (Apache-2.0) y almacén
+  **Redis** (base de datos propia `METRICS_REDIS_DB`, 2): PHP-FPM y los
+  workers de Horizon son procesos distintos y suman en los mismos
+  contadores; con AOF sobreviven a reinicios. Se descartó calcular todo
+  desde Postgres en cada lectura (consultas cada 15 s que crecen con los
+  datos y sin histogramas de latencia) y APCu (no se comparte entre
+  contenedores). Las métricas de **estado actual** (emails esperando a una
+  persona, colas…) se calculan en cada lectura y no se guardan (si se
+  guardaran, una etiqueta que desaparece se quedaría con su último valor).
+- **Catálogo único** `App\Observability\Metrics::DEFINITIONS` (nombre,
+  ayuda, etiquetas, intervalos): una métrica o etiqueta no declarada es un
+  error (`LogicException`), así no se crean series por erratas ni etiquetas
+  de cardinalidad infinita (emails, ids). Prefijo `aimail_`. La empresa va
+  como etiqueta `tenant` (su slug). **Registrar una métrica nunca rompe el
+  negocio**: si Redis falla, aviso en el log y se sigue.
+- **`GET /metrics` protegido con token** (`METRICS_TOKEN`, cabecera
+  `Authorization: Bearer`): revela volumen y costes por empresa. Sin token
+  configurado o con uno incorrecto → 404. Ruta fuera de los grupos web/api
+  (sin sesión, cookies ni throttle). Prometheus la lee a través de nginx
+  (nginx se une a `observability-net`).
+- **Las métricas de negocio salen de los registros de auditoría** que ya
+  existen (emails, historial de estados, respuestas, sincronizaciones,
+  `ai_requests`, `ai_tool_calls`, `ai_agent_runs`) mediante **observers**
+  en `app/Observability/Observers/` con `$afterCommit = true`: el código de
+  negocio no sabe nada de Prometheus y lo que se deshace en una transacción
+  no se cuenta. Etiquetas que salen de la BD (slug de la empresa, tipo de
+  buzón) con caché por proceso en `MetricLabels`.
+- **Logs en JSON para Loki** en un canal aparte (`json`), sin tocar el de
+  texto (`daily`, para `tail -f`): `LOG_STACK=daily,json`. Promtail lee
+  solo `storage/logs/json/*.log`; el **nivel** es etiqueta de Loki (pocos
+  valores) y `tenant_id`/`request_id` no (serían demasiadas series): se
+  filtran con `| json | extra_tenant_id="1"`.
+- **OpenTelemetry (tracing) aplazado:** con un monolito y colas, la traza
+  de lo que hizo la IA con un email ya está en la BD (`ai_agent_runs` →
+  `ai_requests` → `ai_tool_calls`, historial de estados) y se ve en el
+  panel; un collector + Tempo/Jaeger + extensión de PHP sería
+  infraestructura sin uso real todavía. En su lugar, **`request_id`** en el
+  Context de cada petición (cabecera `X-Request-Id`): aparece en todos sus
+  logs y en los de los trabajos que encola. Revisar si se separan servicios.
+- **Alertas como reglas de Prometheus** versionadas en git
+  (`docker/prometheus/alerts.yml`) y **probadas con `promtool test rules`**
+  (`alerts.test.yml`, también en el CI). Se ven en Prometheus (`/alerts`) y
+  en Grafana. **Sin Alertmanager todavía:** enviar avisos (email, Slack…)
+  necesita un destino real; es de la Fase 16 (producción).
+- **Dashboards versionados en git** (`docker/grafana/dashboards/*.json`,
+  carpeta "AI Mail Automation"): se pueden editar en Grafana, pero manda el
+  fichero; para guardar un cambio se exporta el JSON. Datasources con
+  **`uid` fijos** (`prometheus`, `loki`). **Imágenes con versión fija**
+  (antes `latest`: una actualización podía romper el stack sin tocar nada):
+  Prometheus v3.15.0, Grafana 13.2.4, Loki 3.7.8, Promtail 3.6.8,
+  postgres-exporter v0.20.1, redis_exporter v1.94.0. Prometheus guarda
+  **400 días** (comparar costes mes a mes; ocupa poco).
+- Diseño de los dashboards (skill de visualización): cifras = tarjetas;
+  una sola serie en azul sin leyenda; **máximo 4 colores categóricos por
+  gráfica** (paleta validada contra el fondo oscuro de Grafana, en orden
+  fijo); los valores conocidos (decisiones, para qué se usa la IA) con
+  color fijo; los abiertos (empresas, modelos, herramientas, intenciones)
+  como **ranking de barras de un solo color**; ámbar/rojo **reservados** a
+  revisión humana / error y solo cuando el valor es ≥ 1; nunca dos ejes.
+  Recuentos como **barras por intervalo** (`increase`, mínimo 5 min), no
+  tasas "por hora": con pocos correos una tasa extrapolada convierte 16
+  correos en segundos en un pico de 1.300/h.
+- Limitación conocida de Prometheus: `increase()` no cuenta la **primera**
+  aparición de una serie (de 0 a N sin muestra previa). En uso continuo no
+  se nota; con datos de prueba recién creados los totales del periodo
+  pueden salir algo por debajo de la BD. La fuente exacta sigue siendo la
+  BD (panel de administración y `ai_requests`).
+- **No cambiar las etiquetas de una métrica que ya existe:** Redis guarda
+  su definición (nombres de etiquetas) y la librería la sigue usando, así
+  que las series salen con las etiquetas viejas. Una métrica con otras
+  etiquetas = **otro nombre** (o `Metrics::wipe()`, que borra todo lo
+  acumulado). Descubierto al renombrar `job` → `job_class` en el stack.
+- **Alertas de recuento y series nuevas:** `increase()` no cuenta la
+  primera aparición de una serie, así que el **primer** trabajo fallido de
+  la plataforma no avisaba. Las alertas de recuento añaden `or (serie
+  unless serie offset 15m)`: si no existía hace 15 min, su total es el
+  aumento.
+
+**Tareas (commit):**
+- [x] 1. **IA simulada** (`SimulatedLLMProvider`, `config/ai.php` →
+  `simulated` + precio ficticio, `AIService::enabled()` la cuenta como
+  configurada, `AI_PROVIDER` en `.env.docker.example`). Tests: intenciones
+  por palabras clave, injection, idioma y pedidos, agente en dos pasos
+  (herramienta → respuesta con el dato), a persona si la herramienta falla
+  o no hay herramientas, uso/modelo/id simulados, prohibida en producción,
+  y un email de principio a fin (enviado) sin IA real
+- [x] 2. **Base de métricas.** `composer require promphp/prometheus_client_php`
+  (^2.15). `config/metrics.php` (`METRICS_ENABLED`, `METRICS_TOKEN`,
+  `METRICS_STORAGE` redis/memory, `METRICS_REDIS_DB`). `App\Observability\
+  Metrics` (`increment()`, `observe()`, `render()`, `wipe()`; conexión a
+  Redis al primer uso y reconexión tras un fallo) registrado como singleton
+  en el nuevo `ObservabilityServiceProvider`. `MetricsController` en
+  `GET /metrics` (`bootstrap/app.php` → `then:`; el panel ya no captura
+  `/metrics`). Prometheus: job `laravel` (`nginx:80/metrics`, Bearer
+  `local-metrics-token` = valor de desarrollo en `.env.docker.example`).
+  `phpunit.xml`: `METRICS_STORAGE=memory`. Tests: formato de exposición,
+  etiquetas `none`/booleanas, métricas y etiquetas no declaradas, fallo de
+  Redis sin romper nada, desactivadas, **Redis real compartido entre dos
+  instancias** (BD 15), endpoint con/sin token, sin token configurado, sin
+  sesión ni cookies. Verificado en el stack: target `laravel` **UP**
+- [x] 3. **Métricas de emails** (observers): `emails_ingested_total`
+  {tenant, provider, automated} (al crearse el email: los duplicados no
+  cuentan), `email_status_changes_total` {tenant, to, by=platform|user},
+  **`email_processing_seconds`** {tenant, outcome} (desde que se guardó
+  hasta que la plataforma decide: ignored / human_review / approved
+  —envío automático— / failed; solo decisiones de la plataforma, no de
+  personas ni el envío posterior), `email_replies_sent_total` {tenant,
+  automatic}, `email_replies_failed_total`, `ai_agent_replies_total`
+  {tenant, needs_human} y `mail_syncs_total` {tenant, provider,
+  result}. **Bug evitado:** detectar el lote sincronizado con
+  `wasChanged('last_success_at')` fallaba con dos lotes en el mismo segundo
+  (las fechas se comparan al segundo) → `MailSyncState` lanza eventos
+  propios `synced`/`syncFailed` (`$observables`). Helper de tests
+  `metricSample($nombre, $etiquetas)` en `tests/Pest.php`. Tests:
+  ingesta con duplicado y correo automático, sincronización fallida, email
+  enviado solo (estados, tiempo de decisión, respuesta automática), a una
+  persona, envío fallido, cambio hecho por una persona, transacción
+  deshecha
+- [x] 4. **Métricas de IA** (observers sobre `ai_requests`,
+  `ai_tool_calls` y `ai_agent_runs`): `ai_requests_total` {tenant,
+  provider, model, purpose, status} (LLM y embeddings; `model` = el que
+  respondió o, si falló antes, el pedido), `ai_tokens_total` {…, type =
+  input/output/cache_write/cache_read}, **`ai_cost_usd_total`** {tenant,
+  model, purpose} (el mismo `cost_usd` de `ai_requests`: sin precio no
+  suma), `ai_request_duration_seconds`, `ai_classifications_total`
+  {tenant, intent, needs_human} + `ai_classification_confidence` {intent},
+  `ai_tool_calls_total` {tenant, tool, status} +
+  `ai_tool_call_duration_seconds`, `ai_agent_runs_total` {tenant, status,
+  stop_reason} + `ai_agent_run_duration_seconds`. Tests: tokens y coste
+  **iguales a la suma de `ai_requests`**, intención y confianza,
+  herramienta ejecutada y rechazada, fin del agente, petición y ejecución
+  fallidas, embeddings (coste 0)
+- [x] 5. **Plataforma y estado actual.** Middleware global
+  `RecordHttpMetrics`: `http_requests_total` {method, route, status} +
+  `http_request_duration_seconds`; `route` = **plantilla** de la ruta
+  (`api/v1/emails/{email}`), nunca la URL (un escáner crearía una serie por
+  URL), sin ruta → `unmatched`; las lecturas de `/metrics` no cuentan.
+  `QueueMetricsSubscriber` (eventos de cola): `jobs_processed_total`
+  {queue, job, result = success / released (se reintentará) / failed} +
+  `job_duration_seconds`. **`StateMetrics`** (se calcula en cada lectura,
+  registro en memoria, no se guarda): `emails_current` {tenant, status},
+  `mail_connections` {tenant, provider, status},
+  `mail_sync_consecutive_failures` y
+  `mail_sync_last_success_timestamp_seconds` {tenant, mailbox = id del
+  buzón; solo buzones activos} (base de la alerta del **mensaje
+  envenenado** anotado en la Fase 4), `documents` {tenant, status} y
+  `queue_size` {connection, queue} de las colas de `metrics.queues` (una
+  cola que no responde no rompe el resto). `/metrics` = acumuladas +
+  estado. Tests: plantillas de ruta y `unmatched`, `/metrics` no cuenta,
+  trabajos terminados y fallidos, emails por estado y empresa, buzones y
+  fallos seguidos (solo activos), documentos, colas
+- [x] 6. **Logs estructurados.** Canal `json` en `config/logging.php`
+  (`Illuminate\Log\Formatters\JsonFormatter`, diario, mismos días que
+  `daily`) y `LOG_STACK=daily,json` en `.env.docker.example`. Promtail
+  (`docker/promtail/promtail-config.yaml`): `json` → etiqueta `level` y
+  hora del propio log (`timestamp` RFC3339Nano). Middleware global
+  **`AssignRequestId`** (primero de todos): `request_id` en el Context y en
+  la cabecera `X-Request-Id`; acepta el de un proxy solo si es
+  `[A-Za-z0-9._-]{8,64}` (no se mete texto arbitrario del cliente en los
+  logs). Verificado en el stack: Loki devuelve la línea con
+  `{job="laravel", level="WARNING"} | json | extra_tenant_id="1"`.
+  Tests: línea JSON con mensaje, nivel, contexto, `extra.tenant_id` y fecha
+  con microsegundos; id en la respuesta y en el Context; id de un proxy
+  aceptado o rechazado (saltos de línea, demasiado corto)
+- [x] 7. **Alertas** (`alerts.yml`, cargado en `prometheus.yml` →
+  `rule_files` y montado en docker-compose). Plataforma:
+  `MetricasNoDisponibles` (`up{job="laravel"} == 0` 2 min, critical),
+  `TrabajosDeColaFallando` (fallos definitivos en 15 min),
+  `ColaAtascada` (> 100 trabajos 10 min), `ErroresHttp5xx` (> 5 % 10 min).
+  Correo: **`BuzonAtascado`** (≥ 5 sincronizaciones fallidas seguidas: el
+  mensaje envenenado de la Fase 4), `BuzonSinSincronizar` (> 15 min sin
+  éxito), `EmailsConError` (≥ 3 a error en 15 min por empresa),
+  `RevisionHumanaAcumulada` (> 50 esperando 1 h, info). IA: `IAConErrores`
+  (> 20 % con al menos 5 peticiones en 10 min: sin falsas alarmas con poco
+  tráfico), `GastoIAPorHoraAlto` (> 5 $/h). Resúmenes y descripciones en
+  español con qué mirar. **`alerts.test.yml`**: cada alerta dispara cuando
+  toca (y no antes del `for`) con sus etiquetas y textos exactos, y no
+  dispara en los casos límite (otro buzón sano, empresa con 1 error, poco
+  tráfico, 3 $/h); comprobado que una expectativa errónea hace fallar la
+  prueba. CI: job **`observability`** (`promtool check config` + `test
+  rules`, `prom/prometheus:v3.15.0`). Verificado en el stack: 3 grupos, 10
+  reglas `ok`
+- [x] 8. **Dashboards de Grafana** (sección 14): **General** (recibidos,
+  enviados solos, % automatizado, % a una persona, **tiempo ahorrado
+  estimado** = enviadas solas × variable "Minutos por respuesta manual",
+  coste; ahora mismo: esperan a una persona, con error, buzones con fallos,
+  alertas activas; evolución de entrada y decisiones; intenciones y volumen
+  por empresa), **Emails** (personas vs automáticos, decisiones, mediana y
+  p95 hasta la decisión, estado actual, respuestas solas / por personas /
+  fallidas, propuestas que piden persona, sincronizaciones y tabla de cada
+  buzón con fallos seguidos y último éxito), **IA** (peticiones, % de
+  error, tokens, confianza media, herramientas, ejecuciones; por propósito,
+  latencia p95, errores, tokens por tipo, intenciones, distribución de la
+  confianza, tabla de herramientas, cómo terminan las ejecuciones),
+  **Costes** (periodo, 24 h, 30 días, coste medio por email, por día —
+  siempre 30 días —, por hora y propósito, por modelo, por empresa, tokens
+  por tipo), **Errores** (tabla de alertas disparadas, contadores de error
+  ahora, evolución, trabajos fallidos y reintentos, **logs de Loki** de
+  error y aviso mostrando solo el mensaje) y **Rendimiento** (HTTP, rutas
+  más lentas, colas, duración y resultado de los trabajos, latencia de la
+  IA por modelo, PostgreSQL y Redis). Variable **Empresa** (multi) en
+  todos, enlaces entre ellos, el General como inicio de Grafana
+  (`GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH`). **Bug evitado:**
+  provisionar datasources con `uid` sobre un Grafana que ya los tenía con
+  otro → "data source not found" y Grafana no arranca →
+  `deleteDatasources` en el provisioning (se recrean en cada arranque). CI:
+  validación de los dashboards (JSON, uid únicos, solo datasources
+  provisionados). **Revisión visual** con Chromium headless contra el stack
+  con datos reales de la IA simulada (capturas de los 6) → corregido: picos
+  irreales por tasas "por hora", rojo en un 0, barras gigantes con una sola
+  empresa, decimales en recuentos, NaN en rutas sin peticiones, columna
+  cortada, logs en JSON crudo. Las **86 consultas** de los dashboards se
+  ejecutaron contra Prometheus y Loki sin errores.
+  **Arreglos detectados en la revisión:**
+  - La etiqueta `job` de `jobs_processed_total`/`job_duration_seconds`
+    chocaba con la que Prometheus pone a cada target (`job="laravel"`): la
+    nuestra acababa como `exported_job` y la alerta `TrabajosDeColaFallando`
+    agrupaba mal → renombrada a **`job_class`**; test que prohíbe declarar
+    `job` o `instance`; las pruebas de alertas usan series con las
+    etiquetas del target como las reales.
+  - El panel de logs de errores mostró un **reinicio de PostgreSQL** en la
+    sesión de la nube (un proceso terminó con "exit code 2" y la BD estuvo
+    16 s en recuperación; no se repitió) y que durante ese rato
+    `/metrics` fallaba entero → `StateMetrics` calcula **cada sección por
+    separado** (si falla una, el resto y los contadores se siguen
+    publicando) con `aimail_state_metrics_ok{section}` y la alerta
+    **`EstadoNoDisponible`** (5 min)
+- [x] 9. **Prueba de extremo a extremo en el stack y README.** IA simulada
+  (`AI_PROVIDER=simulated`, `horizon:terminate`), buzón demo creado y
+  probado por la API, "Empresa Demo" en `auto` con herramientas de
+  pedidos. 32 correos por SMTP en dos tandas (pedidos propios y ajenos,
+  inglés, devolución, doble cobro, factura, injection, spam, fuera de la
+  oficina, boletín, `noreply`): 7 respuestas enviadas solas (pedidos del
+  propio cliente, también en inglés; **el límite anti-bucles frenó la
+  cuarta a la misma dirección**), el pedido ajeno, quejas, facturas,
+  injection y preguntas sin documentación (sin Ollama la búsqueda falla →
+  persona) a revisión humana, spam y automáticos ignorados sin IA.
+  Métricas, dashboards y logs con esos datos. **Alertas reales:** con
+  GreenMail parado, `BuzonAtascado` (≈ 10 min: 5 fallos + 5 min),
+  `BuzonSinSincronizar` y `TrabajosDeColaFallando` (`FetchEmailsJob` agotó
+  sus reintentos) se dispararon solas; al volver GreenMail, las de buzón se
+  resolvieron en 20 s. Encontrado y corregido en esta prueba: el primer
+  fallo de una serie no alertaba (ver decisiones) y las etiquetas viejas
+  en Redis tras el renombrado. **Lecciones del entorno:** Horizon lee el
+  `.env` al arrancar (cambiar `AI_PROVIDER` exige `horizon:terminate`);
+  Prometheus no relee `alerts.yml` solo (`docker compose restart
+  prometheus`); correos de prueba sin `Message-ID` ni `Date` tienen la
+  misma huella y se descartan como duplicados (la deduplicación funciona).
+  README: sección **"12. Observabilidad: métricas, Grafana y alertas"**
+  (cómo encaja, actualizar un entorno anterior, dashboards, métricas, logs
+  con consultas de Loki, alertas, probar con la IA simulada), estado,
+  servicios, comandos, `AI_PROVIDER`, estructura, tests, CI, problemas
+  frecuentes; secciones siguientes renumeradas (API = #14)
+
+**Resumen:** 9 tareas en 9 commits, 937+ tests PHP en verde (Vitest sin
+cambios), alertas probadas con `promtool` (13 casos).
+**Pendiente para dar la Fase 11 por cerrada:** que el usuario revise la
+rama `fase-11-grafana`, el CI en verde (incluido el job nuevo
+`observability`), la fusione, y la pruebe en su equipo (Docker Desktop):
+seguir "Actualizar un entorno que ya existía" del README. Pendiente para la
+Fase 16: Alertmanager (enviar avisos), token de métricas de producción,
+migrar Promtail (en fin de soporte) a Grafana Alloy.
 
 ### Pendientes anotados para más adelante
 

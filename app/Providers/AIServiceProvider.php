@@ -10,6 +10,7 @@ use App\AI\Embeddings\OllamaEmbeddingProvider;
 use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Prompts\PromptRegistry;
 use App\AI\Providers\Anthropic\AnthropicProvider;
+use App\AI\Providers\Simulated\SimulatedLLMProvider;
 use App\Automation\QueueEmailProcessing;
 use App\Documents\Chunking\TextChunker;
 use App\ERP\Contracts\OrderProvider;
@@ -38,6 +39,10 @@ class AIServiceProvider extends ServiceProvider
                 defaultModel: config('ai.anthropic.model'),
                 fallbacks: (bool) config('ai.anthropic.fallbacks'),
             ),
+            // IA de pruebas: nunca en producción/staging (respondería emails reales sin modelo).
+            'simulated' => $this->app->environment(['local', 'testing'])
+                ? new SimulatedLLMProvider((int) config('ai.simulated.delay_ms'))
+                : throw new LLMConfigurationException('La IA simulada solo está permitida en local (AI_PROVIDER=simulated).'),
             default => throw new LLMConfigurationException('Proveedor de IA no soportado: ' . config('ai.provider') . '.'),
         });
 

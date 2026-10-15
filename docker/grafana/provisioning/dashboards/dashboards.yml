@@ -1,11 +1,15 @@
 apiVersion: 1
 
+# Dashboards de la plataforma (Fase 11), versionados en docker/grafana/dashboards.
+# Se pueden editar en Grafana, pero al reiniciar manda el fichero: para guardar
+# un cambio, exportar el JSON (Share → Export) y sustituir el fichero.
 providers:
-  - name: default
+  - name: ai-mail
     orgId: 1
-    folder: ""
+    folder: "AI Mail Automation"
     type: file
-    disableDeletion: false
+    disableDeletion: true
+    allowUiUpdates: true
     updateIntervalSeconds: 30
     options:
-      path: /etc/grafana/provisioning/dashboards
+      path: /var/lib/grafana/dashboards/ai-mail

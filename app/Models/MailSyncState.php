@@ -21,6 +21,9 @@ class MailSyncState extends Model
         'consecutive_failures' => 0,
     ];
 
+    /** Eventos propios (métricas): cada lote sincronizado o fallido. */
+    protected $observables = ['synced', 'syncFailed'];
+
     protected function casts(): array
     {
         return [
@@ -50,6 +53,7 @@ class MailSyncState extends Model
         }
 
         $this->save();
+        $this->fireModelEvent('synced', false);
     }
 
     /** Intento fallido: el cursor NO avanza (el siguiente intento repite el lote). */
@@ -60,5 +64,6 @@ class MailSyncState extends Model
         $this->consecutive_failures++;
 
         $this->save();
+        $this->fireModelEvent('syncFailed', false);
     }
 }

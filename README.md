@@ -31,8 +31,9 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 8 | Agente: Claude usa las herramientas en cadena, prepara una propuesta de respuesta citando sus fuentes y el backend decide si necesita revisión humana | ✅ Hecha (probada con Claude real: ~0,05 $ por respuesta) |
 | 9 | Automatización: cada email se procesa solo de principio a fin (clasificar → agente → reglas → **enviar en el hilo** o revisión humana), con estados, historial y protección contra bucles | ✅ Hecha (probada con Claude real y GreenMail) |
 | 10 | Panel de administración (Vue + Naive UI): resumen, emails con lo que hizo la IA, buzones (con autodetección), documentación, ajustes de la IA, empresa y usuarios | ✅ Hecha (probada en navegador) |
-| 11 | Grafana: métricas, dashboards y alertas | ⏳ Siguiente |
-| 12–17 | Seguridad, human-in-the-loop, integraciones… | Pendiente |
+| 11 | Observabilidad: métricas de Prometheus, 6 dashboards de Grafana, logs en Loki y alertas probadas; IA simulada para probar sin coste | ✅ Hecha (probada en el stack con la IA simulada) |
+| 12 | Seguridad: RBAC, auditoría, retención… | ⏳ Siguiente |
+| 13–17 | Human-in-the-loop, integraciones, evaluación, producción, SaaS | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
@@ -48,7 +49,9 @@ de dónde saca cada dato, y el backend decide si una persona debe revisarla.
 Si la empresa lo permite y la respuesta es segura, **se envía sola** en el
 hilo del cliente; si no, queda para una persona (la bandeja de revisión es
 la Fase 13). Todo se ve y se configura desde el **panel web**
-(`http://localhost:8080`). La hoja de ruta completa y las
+(`http://localhost:8080`), y el funcionamiento de la plataforma (volumen,
+automatización, IA, costes, errores) se sigue en **Grafana**
+(`http://localhost:3000`) con alertas. La hoja de ruta completa y las
 decisiones de arquitectura están en [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -107,9 +110,9 @@ docker compose exec app php artisan test            # todos los tests en verde
 | Servicio | URL | Acceso |
 |---|---|---|
 | **Panel** | http://localhost:8080 | `test@example.com` / `password` |
-| API | http://localhost:8080/api/v1 | ver [API](#13-api) |
+| API | http://localhost:8080/api/v1 | ver [API](#14-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
-| Grafana | http://localhost:3000 | `admin` / `admin` |
+| **Grafana** (dashboards y alertas) | http://localhost:3000 | `admin` / `admin` |
 | Prometheus | http://localhost:9090 | — |
 | PostgreSQL (HeidiSQL, DBeaver…) | `127.0.0.1:5433`, BD `app` | `app` / `secret` |
 | GreenMail (correo de pruebas) | IMAP `127.0.0.1:3143` · SMTP `127.0.0.1:3025` (sin TLS) | `soporte@demo.test` / `secret` |
@@ -142,6 +145,8 @@ docker compose exec app php artisan ai:process 1 --now     # procesar el email 1
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
 docker compose logs -f vite                                # servidor de desarrollo del panel
 docker compose exec vite npm test                          # tests del panel (Vitest)
+curl -H "Authorization: Bearer local-metrics-token" http://localhost:8080/metrics   # métricas para Prometheus
+docker compose exec prometheus promtool test rules /etc/prometheus/alerts.test.yml  # probar las alertas
 ```
 
 ---
@@ -514,6 +519,7 @@ guardando, solo que sin clasificar (aviso en el log). Para activarla:
 
 | Variable | Para qué |
 |---|---|
+| `AI_PROVIDER` | `anthropic` (Claude real) o **`simulated`**: IA de pruebas por palabras clave, sin API ni coste, para probar el flujo, las métricas y Grafana en local (prohibida fuera de `local`). |
 | `ANTHROPIC_API_KEY` | Clave de la API. Vacía = IA desactivada. |
 | `ANTHROPIC_MODEL` | Modelo (por defecto `claude-opus-5-5`, $4 / $20 por millón de tokens de entrada / salida). Más barato: `claude-sonnet-5-5` ($2 / $10) o `claude-haiku-4-5` ($1 / $5). Los precios están en `config/ai.php`. |
 | `AI_PROCESS_ON_INGEST` | Procesar cada email al guardarlo: clasificación, agente y envío o revisión humana (`true`; ver [Automatización](#10-automatización-cada-email-de-principio-a-fin)). Acepta el nombre antiguo `AI_CLASSIFY_ON_INGEST`. |
@@ -1018,7 +1024,137 @@ docker compose run --rm vite npm run build       # compilar para producción (pu
 
 ---
 
-## 12. Estructura del proyecto
+## 12. Observabilidad: métricas, Grafana y alertas
+
+Cómo está funcionando la plataforma, en Grafana (**http://localhost:3000**,
+`admin`/`admin`, carpeta **AI Mail Automation**; al entrar se abre el
+General).
+
+```
+App (PHP-FPM + Horizon) ──► métricas en Redis ──► GET /metrics ──► Prometheus ──► Grafana
+          │                                         (token)          (alertas)
+          └──► log JSON ──► Promtail ──► Loki ─────────────────────────────────────►┘
+```
+
+### Actualizar un entorno que ya existía (antes de la Fase 11)
+
+```bash
+# 1. Añadir a .env (están en .env.docker.example):
+#      METRICS_TOKEN=local-metrics-token
+#      LOG_STACK=daily,json
+# 2. Dependencias nuevas, contenedores (nginx entra en la red de Prometheus;
+#    imágenes con versión fija) y workers con el código nuevo:
+docker compose exec app composer install
+docker compose up -d
+docker compose exec horizon php artisan horizon:terminate
+# 3. Comprobar: target "laravel" UP en http://localhost:9090/targets
+```
+
+### Dashboards
+
+| Dashboard | Qué responde |
+|---|---|
+| **General** | ¿Cuántos emails llegan, cuántos se responden solos (%), cuántos van a una persona, cuánto tiempo se ahorra y cuánto cuesta la IA? ¿Qué espera ahora mismo a una persona o tiene error? Intenciones y volumen por empresa. |
+| **Emails** | Entrada (personas vs automáticos), decisiones, tiempo hasta la decisión (mediana y p95), estado actual, respuestas enviadas solas / por personas / fallidas y cada buzón (fallos seguidos, último éxito). |
+| **IA** | Peticiones por uso (clasificación, agente, búsqueda, indexado), % de errores, latencia p95, tokens, intenciones, distribución de la confianza, herramientas y cómo terminan las ejecuciones del agente. |
+| **Costes** | Gasto del periodo, de 24 h y de 30 días, por día, por uso, por modelo y por empresa; coste medio por email. Cuadra con `ai_requests.cost_usd`. |
+| **Errores** | Alertas disparadas, errores ahora y su evolución, trabajos fallidos y reintentos, y los **logs** de error y aviso (Loki). |
+| **Rendimiento** | HTTP (peticiones, duración, rutas más lentas), colas, duración de los trabajos, latencia de la IA, PostgreSQL y Redis. |
+
+Todos se filtran por **Empresa**. El **tiempo ahorrado** es una estimación:
+respuestas enviadas solas × "Minutos por respuesta manual" (variable del
+General, 5 por defecto). Los dashboards están en
+[`docker/grafana/dashboards/`](docker/grafana/dashboards/): se pueden editar
+en Grafana, pero al reiniciar manda el fichero (para guardar un cambio:
+*Export → JSON* y sustituir el fichero).
+
+### Métricas
+
+La app expone sus métricas en `GET /metrics` (formato de Prometheus),
+**solo con el token** de `METRICS_TOKEN` (`Authorization: Bearer …`; sin él,
+404: las métricas revelan volumen y costes de cada empresa). Prometheus las
+lee cada 15 s a través de nginx y guarda **400 días**.
+
+- **Acumuladas** (prefijo `aimail_`, guardadas en Redis para que PHP-FPM y
+  los workers de Horizon sumen en los mismos contadores): emails guardados,
+  cambios de estado, tiempo hasta la decisión, respuestas enviadas/fallidas,
+  sincronizaciones; peticiones a la IA con tokens, coste y latencia,
+  clasificaciones (intención, confianza), herramientas, ejecuciones del
+  agente; peticiones HTTP (por **plantilla** de ruta, nunca la URL) y
+  trabajos de cola.
+- **Estado actual** (se calcula en cada lectura): emails por estado, buzones
+  y su sincronización, documentos, tamaño de las colas.
+- Salen de los **mismos registros de auditoría** (`emails`, historial de
+  estados, `ai_requests`, `ai_tool_calls`, `ai_agent_runs`…) mediante
+  observers: el código de negocio no sabe nada de Prometheus. Todas están
+  declaradas en un único catálogo
+  ([`app/Observability/Metrics.php`](app/Observability/Metrics.php)) y
+  registrar una métrica **nunca rompe** el procesamiento (si Redis falla,
+  aviso en el log y se sigue).
+
+> `increase()` de Prometheus no cuenta la primera aparición de una serie:
+> con datos de prueba recién creados, los totales pueden salir algo por
+> debajo de la BD. La cifra exacta está siempre en el panel y en la BD.
+
+### Logs
+
+Además del log de texto (`storage/logs/laravel-AAAA-MM-DD.log`, para
+`tail -f`), Laravel escribe el mismo log **en JSON** (canal `json`,
+`LOG_STACK=daily,json`) y Promtail lo envía a Loki con el nivel como
+etiqueta. Cada petición lleva un **`request_id`** (también en la cabecera
+`X-Request-Id`) que aparece en todos sus logs y en los de los trabajos que
+encola. En Grafana → *Explore* → Loki:
+
+```
+{job="laravel", level="ERROR"} | json
+{job="laravel"} | json | extra_tenant_id="1"
+{job="laravel"} | json | extra_request_id="<id>"
+```
+
+### Alertas
+
+Reglas de Prometheus en
+[`docker/prometheus/alerts.yml`](docker/prometheus/alerts.yml), con
+**pruebas** en `alerts.test.yml` (`promtool test rules`, también en el CI).
+Se ven en http://localhost:9090/alerts y en el dashboard **Errores**.
+
+| Alerta | Cuándo |
+|---|---|
+| `MetricasNoDisponibles` (crítica) | Prometheus no puede leer `/metrics` 2 min (app caída o token distinto). |
+| `EstadoNoDisponible` | No se puede calcular el estado actual (BD o colas) 5 min. |
+| `TrabajosDeColaFallando` | Un trabajo agota sus reintentos. |
+| `ColaAtascada` | Más de 100 trabajos esperando 10 min. |
+| `ErroresHttp5xx` | Más del 5 % de peticiones con error 5xx 10 min. |
+| `BuzonAtascado` | Un buzón activo lleva ≥ 5 sincronizaciones fallidas seguidas (servidor caído o un correo que siempre falla). |
+| `BuzonSinSincronizar` | Un buzón activo lleva más de 15 min sin sincronizar. |
+| `EmailsConError` | ≥ 3 emails de una empresa pasan a error en 15 min. |
+| `RevisionHumanaAcumulada` (info) | Una empresa tiene más de 50 emails esperando a una persona durante 1 h. |
+| `IAConErrores` | Más del 20 % de las peticiones a la IA fallan (con al menos 5 en 10 min). |
+| `GastoIAPorHoraAlto` | La IA gasta más de 5 $ en una hora. |
+
+Todavía **no se envían avisos** (email, Slack…): eso es Alertmanager, en la
+fase de producción. Los umbrales se cambian en `alerts.yml` (y sus pruebas).
+
+### Probarlo sin gastar en IA
+
+Con `AI_PROVIDER=simulated` en `.env` (y `horizon:terminate` para que los
+workers lo lean) la IA responde con reglas por palabras clave, sin API ni
+coste: clasifica, el agente consulta pedidos y la plataforma decide y envía
+como con Claude. Su modelo se llama `simulated` y tiene un **precio
+ficticio** (el de Opus 5.5) para que se vean costes en Grafana. Envía unos
+cuantos correos por SMTP a `soporte@demo.test` (GreenMail, `127.0.0.1:3025`,
+cada uno con su `Message-ID`, o se tomarán por duplicados) y en un par de
+minutos los verás en los dashboards.
+
+**Resultado de la prueba en el stack (IA simulada + GreenMail, modo
+`auto`):** 32 correos en dos tandas → pedidos del propio cliente
+respondidos solos (también en inglés), pedido de otro cliente, quejas,
+facturas, prompt injection y preguntas sin documentación (sin Ollama) a una
+persona, spam y correos automáticos ignorados sin IA; el límite
+anti-bucles frenó la cuarta respuesta automática a la misma dirección. Con
+GreenMail parado, `BuzonAtascado` se disparó sola.
+
+## 13. Estructura del proyecto
 
 ```
 app/
@@ -1065,7 +1201,9 @@ app/
 ├── ERP/                      Pedidos: OrderProvider + DemoOrderProvider (integraciones reales en la Fase 14)
 ├── Automation/               Automatización (Fase 9): EmailProcessor + ProcessEmailJob, AutoSendPolicy,
 │                             ReplySender + SendReplyJob (envío en el hilo), AutomationMode
-├── Observability/            DashboardStats (cifras del resumen del panel; métricas de Grafana en la Fase 11)
+├── Observability/            Métricas (Fase 11): Metrics (catálogo y almacén Redis), StateMetrics (estado actual),
+│                             Observers/ (métricas desde los registros de auditoría), QueueMetricsSubscriber,
+│                             MetricLabels; DashboardStats (cifras del resumen del panel)
 ├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search, ai:tool, ai:tools, ai:reply,
 │                             ai:automation, ai:process
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
@@ -1082,7 +1220,8 @@ database/
 ├── migrations/               Esquema de la BD
 ├── seeders/                  Roles/permisos, datos de desarrollo, documentación (knowledge/) y pedidos (demo/) de ejemplo
 └── factories/                Datos falsos para tests
-docker/                       Config de nginx, php, postgres, redis, prometheus, loki, grafana
+docker/                       Config de nginx, php, postgres, redis, prometheus (+ alerts.yml y sus pruebas),
+                              loki, promtail, grafana (provisioning + dashboards/*.json)
 resources/js/panel/           Panel (Fase 10): Vue + TS + Naive UI — pages/, components/, layouts/, api/, stores/, utils/
 resources/views/panel.blade.php  Página que carga el panel (Laravel la sirve en cualquier ruta que no sea de la API)
 routes/
@@ -1100,7 +1239,7 @@ tests/
 ├── Feature/Documents/        Documentos: extracción, troceado, indexado, búsqueda, API, aislamiento, comandos
 ├── Feature/Tools/            Registro, ejecutor (validación, permisos, errores), herramientas por empresa, comandos ai:tool/ai:tools
 ├── Feature/Automation/       Modos, política de envío, envío en el hilo, procesador, job, comandos y E2E con GreenMail real
-├── Feature/Observability/    Dashboard del panel
+├── Feature/Observability/    Métricas (emails, IA, HTTP, colas, estado), /metrics, logs JSON, dashboard del panel
 ├── Feature/ERP/              Proveedor de pedidos de demostración
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
 ├── Support/                  GreenMail (buzones de prueba) y Pdf (PDFs generados al vuelo)
@@ -1112,7 +1251,7 @@ lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 13. API
+## 14. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -1184,7 +1323,7 @@ de forma automática. El panel no usa tokens: entra con cookie de sesión
 
 ---
 
-## 14. Tests
+## 15. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -1223,26 +1362,33 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
   modelo descargado.
 - Las funciones de ayuda de los archivos de test son **globales** en Pest:
   no repitas un nombre ya usado en otro archivo.
+- **Métricas:** con `METRICS_STORAGE=memory` (cada test empieza de cero) y
+  el helper `metricSample('nombre', ['etiqueta' => 'valor'])` de
+  `tests/Pest.php`, que lee `/metrics` como Prometheus. La IA simulada se
+  prueba aparte; `phpunit.xml` fuerza `AI_PROVIDER=anthropic` para que un
+  `.env` local con `simulated` no cambie los tests.
 - **Panel:** Vitest + `@vue/test-utils` en `resources/js/panel/**/*.test.ts`
   (`docker compose exec vite npm test`), con `fetch` simulado: rutas y
   permisos, cliente HTTP, filtros en la URL, el iframe aislado del email,
   formularios y páginas por rol.
 
-## 15. CI
+## 16. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales, y además el job
-`frontend` comprueba los tipos del panel, sus tests y que compila
+`frontend` comprueba los tipos del panel, sus tests y que compila, y el job
+`observability` valida la configuración de Prometheus, prueba las alertas
+(`promtool test rules`) y revisa los dashboards de Grafana
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 16. Entornos
+## 17. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 17. Problemas frecuentes
+## 18. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -1268,6 +1414,10 @@ prepararán en la fase de producción.
 | El agente no consulta pedidos (solo documentación) | Las herramientas de pedidos no están activadas para la empresa: `ai:tools 1 --enable=get_order --enable=get_customer_orders`. |
 | `ai:reply` → "Sin propuesta de respuesta: Límite de…" | El agente llegó a un límite de `ai.agent` (pasos, herramientas, tiempo o gasto). Es el comportamiento previsto: el email lo atiende una persona. Si pasa a menudo, revisa la traza y los límites. |
 | `ai:classify` → "Anthropic rechazó la API key (401)" | La clave es incorrecta o se revocó: revisa `ANTHROPIC_API_KEY` y reinicia Horizon. |
+| Grafana no arranca: "Datasource provisioning error: data source not found" | Un Grafana antiguo tenía los datasources con otro `uid`. El provisioning ya los borra y recrea (`deleteDatasources`); si aun así falla: `docker compose rm -sf grafana && docker volume rm <proyecto>_grafana-data` (⚠️ borra lo creado a mano en Grafana). |
+| El target `laravel` sale DOWN en Prometheus (http://localhost:9090/targets) | `METRICS_TOKEN` de `.env` distinto del de `docker/prometheus/prometheus.yml`, o nginx no está en la red `observability-net` (`docker compose up -d nginx`). |
+| Los dashboards salen vacíos | Aún no hay datos en el periodo (cambia el rango arriba a la derecha) o el target `laravel` está DOWN. "Gasto por día" muestra los días ya terminados: para hoy, "Últimas 24 h". |
+| Cambié `AI_PROVIDER` (u otra variable) y los emails siguen igual | Horizon lee el `.env` al arrancar: `docker compose exec horizon php artisan horizon:terminate`. |
 | "La conexión con microsoft/google no está configurada en este servidor" | Faltan `MICROSOFT_CLIENT_ID/SECRET` o `GOOGLE_CLIENT_ID/SECRET` (ver [Conexiones de correo](#4-conexiones-de-correo)). |
 
 ## Documentación adicional
