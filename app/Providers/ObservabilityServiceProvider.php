@@ -2,12 +2,18 @@
 
 namespace App\Providers;
 
+use App\Models\AiAgentRun;
+use App\Models\AiRequest;
+use App\Models\AiToolCall;
 use App\Models\Email;
 use App\Models\EmailReply;
 use App\Models\EmailStatusChange;
 use App\Models\MailSyncState;
 use App\Observability\MetricLabels;
 use App\Observability\Metrics;
+use App\Observability\Observers\AiAgentRunMetricsObserver;
+use App\Observability\Observers\AiRequestMetricsObserver;
+use App\Observability\Observers\AiToolCallMetricsObserver;
 use App\Observability\Observers\EmailMetricsObserver;
 use App\Observability\Observers\EmailReplyMetricsObserver;
 use App\Observability\Observers\EmailStatusChangeMetricsObserver;
@@ -36,5 +42,8 @@ class ObservabilityServiceProvider extends ServiceProvider
         EmailStatusChange::observe(EmailStatusChangeMetricsObserver::class);
         EmailReply::observe(EmailReplyMetricsObserver::class);
         MailSyncState::observe(MailSyncMetricsObserver::class);
+        AiRequest::observe(AiRequestMetricsObserver::class);
+        AiToolCall::observe(AiToolCallMetricsObserver::class);
+        AiAgentRun::observe(AiAgentRunMetricsObserver::class);
     }
 }

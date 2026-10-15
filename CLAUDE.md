@@ -2335,6 +2335,20 @@ alertas.
   enviado solo (estados, tiempo de decisión, respuesta automática), a una
   persona, envío fallido, cambio hecho por una persona, transacción
   deshecha
+- [x] 4. **Métricas de IA** (observers sobre `ai_requests`,
+  `ai_tool_calls` y `ai_agent_runs`): `ai_requests_total` {tenant,
+  provider, model, purpose, status} (LLM y embeddings; `model` = el que
+  respondió o, si falló antes, el pedido), `ai_tokens_total` {…, type =
+  input/output/cache_write/cache_read}, **`ai_cost_usd_total`** {tenant,
+  model, purpose} (el mismo `cost_usd` de `ai_requests`: sin precio no
+  suma), `ai_request_duration_seconds`, `ai_classifications_total`
+  {tenant, intent, needs_human} + `ai_classification_confidence` {intent},
+  `ai_tool_calls_total` {tenant, tool, status} +
+  `ai_tool_call_duration_seconds`, `ai_agent_runs_total` {tenant, status,
+  stop_reason} + `ai_agent_run_duration_seconds`. Tests: tokens y coste
+  **iguales a la suma de `ai_requests`**, intención y confianza,
+  herramienta ejecutada y rechazada, fin del agente, petición y ejecución
+  fallidas, embeddings (coste 0)
 
 ### Pendientes anotados para más adelante
 
