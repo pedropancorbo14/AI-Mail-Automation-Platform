@@ -33,6 +33,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias(['tenant' => ResolveTenant::class]);
 
+        // Métricas de cada petición HTTP (Fase 11).
+        $middleware->append(App\Http\Middleware\RecordHttpMetrics::class);
+
         // El tenant debe estar fijado antes del route model binding: los
         // modelos con BelongsToTenant no se pueden consultar sin tenant.
         $middleware->prependToPriorityList(

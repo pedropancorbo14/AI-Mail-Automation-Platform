@@ -105,7 +105,8 @@ function draftReply(App\Models\Email $email, array $overrides = []): App\Models\
 }
 
 /**
- * Valor actual de una serie de las métricas acumuladas (null si no existe).
+ * Valor actual de una serie de /metrics (acumuladas + estado actual; null si
+ * no existe; si varias series encajan, su suma).
  * Las etiquetas se dan en el orden de Metrics::DEFINITIONS; las que falten
  * no se comprueban (p. ej. metricSample('x_total', ['tenant' => 'acme'])).
  */
@@ -113,7 +114,9 @@ function metricSample(string $name, array $labels = []): ?float
 {
     $total = null;
 
-    foreach (explode("\n", app(App\Observability\Metrics::class)->render()) as $line) {
+    $text = app(App\Observability\Metrics::class)->render() . app(App\Observability\StateMetrics::class)->render();
+
+    foreach (explode("\n", $text) as $line) {
         if (! preg_match('/^aimail_' . preg_quote($name, '/') . '(?:\{(.*)\})? (\S+)$/', $line, $m)) {
             continue;
         }

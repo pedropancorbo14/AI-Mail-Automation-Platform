@@ -3,18 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Observability\Metrics;
+use App\Observability\StateMetrics;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
- * GET /metrics: métricas en formato de Prometheus. Solo con el token de
+ * GET /metrics: métricas en formato de Prometheus (acumuladas + estado actual). Solo con el token de
  * METRICS_TOKEN ("Authorization: Bearer ..."): revelan volumen y costes de
  * cada empresa. Sin token configurado, o con uno incorrecto, responde 404
  * (no se anuncia que el endpoint existe).
  */
 class MetricsController extends Controller
 {
-    public function __invoke(Request $request, Metrics $metrics): Response
+    public function __invoke(Request $request, Metrics $metrics, StateMetrics $state): Response
     {
         $token = (string) config('metrics.token');
 
@@ -23,6 +24,7 @@ class MetricsController extends Controller
             404,
         );
 
-        return response($metrics->render(), 200, ['Content-Type' => 'text/plain; version=0.0.4; charset=utf-8']);
+        // Acumuladas (Redis) + estado actual (calculado ahora).
+        return response($metrics->render() . $state->render(), 200, ['Content-Type' => 'text/plain; version=0.0.4; charset=utf-8']);
     }
 }

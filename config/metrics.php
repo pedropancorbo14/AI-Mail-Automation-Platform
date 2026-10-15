@@ -32,4 +32,15 @@ return [
         'database' => (int) env('METRICS_REDIS_DB', 2),
         'timeout' => 0.5,
     ],
+
+    /*
+    | Colas cuyo tamaño se publica (aimail_queue_size): las de los supervisores
+    | de Horizon (config/horizon.php).
+    */
+    'queues' => [
+        ['connection' => 'redis', 'queue' => 'default'],
+        ['connection' => 'redis', 'queue' => 'mail'],
+        ['connection' => 'redis-long', 'queue' => 'ai'],
+        ['connection' => 'redis-long', 'queue' => 'documents'],
+    ],
 ];

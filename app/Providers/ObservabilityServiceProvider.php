@@ -18,6 +18,8 @@ use App\Observability\Observers\EmailMetricsObserver;
 use App\Observability\Observers\EmailReplyMetricsObserver;
 use App\Observability\Observers\EmailStatusChangeMetricsObserver;
 use App\Observability\Observers\MailSyncMetricsObserver;
+use App\Observability\QueueMetricsSubscriber;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -34,6 +36,7 @@ class ObservabilityServiceProvider extends ServiceProvider
     {
         $this->app->singleton(Metrics::class, fn () => Metrics::fromConfig());
         $this->app->singleton(MetricLabels::class);
+        $this->app->singleton(QueueMetricsSubscriber::class);
     }
 
     public function boot(): void
@@ -45,5 +48,7 @@ class ObservabilityServiceProvider extends ServiceProvider
         AiRequest::observe(AiRequestMetricsObserver::class);
         AiToolCall::observe(AiToolCallMetricsObserver::class);
         AiAgentRun::observe(AiAgentRunMetricsObserver::class);
+
+        Event::subscribe(QueueMetricsSubscriber::class);
     }
 }

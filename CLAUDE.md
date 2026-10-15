@@ -2349,6 +2349,25 @@ alertas.
   **iguales a la suma de `ai_requests`**, intención y confianza,
   herramienta ejecutada y rechazada, fin del agente, petición y ejecución
   fallidas, embeddings (coste 0)
+- [x] 5. **Plataforma y estado actual.** Middleware global
+  `RecordHttpMetrics`: `http_requests_total` {method, route, status} +
+  `http_request_duration_seconds`; `route` = **plantilla** de la ruta
+  (`api/v1/emails/{email}`), nunca la URL (un escáner crearía una serie por
+  URL), sin ruta → `unmatched`; las lecturas de `/metrics` no cuentan.
+  `QueueMetricsSubscriber` (eventos de cola): `jobs_processed_total`
+  {queue, job, result = success / released (se reintentará) / failed} +
+  `job_duration_seconds`. **`StateMetrics`** (se calcula en cada lectura,
+  registro en memoria, no se guarda): `emails_current` {tenant, status},
+  `mail_connections` {tenant, provider, status},
+  `mail_sync_consecutive_failures` y
+  `mail_sync_last_success_timestamp_seconds` {tenant, mailbox = id del
+  buzón; solo buzones activos} (base de la alerta del **mensaje
+  envenenado** anotado en la Fase 4), `documents` {tenant, status} y
+  `queue_size` {connection, queue} de las colas de `metrics.queues` (una
+  cola que no responde no rompe el resto). `/metrics` = acumuladas +
+  estado. Tests: plantillas de ruta y `unmatched`, `/metrics` no cuenta,
+  trabajos terminados y fallidos, emails por estado y empresa, buzones y
+  fallos seguidos (solo activos), documentos, colas
 
 ### Pendientes anotados para más adelante
 
