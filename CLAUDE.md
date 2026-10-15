@@ -277,7 +277,7 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-10-14)
+## ESTADO ACTUAL (actualizado 2026-10-15)
 
 **Decisión ya tomada, distinta al plan original:** empezar la Fase 5 (AI
 Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
@@ -2230,6 +2230,52 @@ ven).
 **Resumen:** 14 tareas en 14 commits + 1 fix, 886 tests PHP + 54 Vitest en verde.
 **Pendiente para dar la Fase 10 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde (incluido el job nuevo `frontend`).
+
+### Fase 11 (Grafana / observabilidad): EN CURSO (2026-10-15)
+
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit. **Cambio acordado con el usuario
+(2026-10-15):** esta fase se hace en una sesión de Claude Code en la nube
+(contenedor temporal): los commits se suben a la rama **`fase-11-grafana`**
+(nunca a `main`); el usuario revisa el CI y la fusiona.
+
+**Entorno de la sesión en la nube:** su red bloquea `dl-cdn.alpinelinux.org`,
+`deb.debian.org`, `pecl.php.net` y `registry.ollama.ai`, así que la imagen
+`docker/php/Dockerfile` no se puede construir allí. Para probar se usó una
+imagen equivalente solo de esa sesión (`serversideup/php:8.4-fpm-alpine`:
+pdo_pgsql, redis, pcntl, zip, opcache; el código no usa intl ni bcmath) y
+`composer install` desde fuera del contenedor. El `Dockerfile` del proyecto
+no cambia. Sin Ollama (no se puede descargar `bge-m3`).
+
+**Objetivo:** ver en Grafana cómo funciona la plataforma (sección 14):
+emails (recibidos, procesados, automatizados, a personas, errores, tiempo
+de procesamiento), IA (peticiones, tokens, coste, latencia, errores,
+modelos, confianza, herramientas), negocio (% automatizado, % a personas,
+intenciones, volumen por empresa) y costes (por modelo, día, mes), con
+alertas.
+
+**Decisiones tomadas:**
+- **IA simulada para probar sin gastar** (pedido por el usuario):
+  `AI_PROVIDER=simulated` → `App\AI\Providers\Simulated\
+  SimulatedLLMProvider`. Reglas por palabras clave (no entiende el texto):
+  clasificación (intención, confianza, idioma, pedidos, sospecha de
+  injection) y agente (pide `get_order` si hay número de pedido o
+  `search_company_documents`, y responde con lo que devuelven). Modelo
+  `simulated` con **precio ficticio** (el de Opus 5.5) para ver costes en
+  las métricas sin confundirlos con gasto real. **Prohibida fuera de
+  `local`/`testing`** (`LLMConfigurationException`): respondería emails
+  reales sin modelo. Espera media `AI_SIMULATED_DELAY_MS` (800 ms) para
+  latencias realistas. `phpunit.xml` fuerza `AI_PROVIDER=anthropic` (un
+  `.env` local con `simulated` no debe cambiar los tests).
+
+**Tareas (commit):**
+- [x] 1. **IA simulada** (`SimulatedLLMProvider`, `config/ai.php` →
+  `simulated` + precio ficticio, `AIService::enabled()` la cuenta como
+  configurada, `AI_PROVIDER` en `.env.docker.example`). Tests: intenciones
+  por palabras clave, injection, idioma y pedidos, agente en dos pasos
+  (herramienta → respuesta con el dato), a persona si la herramienta falla
+  o no hay herramientas, uso/modelo/id simulados, prohibida en producción,
+  y un email de principio a fin (enviado) sin IA real
 
 ### Pendientes anotados para más adelante
 

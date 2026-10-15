@@ -32,11 +32,12 @@ class AIService
     ) {
     }
 
-    /** La IA está configurada (hay API key). Sin ella no se llama a nada. */
+    /** La IA está configurada (hay API key, o es la simulada). Sin ella no se llama a nada. */
     public static function enabled(): bool
     {
         return match (config('ai.provider')) {
             'anthropic' => (string) config('ai.anthropic.api_key') !== '',
+            'simulated' => true,
             default => false,
         };
     }

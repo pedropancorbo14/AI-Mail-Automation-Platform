@@ -3,8 +3,9 @@
 return [
 
     /*
-    | Proveedor de IA activo (App\AI\Contracts\LLMProvider). De momento solo
-    | "anthropic"; OpenAI/Gemini se añadirían como otra implementación.
+    | Proveedor de IA activo (App\AI\Contracts\LLMProvider): "anthropic" o
+    | "simulated" (IA de pruebas sin coste, solo local/testing: ver abajo).
+    | OpenAI/Gemini se añadirían como otra implementación.
     */
     'provider' => env('AI_PROVIDER', 'anthropic'),
 
@@ -25,6 +26,17 @@ return [
     ],
 
     /*
+    | IA SIMULADA (AI_PROVIDER=simulated): reglas por palabras clave, sin API
+    | ni coste real, para probar el flujo completo, las métricas y Grafana en
+    | local. Prohibida en producción y staging (AIServiceProvider).
+    */
+    'simulated' => [
+        'model' => 'simulated',
+        // Espera media por llamada (ms) para que latencias y tiempos parezcan reales.
+        'delay_ms' => (int) env('AI_SIMULATED_DELAY_MS', 800),
+    ],
+
+    /*
     | Precios en USD por millón de tokens (tarifa de la API de Anthropic,
     | consultada 2026-09-25). cache_write = escritura de caché de 5 min
     | (1,25 × entrada). Un modelo sin precio aquí registra el coste como null.
@@ -37,6 +49,9 @@ return [
         'claude-sonnet-5-5' => ['input' => 2.00, 'output' => 10.00, 'cache_write' => 2.50, 'cache_read' => 0.20],
         'claude-sonnet-5' => ['input' => 2.00, 'output' => 10.00, 'cache_write' => 2.50, 'cache_read' => 0.20],
         'claude-haiku-4-5' => ['input' => 1.00, 'output' => 5.00, 'cache_write' => 1.25, 'cache_read' => 0.10],
+        // IA simulada: precio FICTICIO (el de Opus 5.5) para ver costes en las métricas.
+        // Su modelo se llama "simulated": nunca se confunde con gasto real.
+        'simulated' => ['input' => 4.00, 'output' => 20.00, 'cache_write' => 5.00, 'cache_read' => 0.20],
         // Embeddings locales (Ollama): sin coste por token. Precio 0 (no null) para que cuenten como gratis.
         'bge-m3' => ['input' => 0.0, 'output' => 0.0, 'cache_write' => 0.0, 'cache_read' => 0.0],
     ],
