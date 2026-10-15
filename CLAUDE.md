@@ -2287,6 +2287,13 @@ alertas.
   configurado o con uno incorrecto → 404. Ruta fuera de los grupos web/api
   (sin sesión, cookies ni throttle). Prometheus la lee a través de nginx
   (nginx se une a `observability-net`).
+- **Las métricas de negocio salen de los registros de auditoría** que ya
+  existen (emails, historial de estados, respuestas, sincronizaciones,
+  `ai_requests`, `ai_tool_calls`, `ai_agent_runs`) mediante **observers**
+  en `app/Observability/Observers/` con `$afterCommit = true`: el código de
+  negocio no sabe nada de Prometheus y lo que se deshace en una transacción
+  no se cuenta. Etiquetas que salen de la BD (slug de la empresa, tipo de
+  buzón) con caché por proceso en `MetricLabels`.
 
 **Tareas (commit):**
 - [x] 1. **IA simulada** (`SimulatedLLMProvider`, `config/ai.php` →
@@ -2310,6 +2317,24 @@ alertas.
   Redis sin romper nada, desactivadas, **Redis real compartido entre dos
   instancias** (BD 15), endpoint con/sin token, sin token configurado, sin
   sesión ni cookies. Verificado en el stack: target `laravel` **UP**
+- [x] 3. **Métricas de emails** (observers): `emails_ingested_total`
+  {tenant, provider, automated} (al crearse el email: los duplicados no
+  cuentan), `email_status_changes_total` {tenant, to, by=platform|user},
+  **`email_processing_seconds`** {tenant, outcome} (desde que se guardó
+  hasta que la plataforma decide: ignored / human_review / approved
+  —envío automático— / failed; solo decisiones de la plataforma, no de
+  personas ni el envío posterior), `email_replies_sent_total` {tenant,
+  automatic}, `email_replies_failed_total`, `ai_agent_replies_total`
+  {tenant, needs_human} y `mail_syncs_total` {tenant, provider,
+  result}. **Bug evitado:** detectar el lote sincronizado con
+  `wasChanged('last_success_at')` fallaba con dos lotes en el mismo segundo
+  (las fechas se comparan al segundo) → `MailSyncState` lanza eventos
+  propios `synced`/`syncFailed` (`$observables`). Helper de tests
+  `metricSample($nombre, $etiquetas)` en `tests/Pest.php`. Tests:
+  ingesta con duplicado y correo automático, sincronización fallida, email
+  enviado solo (estados, tiempo de decisión, respuesta automática), a una
+  persona, envío fallido, cambio hecho por una persona, transacción
+  deshecha
 
 ### Pendientes anotados para más adelante
 

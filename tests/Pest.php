@@ -103,3 +103,28 @@ function draftReply(App\Models\Email $email, array $overrides = []): App\Models\
         'pending_actions' => [],
     ], $overrides));
 }
+
+/**
+ * Valor actual de una serie de las métricas acumuladas (null si no existe).
+ * Las etiquetas se dan en el orden de Metrics::DEFINITIONS; las que falten
+ * no se comprueban (p. ej. metricSample('x_total', ['tenant' => 'acme'])).
+ */
+function metricSample(string $name, array $labels = []): ?float
+{
+    $total = null;
+
+    foreach (explode("\n", app(App\Observability\Metrics::class)->render()) as $line) {
+        if (! preg_match('/^aimail_' . preg_quote($name, '/') . '(?:\{(.*)\})? (\S+)$/', $line, $m)) {
+            continue;
+        }
+
+        preg_match_all('/(\w+)="([^"]*)"/', $m[1], $pairs, PREG_SET_ORDER);
+        $series = array_column($pairs, 2, 1);
+
+        if (array_diff_assoc(array_map(fn ($v) => is_bool($v) ? ($v ? 'true' : 'false') : (string) $v, $labels), $series) === []) {
+            $total = ($total ?? 0) + (float) $m[2];
+        }
+    }
+
+    return $total;
+}
