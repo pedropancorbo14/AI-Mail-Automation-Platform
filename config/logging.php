@@ -73,6 +73,18 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Mismo log en JSON (una línea por entrada, con el Context: tenant_id,
+        // request_id...) para Loki (Fase 11): Promtail lee solo este. El canal
+        // "daily" sigue en texto para leerlo con tail.
+        'json' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/json/laravel.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'max_files' => env('LOG_DAILY_DAYS', 14),
+            'formatter' => Illuminate\Log\Formatters\JsonFormatter::class,
+            'replace_placeholders' => true,
+        ],
+
         'monthly' => [
             'driver' => 'monthly',
             'path' => storage_path('logs/laravel.log'),

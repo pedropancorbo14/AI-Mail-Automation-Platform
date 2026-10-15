@@ -33,7 +33,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias(['tenant' => ResolveTenant::class]);
 
-        // Métricas de cada petición HTTP (Fase 11).
+        // Observabilidad (Fase 11): id de petición en los logs y métricas HTTP.
+        $middleware->prepend(App\Http\Middleware\AssignRequestId::class);
         $middleware->append(App\Http\Middleware\RecordHttpMetrics::class);
 
         // El tenant debe estar fijado antes del route model binding: los

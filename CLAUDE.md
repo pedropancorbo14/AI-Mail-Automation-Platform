@@ -2294,6 +2294,18 @@ alertas.
   negocio no sabe nada de Prometheus y lo que se deshace en una transacción
   no se cuenta. Etiquetas que salen de la BD (slug de la empresa, tipo de
   buzón) con caché por proceso en `MetricLabels`.
+- **Logs en JSON para Loki** en un canal aparte (`json`), sin tocar el de
+  texto (`daily`, para `tail -f`): `LOG_STACK=daily,json`. Promtail lee
+  solo `storage/logs/json/*.log`; el **nivel** es etiqueta de Loki (pocos
+  valores) y `tenant_id`/`request_id` no (serían demasiadas series): se
+  filtran con `| json | extra_tenant_id="1"`.
+- **OpenTelemetry (tracing) aplazado:** con un monolito y colas, la traza
+  de lo que hizo la IA con un email ya está en la BD (`ai_agent_runs` →
+  `ai_requests` → `ai_tool_calls`, historial de estados) y se ve en el
+  panel; un collector + Tempo/Jaeger + extensión de PHP sería
+  infraestructura sin uso real todavía. En su lugar, **`request_id`** en el
+  Context de cada petición (cabecera `X-Request-Id`): aparece en todos sus
+  logs y en los de los trabajos que encola. Revisar si se separan servicios.
 
 **Tareas (commit):**
 - [x] 1. **IA simulada** (`SimulatedLLMProvider`, `config/ai.php` →
@@ -2368,6 +2380,19 @@ alertas.
   estado. Tests: plantillas de ruta y `unmatched`, `/metrics` no cuenta,
   trabajos terminados y fallidos, emails por estado y empresa, buzones y
   fallos seguidos (solo activos), documentos, colas
+- [x] 6. **Logs estructurados.** Canal `json` en `config/logging.php`
+  (`Illuminate\Log\Formatters\JsonFormatter`, diario, mismos días que
+  `daily`) y `LOG_STACK=daily,json` en `.env.docker.example`. Promtail
+  (`docker/promtail/promtail-config.yaml`): `json` → etiqueta `level` y
+  hora del propio log (`timestamp` RFC3339Nano). Middleware global
+  **`AssignRequestId`** (primero de todos): `request_id` en el Context y en
+  la cabecera `X-Request-Id`; acepta el de un proxy solo si es
+  `[A-Za-z0-9._-]{8,64}` (no se mete texto arbitrario del cliente en los
+  logs). Verificado en el stack: Loki devuelve la línea con
+  `{job="laravel", level="WARNING"} | json | extra_tenant_id="1"`.
+  Tests: línea JSON con mensaje, nivel, contexto, `extra.tenant_id` y fecha
+  con microsegundos; id en la respuesta y en el Context; id de un proxy
+  aceptado o rechazado (saltos de línea, demasiado corto)
 
 ### Pendientes anotados para más adelante
 
