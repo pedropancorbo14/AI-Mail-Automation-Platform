@@ -74,6 +74,8 @@ services:
       - app
     networks:
       - app-net
+      # Prometheus lee /metrics a través de nginx (Fase 11).
+      - observability-net
     labels:
       - "logging=promtail"
   # ---------------------------------------------------------------

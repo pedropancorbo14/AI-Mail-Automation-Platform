@@ -7,8 +7,17 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # Métricas propias de Laravel (/metrics): se añaden en la Fase 11, cuando
-  # exista un endpoint real que las exponga.
+  # Métricas propias de la plataforma (Fase 11): GET /metrics a través de
+  # nginx, con el token de METRICS_TOKEN. "local-metrics-token" es el valor
+  # de desarrollo de .env.docker.example; en producción (Fase 16) se cambia
+  # en los dos sitios.
+  - job_name: "laravel"
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials: local-metrics-token
+    static_configs:
+      - targets: ["nginx:80"]
 
   - job_name: "postgres"
     static_configs:

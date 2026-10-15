@@ -5,6 +5,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -15,6 +16,11 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__ . '/../routes/api.php',
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
+        // Métricas para Prometheus: fuera de los grupos web/api (sin sesión,
+        // cookies, CSRF ni throttle); las protege su propio token.
+        then: function () {
+            Route::get('/metrics', App\Http\Controllers\MetricsController::class)->name('metrics');
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->api(prepend: [

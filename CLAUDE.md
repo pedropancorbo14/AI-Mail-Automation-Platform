@@ -2267,6 +2267,26 @@ alertas.
   reales sin modelo. Espera media `AI_SIMULATED_DELAY_MS` (800 ms) para
   latencias realistas. `phpunit.xml` fuerza `AI_PROVIDER=anthropic` (un
   `.env` local con `simulated` no debe cambiar los tests).
+- **Métricas con `promphp/prometheus_client_php`** (Apache-2.0) y almacén
+  **Redis** (base de datos propia `METRICS_REDIS_DB`, 2): PHP-FPM y los
+  workers de Horizon son procesos distintos y suman en los mismos
+  contadores; con AOF sobreviven a reinicios. Se descartó calcular todo
+  desde Postgres en cada lectura (consultas cada 15 s que crecen con los
+  datos y sin histogramas de latencia) y APCu (no se comparte entre
+  contenedores). Las métricas de **estado actual** (emails esperando a una
+  persona, colas…) se calculan en cada lectura y no se guardan (si se
+  guardaran, una etiqueta que desaparece se quedaría con su último valor).
+- **Catálogo único** `App\Observability\Metrics::DEFINITIONS` (nombre,
+  ayuda, etiquetas, intervalos): una métrica o etiqueta no declarada es un
+  error (`LogicException`), así no se crean series por erratas ni etiquetas
+  de cardinalidad infinita (emails, ids). Prefijo `aimail_`. La empresa va
+  como etiqueta `tenant` (su slug). **Registrar una métrica nunca rompe el
+  negocio**: si Redis falla, aviso en el log y se sigue.
+- **`GET /metrics` protegido con token** (`METRICS_TOKEN`, cabecera
+  `Authorization: Bearer`): revela volumen y costes por empresa. Sin token
+  configurado o con uno incorrecto → 404. Ruta fuera de los grupos web/api
+  (sin sesión, cookies ni throttle). Prometheus la lee a través de nginx
+  (nginx se une a `observability-net`).
 
 **Tareas (commit):**
 - [x] 1. **IA simulada** (`SimulatedLLMProvider`, `config/ai.php` →
@@ -2276,6 +2296,20 @@ alertas.
   (herramienta → respuesta con el dato), a persona si la herramienta falla
   o no hay herramientas, uso/modelo/id simulados, prohibida en producción,
   y un email de principio a fin (enviado) sin IA real
+- [x] 2. **Base de métricas.** `composer require promphp/prometheus_client_php`
+  (^2.15). `config/metrics.php` (`METRICS_ENABLED`, `METRICS_TOKEN`,
+  `METRICS_STORAGE` redis/memory, `METRICS_REDIS_DB`). `App\Observability\
+  Metrics` (`increment()`, `observe()`, `render()`, `wipe()`; conexión a
+  Redis al primer uso y reconexión tras un fallo) registrado como singleton
+  en el nuevo `ObservabilityServiceProvider`. `MetricsController` en
+  `GET /metrics` (`bootstrap/app.php` → `then:`; el panel ya no captura
+  `/metrics`). Prometheus: job `laravel` (`nginx:80/metrics`, Bearer
+  `local-metrics-token` = valor de desarrollo en `.env.docker.example`).
+  `phpunit.xml`: `METRICS_STORAGE=memory`. Tests: formato de exposición,
+  etiquetas `none`/booleanas, métricas y etiquetas no declaradas, fallo de
+  Redis sin romper nada, desactivadas, **Redis real compartido entre dos
+  instancias** (BD 15), endpoint con/sin token, sin token configurado, sin
+  sesión ni cookies. Verificado en el stack: target `laravel` **UP**
 
 ### Pendientes anotados para más adelante
 

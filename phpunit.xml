@@ -38,6 +38,8 @@
         <server name="DB_DATABASE" value="app_testing"/>
         <env name="DB_URL" value=""/>
         <server name="MAIL_MAILER" value="array"/>
+        <!-- Métricas en memoria: cada test empieza de cero y no toca Redis. -->
+        <server name="METRICS_STORAGE" value="memory"/>
         <server name="QUEUE_CONNECTION" value="sync"/>
         <server name="RAG_QUEUE_CONNECTION" value="sync"/>
         <server name="AI_QUEUE_CONNECTION" value="sync"/>
