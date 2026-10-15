@@ -262,6 +262,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./docker/prometheus/alerts.test.yml:/etc/prometheus/alerts.test.yml:ro
       - prometheus-data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"

@@ -127,3 +127,21 @@ jobs:
 
       - name: Compilar el panel
         run: npx vite build
+
+  # Observabilidad (Fase 11): configuración de Prometheus y pruebas de las alertas.
+  observability:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Comprobar la configuración de Prometheus
+        run: >
+          docker run --rm -v "$PWD/docker/prometheus:/etc/prometheus" -w /etc/prometheus
+          --entrypoint promtool prom/prometheus:v3.15.0 check config prometheus.yml
+
+      - name: Probar las alertas (promtool test rules)
+        run: >
+          docker run --rm -v "$PWD/docker/prometheus:/etc/prometheus" -w /etc/prometheus
+          --entrypoint promtool prom/prometheus:v3.15.0 test rules alerts.test.yml

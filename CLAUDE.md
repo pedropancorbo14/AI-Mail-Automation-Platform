@@ -2306,6 +2306,11 @@ alertas.
   infraestructura sin uso real todavía. En su lugar, **`request_id`** en el
   Context de cada petición (cabecera `X-Request-Id`): aparece en todos sus
   logs y en los de los trabajos que encola. Revisar si se separan servicios.
+- **Alertas como reglas de Prometheus** versionadas en git
+  (`docker/prometheus/alerts.yml`) y **probadas con `promtool test rules`**
+  (`alerts.test.yml`, también en el CI). Se ven en Prometheus (`/alerts`) y
+  en Grafana. **Sin Alertmanager todavía:** enviar avisos (email, Slack…)
+  necesita un destino real; es de la Fase 16 (producción).
 
 **Tareas (commit):**
 - [x] 1. **IA simulada** (`SimulatedLLMProvider`, `config/ai.php` →
@@ -2393,6 +2398,24 @@ alertas.
   Tests: línea JSON con mensaje, nivel, contexto, `extra.tenant_id` y fecha
   con microsegundos; id en la respuesta y en el Context; id de un proxy
   aceptado o rechazado (saltos de línea, demasiado corto)
+- [x] 7. **Alertas** (`alerts.yml`, cargado en `prometheus.yml` →
+  `rule_files` y montado en docker-compose). Plataforma:
+  `MetricasNoDisponibles` (`up{job="laravel"} == 0` 2 min, critical),
+  `TrabajosDeColaFallando` (fallos definitivos en 15 min),
+  `ColaAtascada` (> 100 trabajos 10 min), `ErroresHttp5xx` (> 5 % 10 min).
+  Correo: **`BuzonAtascado`** (≥ 5 sincronizaciones fallidas seguidas: el
+  mensaje envenenado de la Fase 4), `BuzonSinSincronizar` (> 15 min sin
+  éxito), `EmailsConError` (≥ 3 a error en 15 min por empresa),
+  `RevisionHumanaAcumulada` (> 50 esperando 1 h, info). IA: `IAConErrores`
+  (> 20 % con al menos 5 peticiones en 10 min: sin falsas alarmas con poco
+  tráfico), `GastoIAPorHoraAlto` (> 5 $/h). Resúmenes y descripciones en
+  español con qué mirar. **`alerts.test.yml`**: cada alerta dispara cuando
+  toca (y no antes del `for`) con sus etiquetas y textos exactos, y no
+  dispara en los casos límite (otro buzón sano, empresa con 1 error, poco
+  tráfico, 3 $/h); comprobado que una expectativa errónea hace fallar la
+  prueba. CI: job **`observability`** (`promtool check config` + `test
+  rules`, `prom/prometheus:v3.15.0`). Verificado en el stack: 3 grupos, 10
+  reglas `ok`
 
 ### Pendientes anotados para más adelante
 

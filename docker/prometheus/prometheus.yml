@@ -2,6 +2,10 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Alertas (Fase 11): ver alerts.yml y sus pruebas en alerts.test.yml.
+rule_files:
+  - alerts.yml
+
 scrape_configs:
   - job_name: "prometheus"
     static_configs:

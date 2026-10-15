@@ -1,0 +1,102 @@
+# Alertas de la plataforma (Fase 11). Las evalúa Prometheus cada 15 s y se
+# ven en http://localhost:9090/alerts y en Grafana (Alerting → Alert rules).
+# Todavía no se envían a ningún sitio: eso es Alertmanager (Fase 16).
+# Probadas con: promtool test rules docker/prometheus/alerts.test.yml
+groups:
+  - name: plataforma
+    rules:
+      - alert: MetricasNoDisponibles
+        expr: up{job="laravel"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus no puede leer /metrics de la aplicación"
+          description: "La app (nginx/PHP-FPM) no responde o el token de METRICS_TOKEN no coincide. Sin métricas, el resto de alertas no funcionan."
+
+      - alert: TrabajosDeColaFallando
+        expr: sum by (queue, job) (increase(aimail_jobs_processed_total{result="failed"}[15m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "El trabajo {{ $labels.job }} ha fallado definitivamente en la cola {{ $labels.queue }}"
+          description: "{{ $value | humanize }} fallos en 15 min (ya agotó sus reintentos). Ver Horizon → Failed Jobs y los logs en Grafana."
+
+      - alert: ColaAtascada
+        expr: aimail_queue_size > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "La cola {{ $labels.connection }}:{{ $labels.queue }} tiene {{ $value }} trabajos esperando"
+          description: "Los workers no dan abasto o están parados (php artisan horizon:status)."
+
+      - alert: ErroresHttp5xx
+        expr: |
+          sum(rate(aimail_http_requests_total{status=~"5.."}[10m]))
+            / sum(rate(aimail_http_requests_total[10m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Más del 5 % de las peticiones HTTP terminan en error 5xx"
+          description: "Errores de servidor: {{ $value | humanizePercentage }}. Ver el dashboard Errores."
+
+  - name: correo
+    rules:
+      - alert: BuzonAtascado
+        expr: aimail_mail_sync_consecutive_failures >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "El buzón {{ $labels.mailbox }} de {{ $labels.tenant }} lleva {{ $value }} sincronizaciones fallidas seguidas"
+          description: "El cursor no avanza: puede haber un correo que siempre falla (mensaje envenenado) o el servidor no responde. Ver mail_sync_states.last_error."
+
+      - alert: BuzonSinSincronizar
+        expr: time() - aimail_mail_sync_last_success_timestamp_seconds > 900
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "El buzón {{ $labels.mailbox }} de {{ $labels.tenant }} no se sincroniza desde hace más de 15 min"
+          description: "¿Está corriendo el scheduler (mail:sync cada minuto) y el supervisor de la cola mail?"
+
+      - alert: EmailsConError
+        expr: sum by (tenant) (increase(aimail_email_status_changes_total{to="failed"}[15m])) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanize }} emails de {{ $labels.tenant }} han pasado a error en 15 min"
+          description: "Revisar en el panel los emails con estado Error (motivo en su historial) y reprocesarlos con ai:process --failed."
+
+      - alert: RevisionHumanaAcumulada
+        expr: sum by (tenant) (aimail_emails_current{status="human_review"}) > 50
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.tenant }} tiene {{ $value }} emails esperando a una persona"
+          description: "La bandeja de revisión crece: falta personal o la automatización deriva demasiado."
+
+  - name: ia
+    rules:
+      - alert: IAConErrores
+        expr: |
+          sum(rate(aimail_ai_requests_total{status!="success"}[10m]))
+            / sum(rate(aimail_ai_requests_total[10m])) > 0.2
+          and sum(increase(aimail_ai_requests_total[10m])) >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Más del 20 % de las peticiones a la IA fallan o se rechazan"
+          description: "{{ $value | humanizePercentage }} de errores. ¿Saldo de la API, clave, 429 o caída del proveedor? Ver el dashboard IA."
+
+      - alert: GastoIAPorHoraAlto
+        expr: sum(increase(aimail_ai_cost_usd_total[1h])) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "La IA ha gastado {{ $value | printf \"%.2f\" }} $ en la última hora"
+          description: "Por encima de 5 $/h. Revisar el dashboard Costes (por empresa y modelo) por si hay un bucle o un pico anómalo."
