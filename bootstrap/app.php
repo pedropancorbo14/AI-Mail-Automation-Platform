@@ -10,6 +10,11 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
+// Fase 12: las trazas de las excepciones no incluyen los argumentos de las
+// funciones (podrían ser contraseñas o tokens y acabar en los logs). Es el
+// valor de producción de PHP; aquí vale para FPM, artisan y los workers.
+ini_set('zend.exception_ignore_args', '1');
+
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',

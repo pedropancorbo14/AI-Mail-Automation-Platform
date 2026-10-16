@@ -2785,7 +2785,26 @@ arquitectura que impidan regresiones.
   solas siguen pasando** (sin falsos positivos: "lo revisamos",
   "revisemos la silla", "Hemos revisado tu pedido"). Frases reales
   añadidas a los tests
-- [ ] 8. Secretos fuera de los logs
+- [x] 8. **Secretos fuera de los logs.** `App\Security\Redactor` (lista
+  única de secretos, la usa también `AuditLogger`): oculta por **nombre de
+  campo** (password, secret, token, credential, api_key, authorization,
+  cookie; anidados) y por **forma** dentro de textos (`Bearer …`, claves
+  `sk-ant-…`, tokens de Sanctum `id|40 caracteres`, contraseñas en URLs
+  `esquema://usuario:contraseña@host`). "tap"
+  `App\Security\Logging\RedactSecrets` en los canales `single`, `daily`,
+  `json`, `monthly` y `stderr` (`config/logging.php`): procesador de
+  Monolog que limpia mensaje, contexto y `extra` (el Context de Laravel)
+  antes de escribir; el `stack` hereda los procesadores de sus canales.
+  **Trazas sin argumentos:** `zend.exception_ignore_args` estaba a 0 en la
+  imagen (las trazas incluían los argumentos de las funciones, p. ej. una
+  contraseña); `ini_set('zend.exception_ignore_args', '1')` al principio de
+  `bootstrap/app.php` (FPM, artisan y workers, sin reconstruir la imagen).
+  Los mensajes de excepción no se tocan: los escribe nuestro código, que
+  ya no incluye credenciales (Fases 3 y 5). Verificado en el stack: una
+  línea con `Bearer` y `password` sale `[oculto]` en el log de texto y en
+  el JSON de Loki. Tests: `LogRedactionTest` (por nombre, por forma, los
+  3 canales escribiendo a fichero con Context incluido, trazas sin
+  argumentos)
 - [ ] 9. Retención y borrado de datos
 - [ ] 10. Infraestructura: puertos solo en local, contraseñas por defecto
 - [ ] 11. Tests de arquitectura y auditoría de dependencias en el CI

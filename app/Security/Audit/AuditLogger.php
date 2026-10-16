@@ -4,6 +4,7 @@ namespace App\Security\Audit;
 
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Security\Redactor;
 use App\Tenancy\TenantService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -21,10 +22,7 @@ use Illuminate\Support\Str;
  */
 class AuditLogger
 {
-    public const string HIDDEN = '[oculto]';
-
-    /** Partes de nombre de campo que delatan un secreto. */
-    private const array SECRET_KEYS = ['password', 'secret', 'token', 'credential', 'api_key', 'apikey', 'authorization', 'cookie'];
+    public const string HIDDEN = Redactor::HIDDEN;
 
     public function __construct(private readonly TenantService $tenants)
     {
@@ -96,17 +94,7 @@ class AuditLogger
      */
     public static function hideSecrets(array $data): array
     {
-        foreach ($data as $key => $value) {
-            $name = strtolower((string) $key);
-
-            if (collect(self::SECRET_KEYS)->contains(fn (string $secret) => str_contains($name, $secret))) {
-                $data[$key] = self::HIDDEN;
-            } elseif (is_array($value)) {
-                $data[$key] = self::hideSecrets($value);
-            }
-        }
-
-        return $data;
+        return Redactor::redact($data);
     }
 
     /** Enums y fechas como texto, para guardarlos en JSON. */

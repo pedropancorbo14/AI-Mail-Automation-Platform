@@ -1,5 +1,6 @@
 <?php
 
+use App\Security\Logging\RedactSecrets;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -63,6 +64,8 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+            // Fase 12: oculta contraseñas, tokens y claves antes de escribir.
+            'tap' => [RedactSecrets::class],
         ],
 
         'daily' => [
@@ -71,6 +74,8 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'max_files' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+            // Fase 12: oculta contraseñas, tokens y claves antes de escribir.
+            'tap' => [RedactSecrets::class],
         ],
 
         // Mismo log en JSON (una línea por entrada, con el Context: tenant_id,
@@ -83,6 +88,8 @@ return [
             'max_files' => env('LOG_DAILY_DAYS', 14),
             'formatter' => Illuminate\Log\Formatters\JsonFormatter::class,
             'replace_placeholders' => true,
+            // Fase 12: oculta contraseñas, tokens y claves antes de escribir.
+            'tap' => [RedactSecrets::class],
         ],
 
         'monthly' => [
@@ -91,6 +98,8 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'max_files' => 3,
             'replace_placeholders' => true,
+            // Fase 12: oculta contraseñas, tokens y claves antes de escribir.
+            'tap' => [RedactSecrets::class],
         ],
 
         'slack' => [
@@ -123,6 +132,8 @@ return [
             ],
             'formatter' => env('LOG_STDERR_FORMATTER'),
             'processors' => [PsrLogMessageProcessor::class],
+            // Fase 12: oculta contraseñas, tokens y claves antes de escribir.
+            'tap' => [RedactSecrets::class],
         ],
 
         'syslog' => [
