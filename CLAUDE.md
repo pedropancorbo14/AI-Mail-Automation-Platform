@@ -2653,7 +2653,27 @@ arquitectura que impidan regresiones.
   de `auto_send_intents` salía como texto). Tests (`AuditedActionsTest`,
   11 + asserts en `MicrosoftOAuthTest`): cada acción con sus datos, sin
   contraseñas, hashes, tokens ni credenciales, y nada en otra empresa
-- [ ] 3. API y página de auditoría (propietario y administrador)
+- [x] 3. **API y página de auditoría.** Permiso nuevo **`audit.view`**
+  (propietario y administrador; sembrado en la BD de desarrollo). **`GET
+  /api/v1/audit-logs`** (`AuditLogController`, solo lectura: no existe
+  ruta para cambiarlo) con filtros validados en `ListAuditLogsRequest`:
+  `category` (auth, user, tenant, mail_connection, automation, document →
+  `action like 'x.%'`), `user`, `from`/`to`, `per_page` (50 por defecto);
+  orden por fecha y luego id. `AuditLogResource`: acción, actor (nombre
+  actual o, si ya no existe, el email que tenía), sujeto (tipo, id,
+  nombre), cambios, metadata, IP, navegador, `request_id`. Los logins
+  fallidos sin empresa nunca salen (TenantScope). Página **`AuditPage`**
+  (`/auditoria`, menú "Auditoría"): filtros por tipo, persona y fechas;
+  tabla cuándo / quién / acción en español con lo que cambió ("Rol: Agente
+  → Administrador", "Contraseña: cambiada", "Se envían solas: las de la
+  plataforma → …") y detalle (token o panel, email probado, resultado de
+  la prueba del buzón, herramienta activada) / IP con el navegador en
+  tooltip; fallos de login en rojo, borrados en ámbar (`utils/audit.ts`).
+  Revisión visual con Chromium. **Nota:** las IP son el `REMOTE_ADDR` que
+  nginx pasa por FastCGI (correcto en local); detrás de un balanceador
+  habrá que configurar `trustProxies` (tarea 10). Tests: `AuditLogApiTest`
+  (9: listado, usuario borrado, filtros, 422, paginación, permisos,
+  aislamiento, sin rutas de escritura) y Vitest `AuditPage.test.ts` (5)
 - [ ] 4. Cuenta propia: cambiar la contraseña y cerrar las demás sesiones
 - [ ] 5. Protección del gasto de IA: presupuesto diario por empresa y
   límite por remitente

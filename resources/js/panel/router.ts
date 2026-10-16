@@ -56,6 +56,12 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Empresa y usuarios', permission: 'tenant.view' },
             },
             {
+                path: 'auditoria',
+                name: 'audit',
+                component: () => import('@/pages/AuditPage.vue'),
+                meta: { title: 'Auditoría', permission: 'audit.view' },
+            },
+            {
                 path: 'sin-permiso',
                 name: 'forbidden',
                 component: () => import('@/pages/ForbiddenPage.vue'),

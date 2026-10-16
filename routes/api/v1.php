@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\AutomationController;
 use App\Http\Controllers\Api\V1\DashboardController;
@@ -63,4 +64,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::apiResource('documents', DocumentController::class)->except(['update']);
     Route::post('/documents/{document}/reindex', [DocumentController::class, 'reindex']);
     Route::post('/knowledge-base/search', KnowledgeSearchController::class)->middleware('throttle:30,1');
+
+    // Registro de auditoría (solo lectura): quién hizo qué en la empresa.
+    Route::get('/audit-logs', [AuditLogController::class, 'index']);
 });

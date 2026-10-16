@@ -38,6 +38,9 @@ class Permission extends Model
     /** Cambiar el modo de automatización, las intenciones que se responden solas y las herramientas de la IA. */
     public const string AUTOMATION_MANAGE = 'automation.manage';
 
+    /** Ver el registro de auditoría: quién hizo qué en la empresa. */
+    public const string AUDIT_VIEW = 'audit.view';
+
     /**
      * Catálogo completo (nombre => descripción). Cada permiso se registra
      * como Gate en AppServiceProvider y se guarda en BD con el seeder.
@@ -55,6 +58,7 @@ class Permission extends Model
         self::DOCUMENTS_MANAGE => 'Gestionar la documentación',
         self::EMAILS_VIEW => 'Ver los emails y lo que hizo la IA con ellos',
         self::AUTOMATION_MANAGE => 'Configurar la automatización y las herramientas de la IA',
+        self::AUDIT_VIEW => 'Ver el registro de auditoría',
     ];
 
     /** @return BelongsToMany<Role, $this> */

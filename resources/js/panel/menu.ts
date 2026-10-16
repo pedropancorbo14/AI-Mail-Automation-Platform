@@ -1,5 +1,13 @@
 import type { Component } from 'vue';
-import { BookOutline, BusinessOutline, FileTrayStackedOutline, HomeOutline, MailOutline, SparklesOutline } from '@vicons/ionicons5';
+import {
+    BookOutline,
+    BusinessOutline,
+    FileTrayStackedOutline,
+    HomeOutline,
+    MailOutline,
+    ShieldCheckmarkOutline,
+    SparklesOutline,
+} from '@vicons/ionicons5';
 
 export interface MenuEntry {
     /** Nombre de la ruta del panel. */
@@ -18,6 +26,7 @@ export const menuEntries: MenuEntry[] = [
     { route: 'documents', label: 'Documentación', icon: BookOutline, permission: 'documents.view' },
     { route: 'ai-settings', label: 'Ajustes de la IA', icon: SparklesOutline, permission: 'tenant.view' },
     { route: 'company', label: 'Empresa y usuarios', icon: BusinessOutline, permission: 'tenant.view' },
+    { route: 'audit', label: 'Auditoría', icon: ShieldCheckmarkOutline, permission: 'audit.view' },
 ];
 
 /** Solo las secciones que el usuario puede usar. */

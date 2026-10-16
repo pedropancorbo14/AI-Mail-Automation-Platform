@@ -38,6 +38,7 @@ class Role extends Model
             Permission::DOCUMENTS_MANAGE,
             Permission::EMAILS_VIEW,
             Permission::AUTOMATION_MANAGE,
+            Permission::AUDIT_VIEW,
         ],
         self::ADMIN => [
             Permission::USERS_VIEW,
@@ -51,6 +52,7 @@ class Role extends Model
             Permission::DOCUMENTS_MANAGE,
             Permission::EMAILS_VIEW,
             Permission::AUTOMATION_MANAGE,
+            Permission::AUDIT_VIEW,
         ],
         self::AGENT => [
             Permission::USERS_VIEW,
