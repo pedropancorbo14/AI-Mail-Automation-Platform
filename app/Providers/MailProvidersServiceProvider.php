@@ -54,7 +54,9 @@ class MailProvidersServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(MailHostGuard::class, function () {
-            return new MailHostGuard(config('mail_connections.allow_private_hosts'));
+            // El permiso para hosts privados (GreenMail en la red de Docker) solo
+            // existe en local y en los tests: en producción se ignora aunque se active.
+            return new MailHostGuard((bool) config('mail_connections.allow_private_hosts') && $this->app->environment('local', 'testing'));
         });
     }
 

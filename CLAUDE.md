@@ -2897,6 +2897,19 @@ arquitectura que impidan regresiones.
   de PHP) y **`npm audit --omit=dev --audit-level=high`** (job del panel)
   fallan si una dependencia tiene una vulnerabilidad conocida; hoy, 0 en
   ambos
+- [x] Fix encontrado en la **prueba de ataques** (tarea 12): en local
+  (`MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true`, necesario para GreenMail en
+  la red de Docker) se pudo **crear un buzón apuntando a
+  `169.254.169.254`** (metadatos de la nube): el permiso desactivaba todo
+  el anti-SSRF. Ahora `MailHostGuard` **bloquea siempre**, con o sin
+  permiso, las direcciones de enlace local (`169.254.0.0/16`, `fe80::/10`:
+  ahí están los metadatos con credenciales; ningún servidor de correo vive
+  ahí) y `0.0.0.0/8`, también escritas como IPv6 (`::ffff:169.254.169.254`;
+  en producción también se normalizan antes de comprobar redes privadas).
+  Y el permiso **solo vale en `local` y `testing`**
+  (`MailProvidersServiceProvider`): en producción se ignora aunque se
+  active. `allowedIps()` (autodetección) aplica las mismas reglas. Tests en
+  `MailHostGuardTest`
 - [ ] 12. Prueba de ataques en el stack, README
 
 ### Pendientes anotados para más adelante
