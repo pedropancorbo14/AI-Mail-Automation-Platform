@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AuditLogController;
+use App\Http\Controllers\Api\V1\Auth\AccountController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\AutomationController;
 use App\Http\Controllers\Api\V1\DashboardController;
@@ -30,6 +31,9 @@ Route::get('/mail-connections/oauth/{provider}/callback', [MailOAuthController::
 Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+    // Cuenta propia. Piden la contraseña actual: límite bajo contra quien la adivina con una sesión robada.
+    Route::put('/auth/password', [AccountController::class, 'changePassword'])->middleware('throttle:6,1');
+    Route::post('/auth/logout-other-devices', [AccountController::class, 'logoutOtherDevices'])->middleware('throttle:6,1');
 
     Route::get('/tenant', [TenantController::class, 'show']);
     Route::patch('/tenant', [TenantController::class, 'update']);

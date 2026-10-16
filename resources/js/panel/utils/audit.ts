@@ -19,6 +19,8 @@ const actionLabels: Record<string, string> = {
     'auth.logout': 'Cerró sesión',
     'auth.login_failed': 'Intento de inicio de sesión fallido',
     'auth.login_blocked': 'Inicio de sesión bloqueado (empresa desactivada)',
+    'auth.password_changed': 'Cambió su contraseña',
+    'auth.logout_other_devices': 'Cerró la sesión en sus demás dispositivos',
     'user.created': 'Creó un usuario',
     'user.updated': 'Modificó un usuario',
     'user.deleted': 'Eliminó un usuario',
@@ -104,6 +106,8 @@ export function describeMetadata(entry: AuditLogEntry): string[] {
         lines.push(`${toolLabel(meta.tool)}: ${meta.enabled ? 'activada' : 'desactivada'}`);
     } else if (entry.action === 'mail_connection.oauth_connected' && meta.reconnected) {
         lines.push('Reconexión de un buzón existente');
+    } else if ((entry.action === 'auth.password_changed' || entry.action === 'auth.logout_other_devices') && Number(meta.revoked_count) > 0) {
+        lines.push(`Tokens de API revocados: ${meta.revoked_count}`);
     } else if (entry.action === 'user.created' && typeof meta.role === 'string') {
         lines.push(`Rol: ${roleLabels[meta.role as keyof typeof roleLabels] ?? meta.role}`);
     }

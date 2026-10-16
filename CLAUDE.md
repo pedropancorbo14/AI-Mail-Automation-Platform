@@ -2674,7 +2674,34 @@ arquitectura que impidan regresiones.
   habrá que configurar `trustProxies` (tarea 10). Tests: `AuditLogApiTest`
   (9: listado, usuario borrado, filtros, 422, paginación, permisos,
   aislamiento, sin rutas de escritura) y Vitest `AuditPage.test.ts` (5)
-- [ ] 4. Cuenta propia: cambiar la contraseña y cerrar las demás sesiones
+- [x] 4. **Cuenta propia.** Sesiones del panel: el middleware
+  `AuthenticateSession` de Sanctum (ya activo en `config/sanctum.php`)
+  guarda en cada sesión una huella de la contraseña y **cierra las que no
+  coinciden**; la sesión que hace el cambio guarda la nueva al terminar la
+  petición. `AccountController`: **`PUT /api/v1/auth/password`**
+  (`ChangePasswordRequest`: actual, nueva confirmada y distinta) y
+  **`POST /api/v1/auth/logout-other-devices`** (contraseña; la vuelve a
+  cifrar con otra sal → cambia el hash y caen las demás sesiones). Ambos
+  piden la **contraseña actual** (una sesión robada no basta), con
+  **throttle 6/min**, revocan **los demás tokens de API** (no el de la
+  petición), regeneran el id de sesión y quedan en la auditoría
+  (`auth.password_changed`, `auth.logout_other_devices` con
+  `revoked_count`). Si **otra persona** cambia la contraseña de un usuario
+  (`PATCH /users/{id}`), se revocan sus tokens. **Política de contraseñas
+  común** con `Password::defaults()` (`AppServiceProvider`): mínimo 10
+  (antes 8), máximo 128 y, **en producción**, rechazo de contraseñas
+  filtradas (Have I Been Pwned por k-anonimato); la usan alta, edición y
+  cambio propio. **Lección:** la redacción de secretos oculta cualquier
+  clave que contenga "token" (`revoked_tokens` salía `[oculto]`): es a
+  propósito, se usa otro nombre. Panel: página **`AccountPage`**
+  (`/cuenta`, opción "Mi cuenta" en el menú del usuario, sin permiso
+  especial): datos propios, cambiar la contraseña (errores bajo cada
+  campo) y cerrar las demás sesiones. Tests: `AccountTest` (12: token
+  actual se mantiene y los demás no, contraseña actual obligatoria,
+  validación, throttle, la sesión que cambia sigue y **otra sesión del
+  panel cae** al cambiar la contraseña en otro sitio, cerrar las demás,
+  reseteo por un administrador, el propio por la API de usuarios, 401) y
+  Vitest `AccountPage.test.ts` (4)
 - [ ] 5. Protección del gasto de IA: presupuesto diario por empresa y
   límite por remitente
 - [ ] 6. Revisión de la respuesta antes del envío automático

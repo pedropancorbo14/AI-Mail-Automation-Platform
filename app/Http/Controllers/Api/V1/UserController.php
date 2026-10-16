@@ -13,6 +13,7 @@ use App\Tenancy\TenantService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * Usuarios de la empresa del usuario autenticado. El tenant sale siempre de
@@ -72,6 +73,13 @@ class UserController extends Controller
 
         if ($user->role->name !== $previousRole) {
             $changes['role'] = ['from' => $previousRole, 'to' => $user->role->name];
+        }
+
+        // Contraseña cambiada por otra persona (p. ej. cuenta comprometida): fuera
+        // sus tokens de API; sus sesiones del panel caen solas (AuthenticateSession).
+        if (isset($changes['password'])) {
+            $current = $user->is($request->user()) ? $request->user()->currentAccessToken() : null;
+            $user->tokens()->when($current instanceof PersonalAccessToken, fn ($query) => $query->whereKeyNot($current->getKey()))->delete();
         }
 
         // La contraseña sale como "[oculto]": se sabe que cambió, nunca cuál era ni cuál es.

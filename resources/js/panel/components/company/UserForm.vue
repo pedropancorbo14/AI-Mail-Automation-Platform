@@ -62,7 +62,7 @@ async function submit(): Promise<void> {
             <NSelect v-model:value="form.role" :options="roles" :disabled="isSelf" data-test="role" />
         </NFormItem>
         <NFormItem
-            :label="editing ? 'Nueva contraseña (vacía = no cambiarla)' : 'Contraseña inicial (mínimo 8 caracteres)'"
+            :label="editing ? 'Nueva contraseña (vacía = no cambiarla)' : 'Contraseña inicial (mínimo 10 caracteres)'"
             :feedback="fieldError('password')"
             :validation-status="status('password')"
         >

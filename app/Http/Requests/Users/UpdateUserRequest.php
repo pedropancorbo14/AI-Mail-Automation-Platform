@@ -28,7 +28,7 @@ class UpdateUserRequest extends FormRequest
                 'sometimes', 'required', 'string', 'email', 'max:255',
                 Rule::unique('users', 'email')->ignore($this->route('user')),
             ],
-            'password' => ['sometimes', 'required', 'string', Password::min(8)],
+            'password' => ['sometimes', 'required', 'string', Password::defaults()],
             'role' => ['sometimes', 'required', Rule::in(array_keys(Role::CATALOG))],
         ];
     }

@@ -9,6 +9,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -47,5 +48,12 @@ class AppServiceProvider extends ServiceProvider
         foreach (array_keys(Permission::CATALOG) as $permission) {
             Gate::define($permission, fn (User $user) => $user->hasPermission($permission));
         }
+
+        // Política de contraseñas común (alta, edición y cambio de la propia).
+        // En producción también se rechazan las que aparecen en filtraciones
+        // (Have I Been Pwned por k-anonimato: solo salen 5 caracteres del SHA-1).
+        Password::defaults(fn () => app()->isProduction()
+            ? Password::min(10)->max(128)->uncompromised()
+            : Password::min(10)->max(128));
     }
 }

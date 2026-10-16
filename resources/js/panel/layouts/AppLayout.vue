@@ -13,7 +13,7 @@ import {
     NText,
     type MenuOption,
 } from 'naive-ui';
-import { ChevronDownOutline, LogOutOutline, MailOutline } from '@vicons/ionicons5';
+import { ChevronDownOutline, LogOutOutline, MailOutline, PersonCircleOutline } from '@vicons/ionicons5';
 import { menuEntries, roleLabels, visibleMenu } from '@/menu';
 import { useAuthStore } from '@/stores/auth';
 
@@ -33,10 +33,15 @@ const menuOptions = computed<MenuOption[]>(() =>
 // Sección activa: la de la ruta actual o la de su "padre" (detalle → listado).
 const activeKey = computed(() => route.meta.menu ?? (route.name as string));
 
-const userOptions = [{ label: 'Cerrar sesión', key: 'logout', icon: () => h(NIcon, null, { default: () => h(LogOutOutline) }) }];
+const userOptions = [
+    { label: 'Mi cuenta', key: 'account', icon: () => h(NIcon, null, { default: () => h(PersonCircleOutline) }) },
+    { label: 'Cerrar sesión', key: 'logout', icon: () => h(NIcon, null, { default: () => h(LogOutOutline) }) },
+];
 
 async function onUserAction(key: string): Promise<void> {
-    if (key === 'logout') {
+    if (key === 'account') {
+        await router.push({ name: 'account' });
+    } else if (key === 'logout') {
         await auth.logout();
         await router.push({ name: 'login' });
     }
