@@ -31,9 +31,11 @@ class ReplyContentGuard
 {
     /** Promete una revisión humana: falso si la respuesta sale sola. */
     private const array HUMAN_PROMISES = [
-        '/\b(una|otra) persona (de nuestro equipo )?(revisar|se pondr|te contactar|te escribir|te responder)/iu',
-        '/\b(un|una) (compañer[oa]|agente|miembro del equipo|especialista|responsable) (revisar|se pondr|te contactar|te escribir|te responder)/iu',
-        '/\b(revisaremos|estudiaremos) (tu|su) caso\b/iu',
+        // "una persona de nuestro equipo va a revisar", "una persona del equipo seguirá tu caso"...
+        '/\b(una|otra) persona\b[^.\n]{0,40}?\b(revis|segui|se pondr|contact|te escrib|le escrib|te respond|le respond|atender|gestion|llamar)/iu',
+        '/\b(un|una) (compañer[oa]|agente|miembro|especialista|responsable)\b[^.\n]{0,40}?\b(revis|segui|se pondr|contact|te escrib|le escrib|te respond|le respond|atender|gestion|llamar)/iu',
+        '/\b(revisaremos|estudiaremos|analizaremos) (tu|su) caso\b/iu',
+        '/\bhemos (pasado|trasladado|derivado|escalado|enviado) (tu|su) caso\b/iu',
         '/\b(someone|a (member of our|colleague|team member|specialist|person))\b[^.]{0,40}\b(will|shall) (review|contact|get back|reach out)/iu',
     ];
 

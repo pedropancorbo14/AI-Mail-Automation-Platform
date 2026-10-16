@@ -73,8 +73,22 @@ it('stops replies that promise a person will review the case', function (string 
     'Una persona de nuestro equipo revisará tu caso y te responderá.',
     'Un compañero se pondrá en contacto contigo mañana.',
     'Revisaremos tu caso lo antes posible.',
+    // Frases reales de Claude en la prueba de la Fase 8:
+    'Una persona de nuestro equipo va a revisar tu envío para abrir una incidencia con SEUR.',
+    'Una persona del equipo seguirá tu caso personalmente y te escribirá en cuanto tenga novedades.',
+    'Ya hemos pasado tu caso al equipo de facturación para que revise los cobros con prioridad.',
     'A member of our team will get back to you shortly.',
     'Someone from support will contact you.',
+]);
+
+it('does not confuse normal sentences with a promise of human review', function (string $body) {
+    expect(replyProblems($body))->toBe([]);
+})->with([
+    // Frases de respuestas reales que sí se enviaron solas en la Fase 9:
+    'Si no lo tienes o hay algún problema con el pedido, cuéntanoslo respondiendo a este email y lo revisamos.',
+    'Cuando recibamos y revisemos la silla, te devolveremos el dinero en un plazo máximo de 14 días.',
+    'Hemos revisado tu pedido #45821.',
+    'Un saludo, el equipo de atención al cliente.',
 ]);
 
 it('stops replies that leak internal details', function (string $body, string $marker) {

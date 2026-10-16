@@ -2774,6 +2774,17 @@ arquitectura que impidan regresiones.
   `public/hot` real del contenedor `vite`; HSTS solo con HTTPS).
   **Anotado para la tarea 10/producción:** cookie de sesión sin `secure`
   (`SESSION_SECURE_COOKIE=true` con HTTPS)
+- [x] Fix de la tarea 6 con **respuestas reales**: pasando
+  `ReplyContentGuard` por las 12 propuestas de Claude de la BD de
+  desarrollo, "una persona de nuestro equipo **va a** revisar", "una
+  persona del equipo **seguirá** tu caso" y "hemos **pasado tu caso** al
+  equipo de facturación" no se detectaban. Patrones ampliados (hasta 40
+  caracteres entre "una persona/un compañero/un miembro…" y el verbo;
+  "hemos pasado/derivado/escalado tu caso"): ahora se detectan los 5
+  borradores que lo prometían y **las 5 respuestas que sí se enviaron
+  solas siguen pasando** (sin falsos positivos: "lo revisamos",
+  "revisemos la silla", "Hemos revisado tu pedido"). Frases reales
+  añadidas a los tests
 - [ ] 8. Secretos fuera de los logs
 - [ ] 9. Retención y borrado de datos
 - [ ] 10. Infraestructura: puertos solo en local, contraseñas por defecto
