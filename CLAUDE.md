@@ -2542,8 +2542,30 @@ alertas.
   lanza también con push a ramas **`fase-*`** (antes solo `main` y PR a
   `main`: una rama de fase publicada no pasaba el CI hasta abrir el PR)
 
-**Resumen:** 10 tareas en 10 commits, 937+ tests PHP en verde (Vitest sin
-cambios), alertas probadas con `promtool` (13 casos).
+- [x] **Revisión en local (2026-10-16) y fix de las métricas de colas.**
+  `QueueMetricsSubscriber` contaba con `JobProcessed`/`JobFailed`, pero
+  Laravel solo lanza `JobProcessed` si el trabajo termina **sin
+  excepción**: los reintentos tras una excepción no se contaban como
+  `released` (y su hora de inicio se quedaba en memoria del worker), y un
+  trabajo que se marca fallido con **`$this->fail()`** (lo hacen
+  `ClassifyEmailJob` y `FetchEmailsJob`) se contaba **dos veces** (failed y
+  success). Ahora se usa **`JobAttempted`** (Laravel 13: al final de cada
+  intento, en el worker y en la cola sync, con el estado ya decidido):
+  `hasFailed()` → failed, `isReleased()` → released, si no success. Tests
+  nuevos que fallaban con el código anterior: `fail()` cuenta una sola vez,
+  y con el **worker real** (cola Redis, `queue:work --once --tries=2`) un
+  trabajo que lanza cuenta 1 released y luego 1 failed. En el equipo del
+  usuario: faltaba `composer install` (la dependencia de Prometheus) y en
+  su `.env` `METRICS_TOKEN` y `LOG_STACK=daily,json` (añadidos): con ello
+  los 4 targets de Prometheus **up**, `/metrics` 200 con token y 404 sin
+  él, 11 reglas `ok`, `promtool test rules` SUCCESS, 6 dashboards y
+  datasources con `uid` fijos. **Anotado para la Fase 12:** Prometheus
+  (9090) y Grafana (3000, `admin`/`admin`) se publican en todas las
+  interfaces (desde la Fase 1), y el token de métricas va escrito en
+  `prometheus.yml`
+
+**Resumen:** 10 tareas en 10 commits + 1 fix, 937+ tests PHP en verde
+(Vitest sin cambios), alertas probadas con `promtool` (13 casos).
 **Pendiente para dar la Fase 11 por cerrada:** que el usuario revise la
 rama `fase-11-grafana`, el CI en verde (incluido el job nuevo
 `observability`), la fusione, y la pruebe en su equipo (Docker Desktop):

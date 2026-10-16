@@ -11,7 +11,10 @@ use App\Models\MailSyncState;
 use App\Models\Tenant;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 
 class MetricsFailingJob implements ShouldQueue
 {
@@ -20,6 +23,17 @@ class MetricsFailingJob implements ShouldQueue
     public function handle(): void
     {
         throw new RuntimeException('falla siempre');
+    }
+}
+
+/** Se marca fallido a sí mismo (como ClassifyEmailJob ante un error que no se arregla reintentando). */
+class MetricsSelfFailingJob implements ShouldQueue
+{
+    use Queueable;
+
+    public function handle(): void
+    {
+        $this->fail(new RuntimeException('no tiene arreglo'));
     }
 }
 
@@ -58,7 +72,34 @@ describe('queues', function () {
         } catch (RuntimeException) {
         }
 
-        expect(metricSample('jobs_processed_total', ['job_class' => 'MetricsFailingJob', 'result' => 'failed']))->toBe(1.0);
+        expect(metricSample('jobs_processed_total', ['job_class' => 'MetricsFailingJob', 'result' => 'failed']))->toBe(1.0)
+            ->and(metricSample('jobs_processed_total', ['job_class' => 'MetricsFailingJob', 'result' => 'success']))->toBeNull();
+    });
+
+    it('counts a job that marks itself as failed only once, as failed', function () {
+        MetricsSelfFailingJob::dispatch();
+
+        expect(metricSample('jobs_processed_total', ['job_class' => 'MetricsSelfFailingJob', 'result' => 'failed']))->toBe(1.0)
+            ->and(metricSample('jobs_processed_total', ['job_class' => 'MetricsSelfFailingJob', 'result' => 'success']))->toBeNull();
+    });
+
+    // Con el worker de verdad (cola Redis): es el que reintenta. La cola sync nunca devuelve trabajos.
+    it('counts each retry after an exception and then the final failure', function () {
+        $queue = 'metrics-test-' . Str::lower(Str::random(8));
+        Queue::connection('redis')->pushOn($queue, new MetricsFailingJob());
+        $work = fn () => Artisan::call('queue:work', ['connection' => 'redis', '--queue' => $queue, '--once' => true, '--tries' => 2]);
+
+        $work();
+
+        expect(metricSample('jobs_processed_total', ['job_class' => 'MetricsFailingJob', 'result' => 'released']))->toBe(1.0)
+            ->and(metricSample('jobs_processed_total', ['job_class' => 'MetricsFailingJob', 'result' => 'failed']))->toBeNull();
+
+        $work();
+
+        expect(metricSample('jobs_processed_total', ['job_class' => 'MetricsFailingJob', 'result' => 'released']))->toBe(1.0)
+            ->and(metricSample('jobs_processed_total', ['job_class' => 'MetricsFailingJob', 'result' => 'failed']))->toBe(1.0)
+            ->and(metricSample('jobs_processed_total', ['job_class' => 'MetricsFailingJob', 'result' => 'success']))->toBeNull()
+            ->and(Queue::connection('redis')->size($queue))->toBe(0);
     });
 });
 

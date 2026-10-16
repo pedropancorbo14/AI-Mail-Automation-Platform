@@ -4,14 +4,19 @@ namespace App\Observability;
 
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Events\Dispatcher;
-use Illuminate\Queue\Events\JobFailed;
-use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobAttempted;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Str;
 
 /**
  * Trabajos de cola: cuántos terminan bien, cuántos se devuelven a la cola
  * para reintentar y cuántos fallan definitivamente, y cuánto tardan.
+ *
+ * Se cuenta con JobAttempted, que Laravel lanza al final de CADA intento
+ * (en el worker y en la cola sync) cuando el estado del trabajo ya está
+ * decidido. No sirve JobProcessed: solo llega si el trabajo terminó sin
+ * excepción (los reintentos por excepción no se verían) y también llega
+ * tras un $this->fail() dentro del trabajo (se contaría dos veces).
  */
 class QueueMetricsSubscriber
 {
@@ -27,26 +32,15 @@ class QueueMetricsSubscriber
         $this->started[$this->key($event->job)] = hrtime(true);
     }
 
-    public function processed(JobProcessed $event): void
+    public function attempted(JobAttempted $event): void
     {
-        // Un trabajo que lanzó una excepción y se reintentará también llega aquí, "released".
-        $this->finish($event->job, $event->job->isReleased() ? 'released' : 'success');
-    }
+        $job = $event->job;
+        $result = match (true) {
+            $job->hasFailed() => 'failed',
+            $job->isReleased() => 'released',
+            default => 'success',
+        };
 
-    public function failed(JobFailed $event): void
-    {
-        $this->finish($event->job, 'failed');
-    }
-
-    public function subscribe(Dispatcher $events): void
-    {
-        $events->listen(JobProcessing::class, [$this, 'processing']);
-        $events->listen(JobProcessed::class, [$this, 'processed']);
-        $events->listen(JobFailed::class, [$this, 'failed']);
-    }
-
-    private function finish(Job $job, string $result): void
-    {
         $labels = ['queue' => $job->getQueue() ?? 'none', 'job_class' => Str::afterLast($job->resolveName(), '\\')];
         $this->metrics->increment('jobs_processed_total', $labels + ['result' => $result]);
 
@@ -56,6 +50,12 @@ class QueueMetricsSubscriber
         if ($startedAt !== null && $result !== 'failed') {
             $this->metrics->observe('job_duration_seconds', (hrtime(true) - $startedAt) / 1e9, $labels);
         }
+    }
+
+    public function subscribe(Dispatcher $events): void
+    {
+        $events->listen(JobProcessing::class, [$this, 'processing']);
+        $events->listen(JobAttempted::class, [$this, 'attempted']);
     }
 
     private function key(Job $job): string
