@@ -41,6 +41,9 @@ class Permission extends Model
     /** Ver el registro de auditoría: quién hizo qué en la empresa. */
     public const string AUDIT_VIEW = 'audit.view';
 
+    /** Borrar un email y sus datos (derecho de supresión). */
+    public const string EMAILS_DELETE = 'emails.delete';
+
     /**
      * Catálogo completo (nombre => descripción). Cada permiso se registra
      * como Gate en AppServiceProvider y se guarda en BD con el seeder.
@@ -59,6 +62,7 @@ class Permission extends Model
         self::EMAILS_VIEW => 'Ver los emails y lo que hizo la IA con ellos',
         self::AUTOMATION_MANAGE => 'Configurar la automatización y las herramientas de la IA',
         self::AUDIT_VIEW => 'Ver el registro de auditoría',
+        self::EMAILS_DELETE => 'Borrar emails y sus datos',
     ];
 
     /** @return BelongsToMany<Role, $this> */

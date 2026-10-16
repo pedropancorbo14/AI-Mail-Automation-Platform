@@ -8,6 +8,9 @@ export interface Company {
     name: string;
     slug: string;
     is_active: boolean;
+    /** Días que se conservan los emails; null = los de la plataforma. */
+    email_retention_days: number | null;
+    retention: { email_days: number; platform_email_days: number; min_email_days: number; max_email_days: number };
     created_at: string | null;
 }
 
@@ -33,6 +36,11 @@ export async function getCompany(): Promise<Company> {
 
 export async function renameCompany(name: string): Promise<Company> {
     return (await api.patch<{ data: Company }>('/tenant', { name })).data;
+}
+
+/** null = volver a los días de la plataforma. */
+export async function setEmailRetention(days: number | null): Promise<Company> {
+    return (await api.patch<{ data: Company }>('/tenant', { email_retention_days: days })).data;
 }
 
 export function listUsers(page = 1): Promise<Paginated<CompanyUser>> {

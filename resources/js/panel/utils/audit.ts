@@ -12,6 +12,8 @@ export const categoryLabels: Record<AuditCategory, string> = {
     mail_connection: 'Buzones',
     automation: 'Ajustes de la IA',
     document: 'Documentación',
+    email: 'Emails',
+    retention: 'Retención de datos',
 };
 
 const actionLabels: Record<string, string> = {
@@ -35,6 +37,9 @@ const actionLabels: Record<string, string> = {
     'document.uploaded': 'Subió un documento',
     'document.reindexed': 'Reindexó un documento',
     'document.deleted': 'Eliminó un documento',
+    'email.deleted': 'Borró un email',
+    'retention.emails_purged': 'Borrado automático de emails antiguos',
+    'retention.address_forgotten': 'Borró todos los emails de una persona (derecho de supresión)',
 };
 
 /** Acciones desconocidas (de una versión más nueva) se muestran tal cual. */
@@ -58,6 +63,7 @@ const fieldLabels: Record<string, string> = {
     credentials: 'Credenciales',
     automation_mode: 'Modo',
     auto_send_intents: 'Se envían solas',
+    email_retention_days: 'Conservar los emails (días)',
 };
 
 const valueLabels: Record<string, Record<string, string>> = {
@@ -108,6 +114,8 @@ export function describeMetadata(entry: AuditLogEntry): string[] {
         lines.push('Reconexión de un buzón existente');
     } else if ((entry.action === 'auth.password_changed' || entry.action === 'auth.logout_other_devices') && Number(meta.revoked_count) > 0) {
         lines.push(`Tokens de API revocados: ${meta.revoked_count}`);
+    } else if (entry.action.startsWith('retention.') && meta.emails !== undefined) {
+        lines.push(`Emails borrados: ${meta.emails}${meta.days ? ` (más de ${meta.days} días)` : ''}`);
     } else if (entry.action === 'user.created' && typeof meta.role === 'string') {
         lines.push(`Rol: ${roleLabels[meta.role as keyof typeof roleLabels] ?? meta.role}`);
     }

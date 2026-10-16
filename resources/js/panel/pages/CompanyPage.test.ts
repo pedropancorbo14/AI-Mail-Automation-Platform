@@ -19,7 +19,10 @@ const users = [
 function stubApi(): ReturnType<typeof vi.fn> {
     const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(
         url === '/sanctum/csrf-cookie' ? new Response(null, { status: 204 })
-            : url.startsWith('/api/v1/tenant') ? json({ data: { id: 1, name: 'Acme', slug: 'acme', is_active: true, created_at: null } })
+            : url.startsWith('/api/v1/tenant') ? json({ data: {
+                id: 1, name: 'Acme', slug: 'acme', is_active: true, created_at: null, email_retention_days: null,
+                retention: { email_days: 365, platform_email_days: 365, min_email_days: 30, max_email_days: 3650 },
+            } })
                 : json({ data: users, meta: {} }),
     ));
     vi.stubGlobal('fetch', fetchMock);
@@ -55,6 +58,31 @@ describe('empresa y usuarios', () => {
         expect(rowOf(wrapper, 'Ana (tú)').text()).not.toContain('Eliminar');
         // Sin tenant.update, el nombre de la empresa no se edita.
         expect(wrapper.find('.company__name').exists()).toBe(false);
+    });
+
+    it('el propietario elige cuántos días se conservan los emails', async () => {
+        const fetchMock = stubApi();
+
+        const wrapper = await mountAs('owner', ['tenant.view', 'tenant.update']);
+        expect(wrapper.text()).toContain('Vacío = 365 días');
+
+        await wrapper.find('.company__retention input').setValue('90');
+        await wrapper.find('.company__retention input').trigger('blur');
+        const save = wrapper.findAll('button').find((button) => button.text() === 'Guardar' && !button.element.closest('.company__name'))!;
+        await save.trigger('click');
+        await flushPromises();
+
+        const call = fetchMock.mock.calls.find(([url, init]) => url === '/api/v1/tenant' && init?.method === 'PATCH');
+        expect(JSON.parse(call?.[1].body)).toEqual({ email_retention_days: 90 });
+    });
+
+    it('sin permiso, la retención solo se ve', async () => {
+        stubApi();
+
+        const wrapper = await mountAs('admin', ['tenant.view']);
+
+        expect(wrapper.find('.company__retention').exists()).toBe(false);
+        expect(wrapper.text()).toContain('365 días');
     });
 
     it('un agente solo ve', async () => {

@@ -2657,7 +2657,8 @@ arquitectura que impidan regresiones.
   (propietario y administrador; sembrado en la BD de desarrollo). **`GET
   /api/v1/audit-logs`** (`AuditLogController`, solo lectura: no existe
   ruta para cambiarlo) con filtros validados en `ListAuditLogsRequest`:
-  `category` (auth, user, tenant, mail_connection, automation, document →
+  `category` (auth, user, tenant, mail_connection, automation, document,
+  email, retention →
   `action like 'x.%'`), `user`, `from`/`to`, `per_page` (50 por defecto);
   orden por fecha y luego id. `AuditLogResource`: acción, actor (nombre
   actual o, si ya no existe, el email que tenía), sujeto (tipo, id,
@@ -2805,7 +2806,45 @@ arquitectura que impidan regresiones.
   el JSON de Loki. Tests: `LogRedactionTest` (por nombre, por forma, los
   3 canales escribiendo a fichero con Context incluido, trazas sin
   argumentos)
-- [ ] 9. Retención y borrado de datos
+- [x] 9. **Retención y borrado de datos** (`app/Security/Retention/`).
+  **`EmailEraser::erase($email)`**: borra el email con destinatarios,
+  adjuntos, respuestas e historial (cascade), **los ficheros de los
+  adjuntos** del disco (después del commit; pendiente desde la Fase 4) y
+  **vacía el contenido personal de los registros de IA** sin borrarlos
+  (`ai_requests.response` → null, `ai_tool_calls.arguments` → `{}` y
+  `result` → null, `ai_agent_runs.final_output` → null): tokens, costes y
+  la traza de qué herramientas se usaron se conservan. **Nunca** borra un
+  email en `processing`/`approved` o con una respuesta `sending`.
+  **`RetentionService`**: `pruneEmails($tenant)` (más antiguos que la
+  retención de la empresa), `pruneAuditLogs()` (DELETE directo: el modelo
+  no deja borrar y el trigger solo bloquea UPDATE) y
+  `forgetAddress($tenant, $email)` (**derecho de supresión**: todos los
+  emails donde la dirección es remitente o destinataria, sin distinguir
+  mayúsculas). `config/retention.php`: `emails_days`
+  (`RETENTION_EMAILS_DAYS`, 365; 0 = sin límite), límites por empresa
+  30–3650 y `audit_days` (`RETENTION_AUDIT_DAYS`, 730). Columna
+  **`tenants.email_retention_days`** (null = la de la plataforma) que **el
+  propietario** cambia con `PATCH /tenant` (`tenant.update`; `name` pasa a
+  `sometimes`) y que se ve en `TenantResource` (`retention`: días
+  aplicados, de la plataforma y límites). Comandos **`data:prune`**
+  (programado **cada día a las 03:30**, `withoutOverlapping`) y
+  **`data:forget-address <empresa> <email> [--force]`** (sin `--force` solo
+  cuenta); además `queue:prune-failed --hours=720` diario. Permiso nuevo
+  **`emails.delete`** (propietario y administrador; sembrado) y **`DELETE
+  /api/v1/emails/{id}`** (409 si está en marcha). Auditoría
+  (`email.deleted`, `retention.emails_purged`,
+  `retention.address_forgotten`) **sin datos del cliente**: del email
+  borrado solo el dominio del remitente y la fecha; de la dirección
+  olvidada, su SHA-256; categorías nuevas `email` y `retention` en el
+  filtro. Panel: botón **"Borrar"** con confirmación en el detalle del
+  email (con el permiso) y **"Conservar los emails (días)"** en Empresa y
+  usuarios (solo lectura sin `tenant.update`). Comprobado en la BD de
+  desarrollo: `data:prune` no borra nada (nada tiene más de 365 días) y
+  `schedule:list` muestra las dos tareas nuevas. Tests: `RetentionTest`
+  (11: borrado completo conservando costes, emails en marcha, retención
+  por empresa / sin límite, auditoría antigua, supresión por dirección,
+  API con permisos, 404/409, retención desde la API) y Vitest
+  (`CompanyPage`: el propietario la cambia, sin permiso solo se ve)
 - [ ] 10. Infraestructura: puertos solo en local, contraseñas por defecto
 - [ ] 11. Tests de arquitectura y auditoría de dependencias en el CI
 - [ ] 12. Prueba de ataques en el stack, README
@@ -2857,8 +2896,8 @@ arquitectura que impidan regresiones.
     error no temporal (bug, dato imposible de guardar), el cursor no
     avanza y el buzón se queda atascado (`consecutive_failures` crece).
     Alertar en Fase 11 y valorar saltarlo tras N intentos.
-  - Borrar un email borra sus filas (cascade) pero no los ficheros de
-    adjuntos del disco: limpieza con la retención de la Fase 12.
+  - ~~Borrar un email no borraba los ficheros de adjuntos~~: **hecho en la
+    Fase 12, tarea 9** (`EmailEraser`).
   - IMAP: si UIDVALIDITY cambia entre guardar un email y descargar sus
     adjuntos (reintento), el UID guardado puede apuntar a otro mensaje.
     Muy improbable; revisar si aparece.

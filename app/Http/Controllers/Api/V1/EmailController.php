@@ -10,7 +10,11 @@ use App\Mail\Enums\AttachmentStatus;
 use App\Mail\Support\HtmlSanitizer;
 use App\Models\Email;
 use App\Models\EmailAttachment;
+use App\Security\Audit\AuditLogger;
+use App\Security\Retention\EmailEraser;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
@@ -92,5 +96,28 @@ class EmailController extends Controller
             'Content-Type' => 'application/octet-stream',
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    /**
+     * Borra el email con sus adjuntos, respuestas e historial, y vacía el
+     * contenido de sus registros de IA (derecho de supresión). En la
+     * auditoría no queda ni el asunto ni el remitente: solo su dominio.
+     */
+    public function destroy(Email $email, EmailEraser $eraser, AuditLogger $audit): Response
+    {
+        Gate::authorize('delete', $email);
+
+        if (EmailEraser::isBusy($email)) {
+            abort(409, 'El email se está procesando o enviando: inténtalo en unos minutos.');
+        }
+
+        $audit->record('email.deleted', $email, "Email #{$email->id}", metadata: [
+            'from_domain' => $email->from_email ? Str::after($email->from_email, '@') : null,
+            'received_at' => $email->created_at?->toIso8601String(),
+            'status' => $email->status->value,
+        ]);
+        $eraser->erase($email);
+
+        return response()->noContent();
     }
 }

@@ -34,12 +34,15 @@ class TenantController extends Controller
         $tenant = $this->tenancy->currentOrFail();
         Gate::authorize('update', $tenant);
 
-        // El slug y el estado (is_active) no los cambia la propia empresa.
-        $tenant->update($request->validate([
-            'name' => ['required', 'string', 'max:255'],
-        ]));
+        // El slug, el estado (is_active) y el presupuesto de IA no los cambia la propia empresa.
+        $data = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            // Días que se conservan los emails; null = los de la plataforma.
+            'email_retention_days' => ['sometimes', 'nullable', 'integer', 'min:' . config('retention.min_email_days'), 'max:' . config('retention.max_email_days')],
+        ]);
+        $tenant->forceFill($data)->save();
 
-        if ($changes = AuditLogger::changesOf($tenant, ['name'])) {
+        if ($changes = AuditLogger::changesOf($tenant, ['name', 'email_retention_days'])) {
             $this->audit->record('tenant.updated', $tenant, $tenant->name, $changes);
         }
 

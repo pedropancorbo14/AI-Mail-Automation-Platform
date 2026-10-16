@@ -11,14 +11,16 @@ import {
     NDrawerContent,
     NInput,
     NInputGroup,
+    NInputNumber,
     NPopconfirm,
     NSpace,
     NTag,
+    NText,
     useMessage,
     type DataTableColumns,
 } from 'naive-ui';
 import { ApiError } from '@/api/http';
-import { deleteUser, getCompany, listUsers, renameCompany, type Company, type CompanyUser } from '@/api/company';
+import { deleteUser, getCompany, listUsers, renameCompany, setEmailRetention, type Company, type CompanyUser } from '@/api/company';
 import UserForm from '@/components/company/UserForm.vue';
 import { roleLabels } from '@/menu';
 import { formatDateTime } from '@/utils/format';
@@ -32,6 +34,8 @@ const name = ref('');
 const users = ref<CompanyUser[]>([]);
 const error = ref<string | null>(null);
 const savingName = ref(false);
+const retentionDays = ref<number | null>(null);
+const savingRetention = ref(false);
 const drawer = ref<{ open: boolean; user: CompanyUser | null }>({ open: false, user: null });
 
 // Solo un propietario edita o borra a otro propietario (la API lo vuelve a comprobar).
@@ -50,6 +54,20 @@ async function saveName(): Promise<void> {
         message.error(e instanceof ApiError ? (e.fieldError('name') ?? e.message) : 'No se pudo guardar.');
     } finally {
         savingName.value = false;
+    }
+}
+
+async function saveRetention(): Promise<void> {
+    savingRetention.value = true;
+
+    try {
+        company.value = await setEmailRetention(retentionDays.value);
+        retentionDays.value = company.value.email_retention_days;
+        message.success(`Los emails se conservarán ${company.value.retention.email_days} días.`);
+    } catch (e) {
+        message.error(e instanceof ApiError ? (e.fieldError('email_retention_days') ?? e.message) : 'No se pudo guardar.');
+    } finally {
+        savingRetention.value = false;
     }
 }
 
@@ -74,6 +92,7 @@ onMounted(async () => {
     try {
         company.value = await getCompany();
         name.value = company.value.name;
+        retentionDays.value = company.value.email_retention_days;
 
         if (auth.can('users.view')) {
             users.value = (await listUsers()).data;
@@ -120,6 +139,26 @@ const columns = computed<DataTableColumns<CompanyUser>>(() => [
                     </NInputGroup>
                     <span v-else>{{ company.name }}</span>
                 </NDescriptionsItem>
+                <NDescriptionsItem label="Conservar los emails">
+                    <NSpace v-if="auth.can('tenant.update')" align="center" :size="8">
+                        <NInputNumber
+                            v-model:value="retentionDays"
+                            :min="company.retention.min_email_days"
+                            :max="company.retention.max_email_days"
+                            :placeholder="String(company.retention.platform_email_days)"
+                            clearable
+                            class="company__retention"
+                        >
+                            <template #suffix>días</template>
+                        </NInputNumber>
+                        <NButton :loading="savingRetention" :disabled="retentionDays === company.email_retention_days" @click="saveRetention">Guardar</NButton>
+                    </NSpace>
+                    <span v-else>{{ company.retention.email_days }} días</span>
+                    <NText depth="3" class="company__hint">
+                        Pasado ese plazo se borran solos, con sus adjuntos y respuestas (los costes de IA se conservan).
+                        Vacío = {{ company.retention.platform_email_days }} días, lo de la plataforma.
+                    </NText>
+                </NDescriptionsItem>
                 <NDescriptionsItem label="Identificador">{{ company.slug }}</NDescriptionsItem>
                 <NDescriptionsItem label="Alta">{{ formatDateTime(company.created_at) }}</NDescriptionsItem>
             </NDescriptions>
@@ -141,6 +180,16 @@ const columns = computed<DataTableColumns<CompanyUser>>(() => [
 </template>
 
 <style scoped>
+.company__retention {
+    width: 160px;
+}
+
+.company__hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+}
+
 .company__name {
     max-width: 420px;
 }

@@ -26,4 +26,13 @@ class EmailPolicy
 
         return $actor->hasPermission(Permission::EMAILS_VIEW) ? Response::allow() : Response::deny();
     }
+
+    public function delete(User $actor, Email $email): Response
+    {
+        if ($actor->tenant_id !== $email->tenant_id) {
+            return Response::denyAsNotFound();
+        }
+
+        return $actor->hasPermission(Permission::EMAILS_DELETE) ? Response::allow() : Response::deny();
+    }
 }

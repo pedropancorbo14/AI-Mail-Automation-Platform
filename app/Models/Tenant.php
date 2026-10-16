@@ -32,6 +32,7 @@ class Tenant extends Model
             'auto_send_intents' => 'array',
             // Lo fija el operador (ai:budget), nunca la propia empresa: no es asignable en masa.
             'ai_daily_budget_usd' => 'decimal:2',
+            'email_retention_days' => 'integer',
         ];
     }
 

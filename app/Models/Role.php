@@ -39,6 +39,7 @@ class Role extends Model
             Permission::EMAILS_VIEW,
             Permission::AUTOMATION_MANAGE,
             Permission::AUDIT_VIEW,
+            Permission::EMAILS_DELETE,
         ],
         self::ADMIN => [
             Permission::USERS_VIEW,
@@ -53,6 +54,7 @@ class Role extends Model
             Permission::EMAILS_VIEW,
             Permission::AUTOMATION_MANAGE,
             Permission::AUDIT_VIEW,
+            Permission::EMAILS_DELETE,
         ],
         self::AGENT => [
             Permission::USERS_VIEW,

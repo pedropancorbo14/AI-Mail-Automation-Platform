@@ -21,6 +21,11 @@ export async function getEmail(id: number): Promise<EmailDetail> {
     return (await api.get<{ data: EmailDetail }>(`/emails/${id}`)).data;
 }
 
+/** Borra el email con sus adjuntos, respuestas e historial (derecho de supresión). */
+export function deleteEmail(id: number): Promise<void> {
+    return api.delete<void>(`/emails/${id}`);
+}
+
 /** HTML del email ya saneado por el servidor (null si solo tiene texto). */
 export async function getEmailHtml(id: number): Promise<{ html: string | null; remote_images: boolean }> {
     return (await api.get<{ data: { html: string | null; remote_images: boolean } }>(`/emails/${id}/html`)).data;

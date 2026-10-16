@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
     NAlert,
     NButton,
@@ -12,6 +12,7 @@ import {
     NGridItem,
     NIcon,
     NPageHeader,
+    NPopconfirm,
     NResult,
     NSkeleton,
     NSpace,
@@ -19,10 +20,12 @@ import {
     NText,
     NTimeline,
     NTimelineItem,
+    useMessage,
 } from 'naive-ui';
 import { ArrowBackOutline } from '@vicons/ionicons5';
 import { ApiError } from '@/api/http';
-import { getEmail } from '@/api/emails';
+import { deleteEmail, getEmail } from '@/api/emails';
+import { useAuthStore } from '@/stores/auth';
 import type { EmailDetail } from '@/api/types';
 import AgentTrace from '@/components/email/AgentTrace.vue';
 import EmailBody from '@/components/email/EmailBody.vue';
@@ -31,6 +34,10 @@ import { formatAddress, formatDateTime, formatPercent } from '@/utils/format';
 import { intentLabels, sentimentLabels, statusLabels, statusTagTypes, urgencyLabels } from '@/utils/labels';
 
 const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
+const message = useMessage();
+const deleting = ref(false);
 
 const email = ref<EmailDetail | null>(null);
 const error = ref<ApiError | null>(null);
@@ -51,6 +58,20 @@ async function load(id: number): Promise<void> {
 }
 
 watch(() => Number(route.params.id), load, { immediate: true });
+
+async function remove(): Promise<void> {
+    deleting.value = true;
+
+    try {
+        await deleteEmail(email.value!.id);
+        message.success('Email borrado.');
+        await router.push({ name: 'emails' });
+    } catch (e) {
+        message.error(e instanceof ApiError ? e.message : 'No se pudo borrar el email.');
+    } finally {
+        deleting.value = false;
+    }
+}
 
 // La propuesta más reciente (el agente puede haberse ejecutado varias veces).
 const reply = computed(() => email.value?.replies[0] ?? null);
@@ -78,6 +99,12 @@ const addresses = (list: { email: string | null; name: string | null }[]) => lis
                 <NSpace size="small">
                     <NTag v-if="email.intent" :bordered="false">{{ intentLabels[email.intent] }} · {{ formatPercent(email.intent_confidence) }}</NTag>
                     <NTag :type="statusTagTypes[email.status]" data-test="email-status">{{ statusLabels[email.status] }}</NTag>
+                    <NPopconfirm v-if="auth.can('emails.delete')" positive-text="Borrar" negative-text="Cancelar" @positive-click="remove">
+                        <template #trigger>
+                            <NButton size="small" type="error" secondary :loading="deleting" data-test="email-delete">Borrar</NButton>
+                        </template>
+                        Se borrará el email con sus adjuntos, la respuesta propuesta y su historial. No se puede deshacer.
+                    </NPopconfirm>
                 </NSpace>
             </template>
             <NDescriptions :column="2" label-placement="left" size="small">

@@ -60,6 +60,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     // Emails recibidos y lo que hizo la IA con ellos (panel, Fase 10).
     Route::get('/emails', [EmailController::class, 'index']);
     Route::get('/emails/{email}', [EmailController::class, 'show']);
+    Route::delete('/emails/{email}', [EmailController::class, 'destroy']);
     Route::get('/emails/{email}/html', [EmailController::class, 'html']);
     // El adjunto tiene que ser de ese email (scopeBindings).
     Route::get('/emails/{email}/attachments/{attachment}', [EmailController::class, 'attachment'])->scopeBindings();
