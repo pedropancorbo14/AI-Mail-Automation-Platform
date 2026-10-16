@@ -30,6 +30,8 @@ class Tenant extends Model
             'is_active' => 'boolean',
             'automation_mode' => AutomationMode::class,
             'auto_send_intents' => 'array',
+            // Lo fija el operador (ai:budget), nunca la propia empresa: no es asignable en masa.
+            'ai_daily_budget_usd' => 'decimal:2',
         ];
     }
 

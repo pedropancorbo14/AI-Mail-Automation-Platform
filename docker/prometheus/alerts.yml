@@ -115,3 +115,13 @@ groups:
         annotations:
           summary: "La IA ha gastado {{ $value | printf \"%.2f\" }} $ en la última hora"
           description: "Por encima de 5 $/h. Revisar el dashboard Costes (por empresa y modelo) por si hay un bucle o un pico anómalo."
+
+      - alert: IAFrenadaPorLimites
+        expr: |
+          sum by (tenant, reason) (increase(aimail_ai_guard_blocks_total[15m])) > 0
+          or sum by (tenant, reason) (aimail_ai_guard_blocks_total unless aimail_ai_guard_blocks_total offset 15m) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.tenant }}: emails sin IA por límite de gasto ({{ $labels.reason }})"
+          description: "budget = la empresa agotó su presupuesto diario (ver ai:budget); sender = un remitente supera el máximo de emails en 24 h (¿inundación o bucle con otro sistema?). Esos emails los atiende una persona."

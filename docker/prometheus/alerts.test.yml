@@ -203,3 +203,24 @@ tests:
             exp_annotations:
               summary: "3 emails de nueva han pasado a error en 15 min"
               description: "Revisar en el panel los emails con estado Error (motivo en su historial) y reprocesarlos con ai:process --failed."
+
+  # Límites de gasto: una empresa agota el presupuesto (primera aparición de
+  # la serie) y deja de alertar 15 min después del último bloqueo.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_ai_guard_blocks_total{job="laravel", instance="nginx:80", tenant="acme", reason="budget"}'
+        values: "_ _ 1 2 2 2x20"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: IAFrenadaPorLimites
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: IAFrenadaPorLimites
+        exp_alerts:
+          - exp_labels: { severity: warning, tenant: acme, reason: budget }
+            exp_annotations:
+              summary: "acme: emails sin IA por límite de gasto (budget)"
+              description: "budget = la empresa agotó su presupuesto diario (ver ai:budget); sender = un remitente supera el máximo de emails en 24 h (¿inundación o bucle con otro sistema?). Esos emails los atiende una persona."
+      - eval_time: 25m
+        alertname: IAFrenadaPorLimites
+        exp_alerts: []

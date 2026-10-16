@@ -54,6 +54,7 @@ class Metrics
         'ai_agent_runs_total' => ['type' => 'counter', 'help' => 'Ejecuciones del agente por motivo de fin.', 'labels' => ['tenant', 'status', 'stop_reason']],
         'ai_agent_run_duration_seconds' => ['type' => 'histogram', 'help' => 'Duración de las ejecuciones del agente.', 'labels' => ['stop_reason'], 'buckets' => self::SECONDS],
         'ai_agent_replies_total' => ['type' => 'counter', 'help' => 'Propuestas de respuesta del agente y si necesitan una persona.', 'labels' => ['tenant', 'needs_human']],
+        'ai_guard_blocks_total' => ['type' => 'counter', 'help' => 'Emails enviados a una persona sin IA por superar un límite de gasto (budget = presupuesto diario, sender = remitente).', 'labels' => ['tenant', 'reason']],
 
         // --- Plataforma ---
         'http_requests_total' => ['type' => 'counter', 'help' => 'Peticiones HTTP atendidas.', 'labels' => ['method', 'route', 'status']],

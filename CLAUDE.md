@@ -2702,8 +2702,31 @@ arquitectura que impidan regresiones.
   panel cae** al cambiar la contraseña en otro sitio, cerrar las demás,
   reseteo por un administrador, el propio por la API de usuarios, 401) y
   Vitest `AccountPage.test.ts` (4)
-- [ ] 5. Protección del gasto de IA: presupuesto diario por empresa y
-  límite por remitente
+- [x] 5. **Protección del gasto de IA** (`App\Security\AiSpendGuard`, en
+  `EmailProcessor` justo antes de clasificar): sin ella, inundar un buzón
+  (o un bucle con otro sistema) haría pagar clasificación + agente por
+  cada correo. Superado un límite, el email va a **revisión humana sin
+  llamar a la IA** con el motivo en el historial: **presupuesto diario
+  por empresa** (suma de `ai_requests.cost_usd` desde las 00:00 de la zona
+  horaria de la app; `ai.limits.tenant_daily_budget_usd`,
+  `AI_TENANT_DAILY_BUDGET_USD`, 10 $ por defecto, vacío = sin límite; es un
+  freno, no un tope exacto: un email en marcha termina, y cada uno ya
+  tiene su `ai.agent.max_cost_usd`) y **emails de un mismo remitente que
+  pasaron por la IA en 24 h** (`max_ai_emails_per_sender_per_day`,
+  `AI_MAX_EMAILS_PER_SENDER`, 20; sin distinguir mayúsculas, con índice
+  funcional `(tenant_id, lower(from_email), created_at)`; los ya frenados
+  no cuentan, así se recupera solo). Columna
+  **`tenants.ai_daily_budget_usd`** (null = el de la plataforma; **la fija
+  el operador**, no la empresa: no es asignable ni está en la API) y
+  comando **`php artisan ai:budget <empresa> [--daily=25|default]`**
+  (presupuesto, origen, gastado hoy, disponible). Métrica
+  `ai_guard_blocks_total` {tenant, reason = budget|sender} y alerta
+  **`IAFrenadaPorLimites`** (con prueba en `alerts.test.yml`, incluida la
+  primera aparición de la serie). Tests: `AiSpendGuardTest` (7: sin
+  presupuesto no llama a la IA, solo cuenta hoy y la propia empresa,
+  presupuesto propio o ninguno, remitente que inunda sin distinguir
+  mayúsculas, qué no cuenta, comando, la empresa no puede cambiarlo por
+  la API)
 - [ ] 6. Revisión de la respuesta antes del envío automático
 - [ ] 7. Cabeceras de seguridad (panel y API)
 - [ ] 8. Secretos fuera de los logs

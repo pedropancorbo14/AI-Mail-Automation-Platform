@@ -12,6 +12,7 @@ use App\AI\Exceptions\LLMException;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
 use App\Models\EmailReply;
+use App\Security\AiSpendGuard;
 use App\Tenancy\TenantService;
 use Illuminate\Support\Facades\Log;
 use LogicException;
@@ -26,8 +27,10 @@ use Throwable;
  *                                                       ↘ human_review
  *
  * Cada paso queda en el historial de estados con su motivo. Solo se gasta
- * IA cuando sirve: los correos automáticos, las empresas sin IA y los
- * emails con sospecha de prompt injection no llegan al agente. Se ejecuta
+ * IA cuando sirve: los correos automáticos, las empresas sin IA o que han
+ * agotado su presupuesto diario, los remitentes que inundan el buzón
+ * (AiSpendGuard) y los emails con sospecha de prompt injection no llegan
+ * al agente. Se ejecuta
  * dentro del tenant del email.
  */
 class EmailProcessor
@@ -38,6 +41,7 @@ class EmailProcessor
         private readonly AutoSendPolicy $policy,
         private readonly ReplySender $sender,
         private readonly TenantService $tenants,
+        private readonly AiSpendGuard $spendGuard,
     ) {
     }
 
@@ -126,6 +130,12 @@ class EmailProcessor
 
         if (! AIService::enabled()) {
             $email->transitionTo(EmailStatus::HumanReview, 'La IA no está configurada (falta ANTHROPIC_API_KEY): lo atiende una persona.');
+
+            return;
+        }
+
+        if ($reason = $this->spendGuard->blockReason($email)) {
+            $email->transitionTo(EmailStatus::HumanReview, $reason);
 
             return;
         }

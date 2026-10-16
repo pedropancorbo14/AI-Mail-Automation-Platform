@@ -165,6 +165,19 @@ return [
         'max_auto_replies_per_address' => (int) env('AI_MAX_AUTO_REPLIES_PER_ADDRESS', 3),
     ],
 
+    // Freno del gasto (App\Security\AiSpendGuard): superado un límite, el
+    // email va a revisión humana sin llamar a la IA.
+    'limits' => [
+        // Presupuesto diario por empresa en USD (desde las 00:00 de la zona
+        // horaria de la app). Vacío = sin límite. Una empresa puede tener
+        // otro (ai:budget <empresa> --daily=...).
+        'tenant_daily_budget_usd' => ($budget = env('AI_TENANT_DAILY_BUDGET_USD', 10)) === null || $budget === '' ? null : (float) $budget,
+
+        // Emails de una misma dirección que pasan por la IA en 24 h (contra
+        // inundaciones y bucles con otros sistemas). 0 = sin límite.
+        'max_ai_emails_per_sender_per_day' => (int) env('AI_MAX_EMAILS_PER_SENDER', 20),
+    ],
+
     'classification' => [
         // Esfuerzo de razonamiento: clasificar es sencillo → "low" (menos tokens y latencia).
         'effort' => env('AI_CLASSIFICATION_EFFORT', 'low'),
