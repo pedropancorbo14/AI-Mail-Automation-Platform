@@ -2937,7 +2937,7 @@ arquitectura que impidan regresiones.
   (5 endpoints nuevos o ampliados), tests, CI, problemas frecuentes;
   secciones siguientes renumeradas (API = #15)
 
-**Resumen:** 12 tareas en 15 commits (12 + 3 fixes encontrados al probar
+**Resumen:** 12 tareas en 14 commits (12 + 2 fixes encontrados al probar
 con datos reales y ataques), 1078+ tests PHP + 65 Vitest en verde.
 **Pendiente para dar la Fase 12 por cerrada:** push (lo hace el usuario) y
 GitHub Actions en verde (ahora también con `composer audit` y `npm
