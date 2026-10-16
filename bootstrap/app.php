@@ -37,6 +37,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(App\Http\Middleware\AssignRequestId::class);
         $middleware->append(App\Http\Middleware\RecordHttpMetrics::class);
 
+        // Seguridad (Fase 12): cabeceras y CSP en todas las respuestas.
+        $middleware->append(App\Http\Middleware\SecurityHeaders::class);
+
         // El tenant debe estar fijado antes del route model binding: los
         // modelos con BelongsToTenant no se pueden consultar sin tenant.
         $middleware->prependToPriorityList(

@@ -2751,7 +2751,29 @@ arquitectura que impidan regresiones.
   `ReplyContentGuardTest` (24 casos) y fixtures de
   `AutoSendPolicyTest`/`AutomationEndToEndTest` hechos realistas (antes
   proponían datos que no salían de ningún sitio y el guardián los paraba)
-- [ ] 7. Cabeceras de seguridad (panel y API)
+- [x] 7. **Cabeceras de seguridad.** Middleware global
+  `App\Http\Middleware\SecurityHeaders` (en `bootstrap/app.php`):
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`
+  (sin cámara, micrófono, ubicación, pagos, USB), `Cross-Origin-Opener-
+  Policy: same-origin`, **HSTS solo si la petición llegó por HTTPS**, fuera
+  `X-Powered-By`. **CSP**: respuestas no HTML (API, métricas) →
+  `default-src 'none'; frame-ancestors 'none'`; **panel** → solo el propio
+  origen (`script-src 'self'`, `connect-src 'self'`, `img-src 'self'
+  data:`, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors
+  'none'`; `style-src` con `'unsafe-inline'` porque Naive UI inyecta sus
+  estilos en tiempo de ejecución), y **solo mientras Vite está en marcha**
+  (`public/hot`) se añade su servidor (http y ws, para HMR); **Horizon sin
+  CSP** (tiene scripts en línea; solo lo ve el operador). nginx:
+  `server_tokens off` y `fastcgi_hide_header X-Powered-By` (ya no se
+  anuncian versiones; **reiniciar nginx** para aplicarlo). Revisado con
+  Chromium: las 9 páginas del panel, incluido el iframe con el HTML del
+  email, sin errores de CSP en la consola. Tests: `SecurityHeadersTest`
+  (cabeceras en panel, API, 404 y métricas; CSP de la API y del panel;
+  Vite solo en desarrollo, con un doble de `Vite` para no tocar el
+  `public/hot` real del contenedor `vite`; HSTS solo con HTTPS).
+  **Anotado para la tarea 10/producción:** cookie de sesión sin `secure`
+  (`SESSION_SECURE_COOKIE=true` con HTTPS)
 - [ ] 8. Secretos fuera de los logs
 - [ ] 9. Retención y borrado de datos
 - [ ] 10. Infraestructura: puertos solo en local, contraseñas por defecto
