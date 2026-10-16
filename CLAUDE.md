@@ -2727,7 +2727,30 @@ arquitectura que impidan regresiones.
   presupuesto propio o ninguno, remitente que inunda sin distinguir
   mayúsculas, qué no cuenta, comando, la empresa no puede cambiarlo por
   la API)
-- [ ] 6. Revisión de la respuesta antes del envío automático
+- [x] 6. **Revisión del texto antes del envío automático**
+  (`App\Security\ReplyContentGuard`, usado por `AutoSendPolicy`: sus
+  problemas se suman a los motivos). Las reglas miraban intención,
+  confianza y destinatario, pero no lo que la IA había escrito.
+  Comprobaciones **deterministas, sin coste de IA**, contra lo que la IA
+  tenía delante: "datos de la empresa" = resultados **con éxito** de las
+  herramientas de esa ejecución (`ai_tool_calls` de sus `ai_requests`) +
+  dominios de sus buzones; "pruebas" = eso + el email del cliente. A
+  revisión humana si: está vacía o pasa de `ai.automation.
+  max_auto_reply_chars` (3000, `AI_MAX_AUTO_REPLY_CHARS`); **promete que
+  una persona revisará el caso** (es/en; la incoherencia anotada en la
+  Fase 8: cierta solo si va a revisión); contiene **detalles internos**
+  (nombres de herramientas, `<email>`, `<documentacion>`, `<fuente`,
+  "instrucciones del sistema", `[oculto]`); **enlaces** cuyo dominio no es
+  de un buzón de la empresa ni sale de sus datos (**los del email del
+  cliente no valen**: una inyección podría hacer que la empresa reenvíe
+  phishing con su nombre); **direcciones de email** que no son del
+  cliente, de la empresa ni de sus datos; **números de pedido** ("pedido
+  nº X", "order #X", "#X") o **importes con moneda** que no aparecen en
+  las pruebas (alucinaciones; importes normalizados: "1.349,50" =
+  "1349.5" = "1,349.50"). Nunca reescribe la respuesta. Tests:
+  `ReplyContentGuardTest` (24 casos) y fixtures de
+  `AutoSendPolicyTest`/`AutomationEndToEndTest` hechos realistas (antes
+  proponían datos que no salían de ningún sitio y el guardián los paraba)
 - [ ] 7. Cabeceras de seguridad (panel y API)
 - [ ] 8. Secretos fuera de los logs
 - [ ] 9. Retención y borrado de datos

@@ -9,6 +9,7 @@ use App\Mail\Support\AutomatedMessageDetector;
 use App\Models\Email;
 use App\Models\EmailReply;
 use App\Models\MailConnection;
+use App\Security\ReplyContentGuard;
 use Illuminate\Support\Str;
 
 /**
@@ -19,8 +20,10 @@ use Illuminate\Support\Str;
  */
 class AutoSendPolicy
 {
-    public function __construct(private readonly ReplySender $sender)
-    {
+    public function __construct(
+        private readonly ReplySender $sender,
+        private readonly ReplyContentGuard $contentGuard,
+    ) {
     }
 
     public function check(Email $email, EmailReply $reply): AutoSendDecision
@@ -55,6 +58,7 @@ class AutoSendPolicy
         }
 
         array_push($reasons, ...$this->recipientReasons($email));
+        array_push($reasons, ...$this->contentGuard->problems($email, $reply));
 
         return new AutoSendDecision($reasons);
     }

@@ -18,6 +18,8 @@ beforeEach(function () {
         $email = Email::factory()->create([
             'mail_connection_id' => MailConnection::factory()->create(['email' => 'soporte@empresa.test']),
             'from_email' => 'cliente@cliente.test',
+            // La respuesta de draftReply() cita el pedido: tiene que salir de algún sitio (ReplyContentGuard).
+            'text_body' => '¿Dónde está mi pedido 45821?',
         ]);
         $email->forceFill(['intent' => EmailIntent::OrderStatus, 'classified_at' => now()])->save();
 

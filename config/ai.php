@@ -163,6 +163,10 @@ return [
         // Anti-bucles: respuestas automáticas máximas a una misma dirección
         // en 24 h. A partir de ahí, las siguientes las revisa una persona.
         'max_auto_replies_per_address' => (int) env('AI_MAX_AUTO_REPLIES_PER_ADDRESS', 3),
+
+        // Una respuesta más larga no sale sola (ReplyContentGuard): las
+        // respuestas seguras son cortas; un texto enorme suele ser un error.
+        'max_auto_reply_chars' => (int) env('AI_MAX_AUTO_REPLY_CHARS', 3000),
     ],
 
     // Freno del gasto (App\Security\AiSpendGuard): superado un límite, el

@@ -73,7 +73,7 @@ it('answers a customer on its own through a real mailbox, in the same thread', f
     customerWrites('Envíos a Canarias', 'consulta-canarias@cliente.test');
     $this->llm->respondWith(
         classificationData(['intent' => 'product_question']),
-        agentReplyData(['reply_body' => "Hola:\n\nSí, enviamos a Canarias: 14,95 €, de 5 a 7 días laborables.\n\nUn saludo,\nEl equipo de atención al cliente", 'sources' => [['type' => 'document', 'reference' => 'Envíos y entregas, sección «Coste del envío»']]]),
+        agentReplyData(['reply_body' => "Hola:\n\nSí, enviamos a Canarias, de 5 a 7 días laborables.\n\nUn saludo,\nEl equipo de atención al cliente", 'sources' => [['type' => 'document', 'reference' => 'Envíos y entregas, sección «Coste del envío»']]]),
     );
 
     $this->artisan('mail:sync')->assertSuccessful();
@@ -92,7 +92,7 @@ it('answers a customer on its own through a real mailbox, in the same thread', f
         ->and($inbox[0]->from->name)->toBe('Soporte Acme')
         ->and($inbox[0]->inReplyTo)->toBe('consulta-canarias@cliente.test')
         ->and($inbox[0]->references)->toBe(['consulta-canarias@cliente.test'])
-        ->and($inbox[0]->textBody)->toContain('14,95 €')
+        ->and($inbox[0]->textBody)->toContain('de 5 a 7 días laborables')
         // La respuesta lleva Auto-Submitted: nuestro propio detector la reconoce como automática.
         ->and($inbox[0]->automatedReason)->toContain('auto-replied');
 
@@ -102,7 +102,7 @@ it('answers a customer on its own through a real mailbox, in the same thread', f
 
 it('does not fall into a loop with the customer auto-responder', function () {
     customerWrites('Envíos a Canarias', 'consulta-canarias@cliente.test');
-    $this->llm->respondWith(classificationData(['intent' => 'product_question']), agentReplyData());
+    $this->llm->respondWith(classificationData(['intent' => 'product_question']), agentReplyData(['reply_body' => "Hola:\n\nSí, enviamos a Canarias.\n\nUn saludo"]));
     $this->artisan('mail:sync')->assertSuccessful();
 
     // El cliente está de vacaciones: su sistema contesta solo a nuestra respuesta.
