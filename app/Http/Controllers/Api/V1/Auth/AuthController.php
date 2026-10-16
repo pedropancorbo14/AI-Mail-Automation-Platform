@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
+use App\Models\User;
+use App\Security\Audit\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -13,15 +15,20 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
+    public function __construct(private readonly AuditLogger $audit)
+    {
+    }
+
     public function login(LoginRequest $request): JsonResponse
     {
         $user = $request->authenticate();
 
         if (! $user->tenant->is_active) {
-            return response()->json(['message' => 'La empresa está desactivada.'], 403);
+            return $this->blocked($user, 'token');
         }
 
         $token = $user->createToken($request->input('device_name') ?? 'api');
+        $this->audit->record('auth.login', $user, $user->email, metadata: ['method' => 'token', 'device_name' => $token->accessToken->name], actor: $user);
 
         return response()->json([
             'token' => $token->plainTextToken,
@@ -47,12 +54,13 @@ class AuthController extends Controller
         $user = $request->authenticate();
 
         if (! $user->tenant->is_active) {
-            return response()->json(['message' => 'La empresa está desactivada.'], 403);
+            return $this->blocked($user, 'session');
         }
 
         Auth::guard('web')->login($user);
         // Nueva sesión tras autenticarse: evita la fijación de sesión.
         $request->session()->regenerate();
+        $this->audit->record('auth.login', $user, $user->email, metadata: ['method' => 'session'], actor: $user);
 
         return new UserResource($user->load(['tenant', 'role.permissions']));
     }
@@ -68,7 +76,10 @@ class AuthController extends Controller
      */
     public function logout(Request $request): Response
     {
-        $token = $request->user()->currentAccessToken();
+        /** @var User $user */
+        $user = $request->user();
+        $token = $user->currentAccessToken();
+        $this->audit->record('auth.logout', $user, $user->email, metadata: ['method' => $token instanceof PersonalAccessToken ? 'token' : 'session']);
 
         if ($token instanceof PersonalAccessToken) {
             $token->delete();
@@ -80,5 +91,13 @@ class AuthController extends Controller
         }
 
         return response()->noContent();
+    }
+
+    /** Credenciales correctas pero la empresa está desactivada. */
+    private function blocked(User $user, string $method): JsonResponse
+    {
+        $this->audit->record('auth.login_blocked', $user, $user->email, metadata: ['method' => $method, 'reason' => 'tenant_inactive'], actor: $user);
+
+        return response()->json(['message' => 'La empresa está desactivada.'], 403);
     }
 }

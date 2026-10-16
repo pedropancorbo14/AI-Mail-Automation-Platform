@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TenantResource;
+use App\Security\Audit\AuditLogger;
 use App\Tenancy\TenantService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -14,8 +15,10 @@ use Illuminate\Support\Facades\Gate;
  */
 class TenantController extends Controller
 {
-    public function __construct(private readonly TenantService $tenancy)
-    {
+    public function __construct(
+        private readonly TenantService $tenancy,
+        private readonly AuditLogger $audit,
+    ) {
     }
 
     public function show(): TenantResource
@@ -35,6 +38,10 @@ class TenantController extends Controller
         $tenant->update($request->validate([
             'name' => ['required', 'string', 'max:255'],
         ]));
+
+        if ($changes = AuditLogger::changesOf($tenant, ['name'])) {
+            $this->audit->record('tenant.updated', $tenant, $tenant->name, $changes);
+        }
 
         return new TenantResource($tenant);
     }

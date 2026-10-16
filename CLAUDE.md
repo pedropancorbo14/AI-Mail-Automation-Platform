@@ -2632,8 +2632,27 @@ arquitectura que impidan regresiones.
   anidados, `changesOf`, inmutable en la app y en la BD, aislamiento y
   fallo cerrado. **Lección:** una ruta añadida en un test fuera de `/api`
   la captura el comodín del panel
-- [ ] 2. Auditar las acciones: sesiones, usuarios, empresa, buzones,
-  automatización y documentación
+- [x] 2. **Auditar las acciones** (donde se conoce la intención: los
+  controladores, el login y el callback de OAuth). Sesiones:
+  `auth.login` (`method` token/session, `device_name`), `auth.logout`,
+  `auth.login_failed` (en `LoginRequest::authenticate`: con un email que
+  existe va a **la auditoría de su empresa** con la cuenta como sujeto y
+  sin actor; con uno desconocido, sin empresa: solo el operador; nunca la
+  contraseña probada), `auth.login_blocked` (empresa desactivada).
+  Usuarios: `user.created` (email, rol), `user.updated` (nombre, email,
+  **rol de → a**, contraseña como `[oculto]`: consta que cambió, nunca el
+  hash; sin cambios reales no se registra), `user.deleted`. Empresa:
+  `tenant.updated`. Buzones: `mail_connection.created`, `.updated`
+  (nombre, email, estado; credenciales nuevas como `[oculto]`), `.tested`
+  (recepción/envío ok), `.deleted`, **`.oauth_connected`** (actor = quien
+  inició el flujo, sacado del state; `reconnected`). IA:
+  `automation.updated` (modo e intenciones de → a; sustituye al
+  `Log::info` de la Fase 10) y `automation.tool_changed`. Documentación:
+  `document.uploaded` (fichero, tipo, tamaño), `.reindexed`, `.deleted`.
+  `changesOf()` aplica los casts también al valor anterior (antes el JSON
+  de `auto_send_intents` salía como texto). Tests (`AuditedActionsTest`,
+  11 + asserts en `MicrosoftOAuthTest`): cada acción con sus datos, sin
+  contraseñas, hashes, tokens ni credenciales, y nada en otra empresa
 - [ ] 3. API y página de auditoría (propietario y administrador)
 - [ ] 4. Cuenta propia: cambiar la contraseña y cerrar las demás sesiones
 - [ ] 5. Protección del gasto de IA: presupuesto diario por empresa y

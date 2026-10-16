@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Auth;
 
 use App\Models\User;
+use App\Security\Audit\AuditLogger;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -31,6 +32,16 @@ class LoginRequest extends FormRequest
         $user = User::with(['tenant', 'role'])->where('email', $this->string('email'))->first();
 
         if (! $user || ! Hash::check($this->string('password'), $user->password)) {
+            // Con un email que existe queda en la auditoría de su empresa
+            // (intento sobre esa cuenta); si no existe, solo lo ve el operador.
+            app(AuditLogger::class)->record(
+                'auth.login_failed',
+                $user,
+                $user?->email,
+                metadata: ['email' => (string) $this->string('email')],
+                tenantId: $user?->tenant_id,
+            );
+
             throw ValidationException::withMessages([
                 'email' => 'Las credenciales no son correctas.',
             ]);

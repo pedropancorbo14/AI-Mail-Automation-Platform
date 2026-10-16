@@ -8,6 +8,7 @@ use App\Http\Requests\Users\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\Role;
 use App\Models\User;
+use App\Security\Audit\AuditLogger;
 use App\Tenancy\TenantService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -19,8 +20,10 @@ use Illuminate\Support\Facades\Gate;
  */
 class UserController extends Controller
 {
-    public function __construct(private readonly TenantService $tenancy)
-    {
+    public function __construct(
+        private readonly TenantService $tenancy,
+        private readonly AuditLogger $audit,
+    ) {
     }
 
     public function index(): AnonymousResourceCollection
@@ -42,6 +45,8 @@ class UserController extends Controller
         $user->role()->associate(Role::where('name', $request->validated('role'))->firstOrFail());
         $user->save();
 
+        $this->audit->record('user.created', $user, $user->name, metadata: ['email' => $user->email, 'role' => $user->role->name]);
+
         return new UserResource($user->load('role'));
     }
 
@@ -54,6 +59,7 @@ class UserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): UserResource
     {
+        $previousRole = $user->role?->name;
         $user->fill($request->safe()->only(['name', 'email', 'password']));
 
         if ($request->has('role')) {
@@ -62,12 +68,25 @@ class UserController extends Controller
 
         $user->save();
 
+        $changes = AuditLogger::changesOf($user, ['name', 'email', 'password']);
+
+        if ($user->role->name !== $previousRole) {
+            $changes['role'] = ['from' => $previousRole, 'to' => $user->role->name];
+        }
+
+        // La contraseña sale como "[oculto]": se sabe que cambió, nunca cuál era ni cuál es.
+        if ($changes !== []) {
+            $this->audit->record('user.updated', $user, $user->name, $changes);
+        }
+
         return new UserResource($user->load('role'));
     }
 
     public function destroy(User $user): Response
     {
         Gate::authorize('delete', $user);
+
+        $this->audit->record('user.deleted', $user, $user->name, metadata: ['email' => $user->email, 'role' => $user->role?->name]);
 
         $user->tokens()->delete();
         $user->delete();

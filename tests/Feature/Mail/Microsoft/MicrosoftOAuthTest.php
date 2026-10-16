@@ -134,6 +134,13 @@ it('creates the connection in the company that started the flow', function () {
         ->and($connection->credentials->accessToken)->toBe('access-nuevo')
         ->and($connection->credentials->refreshToken)->toBe('refresh-nuevo');
 
+    // Auditoría: el callback llega sin sesión, el actor sale del state; sin tokens.
+    $log = inTenant($this->tenant, fn () => App\Models\AuditLog::where('action', 'mail_connection.oauth_connected')->sole());
+    expect($log->user_id)->toBe($this->admin->id)
+        ->and($log->subject_id)->toBe($connection->id)
+        ->and($log->metadata)->toEqual(['email' => 'soporte@contoso.test', 'provider' => 'microsoft', 'reconnected' => false])
+        ->and(json_encode($log->getAttributes()))->not->toContain('access-nuevo');
+
     // PKCE: el verificador enviado corresponde al challenge de la URL de autorización.
     Http::assertSent(function (Request $request) use ($authorize) {
         return str_contains($request->url(), '/oauth2/v2.0/token')
@@ -204,6 +211,7 @@ it('reconnects an existing account instead of duplicating it', function () {
         ->and($existing->credentials->accessToken)->toBe('access-reconectado')
         ->and($existing->status)->toBe(MailConnectionStatus::Pending)
         ->and($existing->last_error)->toBeNull();
+    expect(inTenant($this->tenant, fn () => App\Models\AuditLog::sole()->metadata['reconnected']))->toBeTrue();
 });
 
 it('refuses to take over an account already connected with another provider', function () {

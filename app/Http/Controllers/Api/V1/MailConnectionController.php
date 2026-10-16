@@ -11,6 +11,7 @@ use App\Mail\Enums\MailConnectionStatus;
 use App\Mail\Enums\MailProviderType;
 use App\Mail\MailConnectionService;
 use App\Models\MailConnection;
+use App\Security\Audit\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -24,6 +25,10 @@ use Illuminate\Support\Facades\Gate;
  */
 class MailConnectionController extends Controller
 {
+    public function __construct(private readonly AuditLogger $audit)
+    {
+    }
+
     public function index(): AnonymousResourceCollection
     {
         Gate::authorize('viewAny', MailConnection::class);
@@ -40,6 +45,11 @@ class MailConnectionController extends Controller
         $connection->credentials = $request->credentials();
         $connection->created_by = $request->user()->id;
         $connection->save();
+
+        $this->audit->record('mail_connection.created', $connection, $connection->name, metadata: [
+            'email' => $connection->email,
+            'provider' => $connection->provider->value,
+        ]);
 
         return new MailConnectionResource($connection->refresh());
     }
@@ -68,6 +78,17 @@ class MailConnectionController extends Controller
 
         $mailConnection->save();
 
+        $changes = AuditLogger::changesOf($mailConnection, ['name', 'email', 'status']);
+
+        if ($request->changesCredentials()) {
+            // Solo consta que cambiaron (sale "[oculto]"), nunca su contenido.
+            $changes['credentials'] = true;
+        }
+
+        if ($changes !== []) {
+            $this->audit->record('mail_connection.updated', $mailConnection, $mailConnection->name, $changes);
+        }
+
         return new MailConnectionResource($mailConnection);
     }
 
@@ -81,6 +102,10 @@ class MailConnectionController extends Controller
         Gate::authorize('update', $mailConnection);
 
         $result = $service->test($mailConnection);
+        $this->audit->record('mail_connection.tested', $mailConnection, $mailConnection->name, metadata: [
+            'incoming_ok' => $result->incomingOk,
+            'outgoing_ok' => $result->outgoingOk,
+        ]);
 
         return response()->json([
             'data' => new MailConnectionResource($mailConnection),
@@ -104,6 +129,10 @@ class MailConnectionController extends Controller
             abort(409, 'La conexión tiene correos guardados: desactívala en lugar de borrarla.');
         }
 
+        $this->audit->record('mail_connection.deleted', $mailConnection, $mailConnection->name, metadata: [
+            'email' => $mailConnection->email,
+            'provider' => $mailConnection->provider->value,
+        ]);
         $mailConnection->delete();
 
         return response()->noContent();

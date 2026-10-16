@@ -71,9 +71,8 @@ class AuditLogger
     }
 
     /**
-     * Cambios del último save() de un modelo, solo de los campos indicados
-     * ("from" es el valor guardado en la BD, sin casts):
-     * {"campo": {"from": antes, "to": después}}.
+     * Cambios del último save() de un modelo, solo de los campos indicados:
+     * {"campo": {"from": antes, "to": después}}, los dos con sus casts.
      *
      * @param  list<string>  $fields
      * @return array<string, array{from: mixed, to: mixed}>
@@ -81,9 +80,11 @@ class AuditLogger
     public static function changesOf(Model $model, array $fields): array
     {
         $changes = [];
+        // Tras save() el original ya es el valor nuevo: lo anterior está en getPrevious() (en crudo).
+        $before = (clone $model)->setRawAttributes([...$model->getAttributes(), ...$model->getPrevious()]);
 
         foreach (array_intersect(array_keys($model->getChanges()), $fields) as $field) {
-            $changes[$field] = ['from' => self::plain($model->getPrevious()[$field] ?? null), 'to' => self::plain($model->getAttribute($field))];
+            $changes[$field] = ['from' => self::plain($before->getAttribute($field)), 'to' => self::plain($model->getAttribute($field))];
         }
 
         return $changes;

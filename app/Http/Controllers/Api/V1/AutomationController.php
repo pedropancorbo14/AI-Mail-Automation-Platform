@@ -8,12 +8,12 @@ use App\Automation\AutomationMode;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Automation\UpdateAutomationRequest;
 use App\Models\Permission;
+use App\Security\Audit\AuditLogger;
 use App\Tenancy\TenantService;
 use App\Tools\TenantToolService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
@@ -27,6 +27,7 @@ class AutomationController extends Controller
     public function __construct(
         private readonly TenantService $tenants,
         private readonly TenantToolService $tools,
+        private readonly AuditLogger $audit,
     ) {
     }
 
@@ -50,11 +51,9 @@ class AutomationController extends Controller
             throw ValidationException::withMessages(['auto_send_intents' => $e->getMessage()]);
         }
 
-        Log::info('Automatización cambiada', [
-            'user_id' => $request->user()->id,
-            'mode' => $tenant->automation_mode->value,
-            'auto_send_intents' => $tenant->auto_send_intents,
-        ]);
+        if ($changes = AuditLogger::changesOf($tenant, ['automation_mode', 'auto_send_intents'])) {
+            $this->audit->record('automation.updated', $tenant, $tenant->name, $changes);
+        }
 
         return $this->settings();
     }
@@ -72,7 +71,7 @@ class AutomationController extends Controller
             abort(404);
         }
 
-        Log::info('Herramienta de la IA cambiada', ['user_id' => $request->user()->id, 'tool' => $tool, 'enabled' => $enabled]);
+        $this->audit->record('automation.tool_changed', subjectLabel: $tool, metadata: ['tool' => $tool, 'enabled' => $enabled]);
 
         return $this->settings();
     }

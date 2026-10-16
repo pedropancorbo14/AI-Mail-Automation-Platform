@@ -8,6 +8,7 @@ use App\Mail\Exceptions\MailProviderException;
 use App\Models\MailConnection;
 use App\Models\Permission;
 use App\Models\User;
+use App\Security\Audit\AuditLogger;
 use App\Tenancy\TenantService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -25,6 +26,7 @@ class MailOAuthService
     public function __construct(
         private readonly OAuthClients $clients,
         private readonly TenantService $tenancy,
+        private readonly AuditLogger $audit,
     ) {
     }
 
@@ -95,7 +97,15 @@ class MailOAuthService
             $connection->created_by ??= $user->id;
             $connection->status = MailConnectionStatus::Pending;
             $connection->last_error = null;
+            $reconnected = $connection->exists;
             $connection->save();
+
+            // El callback llega sin sesión: el actor es quien inició el flujo (sale del state).
+            $this->audit->record('mail_connection.oauth_connected', $connection, $connection->name, metadata: [
+                'email' => $connection->email,
+                'provider' => $provider->value,
+                'reconnected' => $reconnected,
+            ], actor: $user);
 
             return $connection;
         });

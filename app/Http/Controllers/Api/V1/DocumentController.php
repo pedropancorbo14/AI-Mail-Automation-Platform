@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Documents\StoreDocumentRequest;
 use App\Http\Resources\DocumentResource;
 use App\Models\Document;
+use App\Security\Audit\AuditLogger;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
@@ -21,8 +22,10 @@ use Illuminate\Validation\ValidationException;
  */
 class DocumentController extends Controller
 {
-    public function __construct(private readonly DocumentService $documents)
-    {
+    public function __construct(
+        private readonly DocumentService $documents,
+        private readonly AuditLogger $audit,
+    ) {
     }
 
     public function index(): AnonymousResourceCollection
@@ -49,6 +52,12 @@ class DocumentController extends Controller
             throw ValidationException::withMessages(['file' => $e->getMessage()]);
         }
 
+        $this->audit->record('document.uploaded', $document, $document->title, metadata: [
+            'filename' => $document->original_filename,
+            'mime_type' => $document->mime_type,
+            'size' => $document->size,
+        ]);
+
         return new DocumentResource($document->refresh());
     }
 
@@ -66,6 +75,7 @@ class DocumentController extends Controller
 
         $document->forceFill(['status' => DocumentStatus::Pending, 'error' => null])->save();
         ProcessDocumentJob::dispatch($document->tenant_id, $document->id);
+        $this->audit->record('document.reindexed', $document, $document->title);
 
         return new DocumentResource($document->refresh());
     }
@@ -74,6 +84,7 @@ class DocumentController extends Controller
     {
         Gate::authorize('delete', $document);
 
+        $this->audit->record('document.deleted', $document, $document->title, metadata: ['filename' => $document->original_filename]);
         $this->documents->delete($document);
 
         return response()->noContent();
