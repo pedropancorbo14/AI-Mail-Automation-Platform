@@ -97,6 +97,15 @@ return [
 
     'cipher' => 'AES-256-CBC',
 
+    /*
+    | Proxies de confianza (Fase 12): IPs, separadas por comas, del balanceador
+    | o proxy con HTTPS delante de la app. Solo de ellos se acepta
+    | X-Forwarded-For/Proto: la IP real del cliente en la auditoría y los
+    | límites de peticiones. Vacío = ninguno; "*" = cualquiera (inseguro si la
+    | app es accesible sin pasar por el proxy).
+    */
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
     'key' => env('APP_KEY'),
 
     'previous_keys' => [

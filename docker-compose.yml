@@ -65,8 +65,10 @@ services:
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
+    # Solo en 127.0.0.1 (Fase 12): para abrir la app a la red, APP_BIND=0.0.0.0
+    # (en producción va detrás de un proxy con HTTPS, Fase 16).
     ports:
-      - "${APP_PORT:-8080}:80"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8080}:80"
     volumes:
       - ./:/var/www/html:ro
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -270,8 +272,9 @@ services:
       - "--storage.tsdb.path=/prometheus"
       # 400 días: comparar costes y volumen mes a mes (las métricas ocupan poco).
       - "--storage.tsdb.retention.time=400d"
+    # Solo en 127.0.0.1: Prometheus no tiene usuario/contraseña.
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     networks:
       - observability-net
 
@@ -282,8 +285,9 @@ services:
     volumes:
       - ./docker/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
       - loki-data:/loki
+    # Solo en 127.0.0.1: Loki no tiene autenticación (cualquiera podría leer o inventar logs).
     ports:
-      - "${LOKI_PORT:-3100}:3100"
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
     networks:
       - observability-net
 
@@ -308,6 +312,14 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # Seguridad (Fase 12): sin acceso anónimo, sin avatares externos (Gravatar)
+      # ni llamadas a grafana.com, y cookies solo del mismo sitio.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
       # Al entrar, el dashboard General de la plataforma (Fase 11).
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ai-mail/general.json
     volumes:
@@ -315,7 +327,7 @@ services:
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./docker/grafana/dashboards:/var/lib/grafana/dashboards/ai-mail:ro
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     depends_on:
       - prometheus
       - loki

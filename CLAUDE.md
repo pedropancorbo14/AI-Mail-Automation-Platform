@@ -2845,7 +2845,37 @@ arquitectura que impidan regresiones.
   por empresa / sin límite, auditoría antigua, supresión por dirección,
   API con permisos, 404/409, retención desde la API) y Vitest
   (`CompanyPage`: el propietario la cambia, sin permiso solo se ve)
-- [ ] 10. Infraestructura: puertos solo en local, contraseñas por defecto
+- [x] 10. **Infraestructura.** **Todos los puertos del compose solo en
+  127.0.0.1**: nginx (`${APP_BIND:-127.0.0.1}`, `APP_BIND=0.0.0.0` para
+  abrir la app a la red), Prometheus 9090, **Loki 3100** y Grafana 3000
+  estaban en todas las interfaces (Prometheus y Loki no tienen
+  autenticación: cualquiera en la red podía leer métricas y logs o
+  inventar logs). Grafana: `GF_AUTH_ANONYMOUS_ENABLED=false`, sin
+  Gravatar, sin informes ni comprobación de versiones a grafana.com, sin
+  snapshots externos, cookie `SameSite=strict`; `GRAFANA_USER/PASSWORD` en
+  `.env.docker.example` (solo se aplica al primer arranque: `grafana cli
+  admin reset-admin-password`). **Proxies de confianza**:
+  `config('app.trusted_proxies')` (`TRUSTED_PROXIES`, vacío = ninguno) →
+  `TrustProxies::at()` en `AppServiceProvider`: solo de ellos se acepta
+  `X-Forwarded-For` (IP real en auditoría y límites; nadie más puede
+  falsearla). **`php artisan security:check [--production]`**: APP_KEY,
+  debug, HTTPS, cookie `secure`, contraseñas de PostgreSQL/Redis fuertes
+  (16+, no "secret"…), token de métricas propio (32+), IA no simulada,
+  anti-SSRF activo, proxies no `*`, caducidad de tokens y nivel de log; en
+  producción (o con `--production`) **sale con error** si algo falla (para
+  el despliegue de la Fase 16), en local solo avisa. `.env.docker.example`:
+  sección Seguridad (`APP_BIND`, Grafana, `TRUSTED_PROXIES`,
+  `SESSION_SECURE_COOKIE`, retención). `composer require --dev
+  symfony/yaml` (tests del compose). Aplicado en el stack (`docker compose
+  up -d`; la primera vez Docker Desktop tardó en liberar los puertos y
+  hubo que repetirlo): todo responde en localhost y los 4 targets de
+  Prometheus siguen `up`. **Se queda para la Fase 16:** el token de
+  métricas está escrito en `prometheus.yml` (Prometheus no lee variables
+  de entorno; en producción, `credentials_file` con un secreto).
+  Tests: `InfrastructureTest` (puertos del compose solo en local, Grafana
+  endurecido, `X-Forwarded-For` solo desde el proxy de confianza,
+  `security:check` correcto con configuración de producción y fallando con
+  cada valor por defecto, solo avisos en local)
 - [ ] 11. Tests de arquitectura y auditoría de dependencias en el CI
 - [ ] 12. Prueba de ataques en el stack, README
 
