@@ -2573,7 +2573,7 @@ seguir "Actualizar un entorno que ya existía" del README. Pendiente para la
 Fase 16: Alertmanager (enviar avisos), token de métricas de producción,
 migrar Promtail (en fin de soporte) a Grafana Alloy.
 
-### Fase 12 (seguridad): EN CURSO (desde 2026-10-16)
+### Fase 12 (seguridad): COMPLETADA Y PROBADA CON ATAQUES EN EL STACK (2026-10-16), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit, sin push (el usuario sube y
@@ -2910,7 +2910,42 @@ arquitectura que impidan regresiones.
   (`MailProvidersServiceProvider`): en producción se ignora aunque se
   active. `allowedIps()` (autodetección) aplica las mismas reglas. Tests en
   `MailHostGuardTest`
-- [ ] 12. Prueba de ataques en el stack, README
+- [x] 12. **Prueba de ataques contra el stack y README.** Script de
+  `curl` desde el contenedor `app` contra nginx (`--connect-to
+  localhost:8080:nginx:80`: mismo Host que el navegador, cookies y
+  Sanctum), con un usuario temporal que se borra al final. **26/26
+  comprobaciones OK**: otra empresa → 404 al leer, pedir el HTML o borrar
+  un email, y su búsqueda no encuentra nada ajeno; agente → 403 en la
+  auditoría; fuerza bruta → 429 al sexto intento (los fallidos quedan en
+  la auditoría de la empresa); buzón hacia `169.254.169.254`,
+  `::ffff:169.254.169.254`, `fe80::1` y `0.0.0.0` → 422 "dirección
+  interna" (**fallaba antes del fix anterior**); `/metrics` sin token o
+  con uno falso → 404; un intruso con la contraseña filtrada entra por el
+  panel y por la API, la víctima cambia la contraseña → su sesión sigue y
+  la sesión y el token del intruso caen; contraseña de 8 caracteres → 422;
+  cabeceras (CSP, `X-Frame-Options`, sin `X-Powered-By` ni versión de
+  nginx); `X-Forwarded-For` falso ignorado (la auditoría guarda la IP
+  real). **Lecciones del script:** la fuerza bruta bloquea un minuto el
+  email atacado (hacer login del propietario antes); sacar el id del
+  usuario con el primer `"id"` del JSON (el último es el de la empresa:
+  intentó borrar al propio propietario y la policy lo impidió, bien);
+  Python en Windows escribe CRLF y `sh` no lo entiende. README: sección
+  **"13. Seguridad"** (tabla riesgo → protección, auditoría, cuentas,
+  freno del gasto, revisión del texto, retención y supresión,
+  infraestructura, resultados de la prueba de ataques, actualizar un
+  entorno anterior), estado, comandos, estructura (`app/Security/`), API
+  (5 endpoints nuevos o ampliados), tests, CI, problemas frecuentes;
+  secciones siguientes renumeradas (API = #15)
+
+**Resumen:** 12 tareas en 15 commits (12 + 3 fixes encontrados al probar
+con datos reales y ataques), 1078+ tests PHP + 65 Vitest en verde.
+**Pendiente para dar la Fase 12 por cerrada:** push (lo hace el usuario) y
+GitHub Actions en verde (ahora también con `composer audit` y `npm
+audit`). En su equipo: seguir "Actualizar un entorno anterior a la Fase
+12" del README. **Para la Fase 16:** token de métricas fuera de
+`prometheus.yml` (`credentials_file`), `SESSION_SECURE_COOKIE` y
+`TRUSTED_PROXIES` con HTTPS, `security:check --production` en el
+despliegue.
 
 ### Pendientes anotados para más adelante
 

@@ -32,7 +32,7 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 9 | Automatización: cada email se procesa solo de principio a fin (clasificar → agente → reglas → **enviar en el hilo** o revisión humana), con estados, historial y protección contra bucles | ✅ Hecha (probada con Claude real y GreenMail) |
 | 10 | Panel de administración (Vue + Naive UI): resumen, emails con lo que hizo la IA, buzones (con autodetección), documentación, ajustes de la IA, empresa y usuarios | ✅ Hecha (probada en navegador) |
 | 11 | Observabilidad: métricas de Prometheus, 6 dashboards de Grafana, logs en Loki y alertas probadas; IA simulada para probar sin coste | ✅ Hecha (probada en el stack con la IA simulada) |
-| 12 | Seguridad: RBAC, auditoría, retención… | ⏳ Siguiente |
+| 12 | Seguridad: auditoría inmutable, cuenta propia, freno del gasto de IA, revisión del texto antes de enviar, cabeceras y CSP, secretos fuera de los logs, retención y derecho de supresión, infraestructura solo en local, tests de arquitectura | ✅ Hecha (probada con ataques contra el stack) |
 | 13–17 | Human-in-the-loop, integraciones, evaluación, producción, SaaS | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
@@ -51,7 +51,11 @@ hilo del cliente; si no, queda para una persona (la bandeja de revisión es
 la Fase 13). Todo se ve y se configura desde el **panel web**
 (`http://localhost:8080`), y el funcionamiento de la plataforma (volumen,
 automatización, IA, costes, errores) se sigue en **Grafana**
-(`http://localhost:3000`) con alertas. La hoja de ruta completa y las
+(`http://localhost:3000`) con alertas. Lo que hace cada persona queda en
+un **registro de auditoría** que nadie puede modificar, la IA tiene un
+**presupuesto diario** por empresa, el texto de cada respuesta se
+**revisa antes de enviarse sola** y los emails se **borran solos** pasado
+el plazo de retención (ver [Seguridad](#13-seguridad)). La hoja de ruta completa y las
 decisiones de arquitectura están en [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -110,9 +114,9 @@ docker compose exec app php artisan test            # todos los tests en verde
 | Servicio | URL | Acceso |
 |---|---|---|
 | **Panel** | http://localhost:8080 | `test@example.com` / `password` |
-| API | http://localhost:8080/api/v1 | ver [API](#14-api) |
+| API | http://localhost:8080/api/v1 | ver [API](#15-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
-| **Grafana** (dashboards y alertas) | http://localhost:3000 | `admin` / `admin` |
+| **Grafana** (dashboards y alertas) | http://localhost:3000 | `admin` / `admin` (`GRAFANA_USER`/`GRAFANA_PASSWORD`; cámbiala fuera de tu equipo) |
 | Prometheus | http://localhost:9090 | — |
 | PostgreSQL (HeidiSQL, DBeaver…) | `127.0.0.1:5433`, BD `app` | `app` / `secret` |
 | GreenMail (correo de pruebas) | IMAP `127.0.0.1:3143` · SMTP `127.0.0.1:3025` (sin TLS) | `soporte@demo.test` / `secret` |
@@ -142,6 +146,10 @@ docker compose exec app php artisan ai:tools 1             # herramientas activa
 docker compose exec app php artisan ai:reply 1             # el agente prepara la respuesta al email 1 y muestra la traza
 docker compose exec app php artisan ai:automation 1        # modo de automatización de la empresa 1 (off / draft / auto)
 docker compose exec app php artisan ai:process 1 --now     # procesar el email 1 de principio a fin y ver su historial de estados
+docker compose exec app php artisan ai:budget 1            # presupuesto diario de IA de la empresa 1 y gasto de hoy (--daily=25 para cambiarlo)
+docker compose exec app php artisan data:prune             # aplicar la retención ya (si no, cada noche a las 03:30)
+docker compose exec app php artisan data:forget-address 1 ana@cliente.test   # derecho de supresión (cuenta; --force para borrar)
+docker compose exec app php artisan security:check --production              # ¿la configuración es apta para producción?
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
 docker compose logs -f vite                                # servidor de desarrollo del panel
 docker compose exec vite npm test                          # tests del panel (Vitest)
@@ -1160,7 +1168,161 @@ persona, spam y correos automáticos ignorados sin IA; el límite
 anti-bucles frenó la cuarta respuesta automática a la misma dirección. Con
 GreenMail parado, `BuzonAtascado` se disparó sola.
 
-## 13. Estructura del proyecto
+## 13. Seguridad
+
+Lo que ya protegían las fases anteriores (roles y permisos, aislamiento
+entre empresas con tests, credenciales cifradas, anti-SSRF, HTML de los
+emails saneado y aislado, detección de *prompt injection*, límites del
+agente) más lo que añade la Fase 12. El código nuevo está en
+[`app/Security/`](app/Security/).
+
+| Riesgo | Protección |
+|---|---|
+| No saber quién cambió algo | **Registro de auditoría** inmutable (página "Auditoría" del panel) |
+| Una sesión o un token robados | Cambiar la contraseña cierra **todas** las demás sesiones y tokens; "cerrar las demás sesiones" sin cambiarla |
+| Contraseñas débiles o filtradas | Mínimo 10 caracteres y, en producción, rechazo de las que aparecen en filtraciones (Have I Been Pwned, k-anonimato) |
+| Alguien inunda un buzón y dispara el gasto de IA | **Presupuesto diario por empresa** y **máximo de emails por remitente**; superados, el email va a una persona sin llamar a la IA |
+| La IA envía algo que no debía | **Revisión del texto** antes de enviar sola: promesas falsas, detalles internos, enlaces o direcciones ajenos, pedidos o importes inventados |
+| XSS, clickjacking, versiones expuestas | **Cabeceras de seguridad y CSP** en el panel y la API; nginx y PHP sin versión |
+| Secretos en los logs | Contraseñas, tokens y claves ocultos (`[oculto]`) en todos los canales; trazas sin argumentos |
+| Guardar datos personales para siempre | **Retención** (borrado automático cada noche) y **derecho de supresión** |
+| Servicios internos accesibles desde la red | Todos los puertos solo en `127.0.0.1`; Grafana sin acceso anónimo |
+| SSRF hacia los metadatos de la nube | Bloqueados **siempre**, también en local |
+| Una regresión en una fase futura | **Tests de arquitectura** y auditoría de dependencias en el CI |
+
+### Registro de auditoría
+
+Cada acción de una persona queda en la tabla `audit_logs`: quién (y una
+copia de su email, por si después se borra el usuario), sobre qué, qué
+cambió (antes → después), desde qué IP y navegador, y el `request_id` de
+la petición (con él se encuentran sus logs en Loki). Se registran inicios
+y cierres de sesión, **intentos fallidos** (en la empresa de la cuenta
+atacada), usuarios, empresa, buzones (incluida la conexión por OAuth),
+ajustes de la IA, documentación, emails borrados y la retención.
+
+- **Nunca guarda secretos:** las contraseñas salen como `[oculto]` (se
+  sabe que cambiaron, nunca cuál era).
+- **Inmutable:** la aplicación no puede modificar ni borrar un registro, y
+  un *trigger* de PostgreSQL rechaza cualquier `UPDATE`, también con SQL
+  directo. Solo la retención borra lo antiguo (730 días).
+- **Quién lo ve:** propietario y administrador (`audit.view`), solo de su
+  empresa. Los intentos de login con un email que no existe no tienen
+  empresa: solo los ve el operador en la BD.
+
+### Cuentas
+
+"Mi cuenta" (menú del usuario, arriba a la derecha) permite cambiar la
+contraseña y cerrar la sesión en los demás dispositivos. Ambas cosas
+piden la contraseña actual (una sesión robada no basta) y tienen un límite
+de 6 intentos por minuto. Cada sesión del panel guarda una huella de la
+contraseña: al cambiarla, las demás sesiones dejan de valer en su
+siguiente petición y los tokens de API se revocan. Si un administrador
+cambia la contraseña de otra persona, también se revocan sus tokens.
+
+### Freno del gasto de IA
+
+Antes de clasificar un email se comprueba:
+
+- **Presupuesto diario de la empresa** (10 $ por defecto,
+  `AI_TENANT_DAILY_BUDGET_USD`): suma del coste de sus peticiones de IA
+  desde las 00:00. Lo decide el operador, no la empresa:
+  `php artisan ai:budget <empresa> --daily=25` (o `default`).
+- **Emails de un mismo remitente que pasaron por la IA en 24 h** (20,
+  `AI_MAX_EMAILS_PER_SENDER`), sin distinguir mayúsculas.
+
+Si se supera alguno, el email va a revisión humana **sin llamar a la IA**
+y con el motivo en su historial; la alerta `IAFrenadaPorLimites` avisa al
+operador. Es un freno, no un tope exacto: un email que ya está en marcha
+termina (y cada uno tiene su propio límite de gasto).
+
+### Revisión del texto antes de enviar sola
+
+Además de las reglas de la Fase 9 (intención, confianza, destinatario), el
+texto que redactó la IA se compara con lo que realmente tenía delante (el
+email y lo que devolvieron sus herramientas). La respuesta va a una persona
+si:
+
+- promete que **una persona revisará el caso** (sería falso si sale sola);
+- contiene **detalles internos** (nombres de herramientas, etiquetas del prompt);
+- incluye **enlaces** que no son de la empresa ni de sus datos. Los que
+  venían en el email del cliente no cuentan: así un atacante no consigue
+  que la empresa reenvíe su enlace de phishing;
+- menciona **direcciones de email** ajenas al cliente y a la empresa;
+- cita **números de pedido o importes** que no aparecen en ningún sitio
+  (alucinaciones);
+- está vacía o es demasiado larga.
+
+Son comprobaciones sin coste (no llaman a la IA). Probadas con las
+respuestas reales de Claude de las fases anteriores: paran las 5 que
+prometían una revisión humana y dejan pasar las 5 que sí se enviaron.
+
+### Retención y derecho de supresión
+
+- **Cada noche (03:30)** `data:prune` borra los emails más antiguos que la
+  retención de su empresa (365 días por defecto, `RETENTION_EMAILS_DAYS`;
+  cada empresa elige entre 30 y 3650 en "Empresa y usuarios") y la
+  auditoría de más de 730 días (`RETENTION_AUDIT_DAYS`).
+- Borrar un email elimina también sus destinatarios, adjuntos (también
+  **los ficheros del disco**), respuestas e historial. De los registros de
+  IA se borra el contenido (respuesta, argumentos y resultados de
+  herramientas) y se conservan tokens y costes. Nunca se borra un email
+  que se está procesando o enviando.
+- **Derecho de supresión:** `php artisan data:forget-address <empresa>
+  <email> --force` borra todo lo de una persona (como remitente o
+  destinataria). Sin `--force`, solo dice cuántos emails hay. En el panel,
+  propietarios y administradores pueden borrar un email desde su detalle.
+- En la auditoría de estos borrados no queda ningún dato del cliente: del
+  email, solo el dominio del remitente; de la dirección olvidada, su hash.
+
+### Infraestructura
+
+- **Todos los puertos se publican solo en `127.0.0.1`.** Para abrir la app
+  a la red local: `APP_BIND=0.0.0.0`. Prometheus y Loki no tienen usuario
+  ni contraseña: no deben salir de la máquina.
+- **Grafana** sin registro ni acceso anónimo, sin avatares externos ni
+  llamadas a grafana.com. Su contraseña (`GRAFANA_PASSWORD`) solo se aplica
+  la primera vez que arranca; para cambiarla después:
+  `docker compose exec grafana grafana cli admin reset-admin-password <nueva>`.
+- **Detrás de un proxy con HTTPS** (producción): `TRUSTED_PROXIES` con sus
+  IPs, para que la auditoría y los límites vean la IP real del cliente.
+  Sin eso, una cabecera `X-Forwarded-For` falsa se ignora.
+- **Antes de desplegar:** `php artisan security:check --production`
+  revisa debug, HTTPS, cookies, contraseñas por defecto, token de
+  métricas, IA simulada, anti-SSRF, proxies y caducidad de tokens, y sale
+  con error si algo falla.
+- `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` (necesario en local para
+  GreenMail) **solo funciona en `local` y en los tests**, y ni siquiera
+  así permite los metadatos de la nube (`169.254.169.254`).
+
+### Prueba de ataques contra el stack
+
+Con un script de `curl` contra nginx (como un navegador o un cliente de la
+API), todo dio el resultado esperado:
+
+| Ataque | Resultado |
+|---|---|
+| Un usuario de otra empresa lee, pide el HTML o borra un email | 404 (igual que si no existiera); su búsqueda no encuentra nada ajeno |
+| Un agente consulta la auditoría | 403 |
+| 6 intentos de contraseña en un minuto | 429 en el sexto; los fallidos, en la auditoría de la empresa |
+| Buzón apuntando a `169.254.169.254`, `::ffff:169.254.169.254`, `fe80::1` o `0.0.0.0` | 422 "dirección interna" (**antes, en local, se aceptaba**: corregido) |
+| `/metrics` sin token o con uno falso | 404 |
+| Un intruso con la contraseña filtrada entra por el panel y por la API; la víctima cambia la contraseña | La sesión y el token del intruso dejan de valer; la de la víctima sigue |
+| Contraseña de 8 caracteres | 422 |
+| Cabeceras del panel | CSP, `X-Frame-Options: DENY`, sin `X-Powered-By` ni versión de nginx |
+| `X-Forwarded-For` falso | Ignorado: la auditoría registra la IP real |
+
+### Actualizar un entorno anterior a la Fase 12
+
+```bash
+docker compose exec app composer install               # dependencia nueva de desarrollo (symfony/yaml)
+docker compose exec app php artisan migrate
+docker compose exec app php artisan db:seed --class=RolesAndPermissionsSeeder   # permisos audit.view y emails.delete
+docker compose up -d                                   # puertos solo en local y Grafana endurecido
+docker compose restart nginx prometheus                # nginx sin versión; nueva alerta
+docker compose exec horizon php artisan horizon:terminate
+```
+
+## 14. Estructura del proyecto
 
 ```
 app/
@@ -1210,13 +1372,17 @@ app/
 ├── Observability/            Métricas (Fase 11): Metrics (catálogo y almacén Redis), StateMetrics (estado actual),
 │                             Observers/ (métricas desde los registros de auditoría), QueueMetricsSubscriber,
 │                             MetricLabels; DashboardStats (cifras del resumen del panel)
+├── Security/                 Seguridad (Fase 12): Audit/AuditLogger, Redactor + Logging/RedactSecrets (secretos fuera
+│                             de los logs), AiSpendGuard (freno del gasto), ReplyContentGuard (revisión del texto),
+│                             Retention/ (EmailEraser, RetentionService)
 ├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search, ai:tool, ai:tools, ai:reply,
-│                             ai:automation, ai:process
+│                             ai:automation, ai:process, ai:budget, data:prune (cada noche), data:forget-address,
+│                             security:check
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
 │                             EmailRecipient, EmailAttachment, MailSyncState,
 │                             AiRequest, AiPromptVersion, Document, DocumentChunk, AiToolCall,
-│                             TenantTool, AiAgentRun, EmailReply, EmailStatusChange
-├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy, DocumentPolicy
+│                             TenantTool, AiAgentRun, EmailReply, EmailStatusChange, AuditLog
+├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy, DocumentPolicy, EmailPolicy
 ├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders, AI
 ├── Tenancy/                  TenantService, BelongsToTenant, TenantScope
 └── Jobs/                     Jobs de cola
@@ -1233,7 +1399,7 @@ resources/views/panel.blade.php  Página que carga el panel (Laravel la sirve en
 routes/
 ├── api.php                   Prefijo /api/v1
 ├── api/v1.php                Rutas de la API v1
-└── console.php               Tareas programadas (mail:sync cada minuto, limpieza de tokens)
+└── console.php               Tareas programadas (mail:sync cada minuto, limpieza de tokens, retención cada noche)
 tests/
 ├── Feature/Auth/             Login, logout, tokens
 ├── Feature/Tenancy/          Tenants, roles, permisos, aislamiento
@@ -1246,6 +1412,8 @@ tests/
 ├── Feature/Tools/            Registro, ejecutor (validación, permisos, errores), herramientas por empresa, comandos ai:tool/ai:tools
 ├── Feature/Automation/       Modos, política de envío, envío en el hilo, procesador, job, comandos y E2E con GreenMail real
 ├── Feature/Observability/    Métricas (emails, IA, HTTP, colas, estado), /metrics, logs JSON, dashboard del panel
+├── Feature/Security/         Auditoría, gasto de IA, revisión del texto, cabeceras, logs, retención, infraestructura,
+│                             arquitectura (aislamiento, rutas protegidas, dependencias encapsuladas, higiene)
 ├── Feature/ERP/              Proveedor de pedidos de demostración
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
 ├── Support/                  GreenMail (buzones de prueba) y Pdf (PDFs generados al vuelo)
@@ -1257,7 +1425,7 @@ lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 14. API
+## 15. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -1269,7 +1437,9 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | GET | `/auth/me` | autenticado | Usuario actual, su empresa, rol y permisos |
 | POST | `/auth/logout` | autenticado | Revoca el token usado (los demás siguen activos) |
 | GET | `/tenant` | `tenant.view` | Datos de tu empresa |
-| PATCH | `/tenant` | `tenant.update` | Renombrar tu empresa |
+| PATCH | `/tenant` | `tenant.update` | Renombrar tu empresa (`name`) y elegir cuántos días se conservan sus emails (`email_retention_days`, 30–3650; `null` = los de la plataforma) |
+| PUT | `/auth/password` | autenticado | Cambiar la propia contraseña (`current_password`, `password`, `password_confirmation`); cierra las demás sesiones (máx. 6/min) |
+| POST | `/auth/logout-other-devices` | autenticado | Cerrar la sesión en los demás dispositivos (`password`; máx. 6/min) |
 | GET | `/users` | `users.view` | Usuarios de tu empresa (paginado) |
 | POST | `/users` | `users.create` | Crear usuario en tu empresa |
 | GET | `/users/{id}` | `users.view` | Ver un usuario de tu empresa |
@@ -1299,6 +1469,8 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | GET | `/automation` | `tenant.view` | Modo de automatización, intenciones y herramientas de tu empresa |
 | PATCH | `/automation` | `automation.manage` | Cambiar el modo (`mode`) y las intenciones (`auto_send_intents`) |
 | PATCH | `/automation/tools/{tool}` | `automation.manage` | Activar o desactivar una herramienta (`enabled`) |
+| DELETE | `/emails/{id}` | `emails.delete` | Borrar un email con sus adjuntos, respuestas e historial (409 si se está procesando o enviando) |
+| GET | `/audit-logs` | `audit.view` | Registro de auditoría (filtros `category`, `user`, `from`, `to`; paginado) |
 
 ```bash
 # Login
@@ -1329,7 +1501,7 @@ de forma automática. El panel no usa tokens: entra con cookie de sesión
 
 ---
 
-## 15. Tests
+## 16. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -1373,28 +1545,39 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
   `tests/Pest.php`, que lee `/metrics` como Prometheus. La IA simulada se
   prueba aparte; `phpunit.xml` fuerza `AI_PROVIDER=anthropic` para que un
   `.env` local con `simulated` no cambie los tests.
+- **Seguridad** (`tests/Feature/Security/`): además de cada protección,
+  **tests de arquitectura** que fallan si un cambio futuro se salta una
+  regla. Todo modelo con `tenant_id` usa `BelongsToTenant` y no deja
+  asignarlo en masa. Toda ruta de la API exige sesión y empresa, salvo las
+  públicas a propósito. Los SDK externos (Anthropic, IMAP, SMTP) solo se
+  usan en su módulo. En `app/` no hay `dd`/`dump`, ejecución de comandos,
+  `eval`/`unserialize` ni `env()` fuera de `config/`. Se comprueban con el
+  tokenizer de PHP sobre `app/`; el `arch()` de Pest analiza también
+  `vendor/` y se queda sin memoria.
 - **Panel:** Vitest + `@vue/test-utils` en `resources/js/panel/**/*.test.ts`
   (`docker compose exec vite npm test`), con `fetch` simulado: rutas y
   permisos, cliente HTTP, filtros en la URL, el iframe aislado del email,
   formularios y páginas por rol.
 
-## 16. CI
+## 17. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales, y además el job
 `frontend` comprueba los tipos del panel, sus tests y que compila, y el job
 `observability` valida la configuración de Prometheus, prueba las alertas
-(`promtool test rules`) y revisa los dashboards de Grafana
+(`promtool test rules`) y revisa los dashboards de Grafana. **`composer
+audit`** y **`npm audit`** hacen fallar el CI si alguna dependencia tiene
+una vulnerabilidad conocida
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 17. Entornos
+## 18. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 18. Problemas frecuentes
+## 19. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -1403,7 +1586,12 @@ prepararán en la fase de producción.
 | "La sesión ha caducado. Recarga la página." (419) | Token CSRF caducado: recarga la página. |
 | `horizon` en bucle "Restarting" | Faltan `vendor/` o `APP_KEY`: pasos 3–4 del arranque. |
 | `No application encryption key has been specified` | Se generó la clave pero los contenedores no se recrearon: `docker compose up -d`. |
-| Un puerto ya está en uso (8080, 3000, 9090, 3100, 5433) | Cámbialo en `.env`: `APP_PORT`, `GRAFANA_PORT`, `PROMETHEUS_PORT`, `LOKI_PORT`, `DB_FORWARD_PORT`. |
+| Un puerto ya está en uso (8080, 3000, 9090, 3100, 5433) | Cámbialo en `.env`: `APP_PORT`, `GRAFANA_PORT`, `PROMETHEUS_PORT`, `LOKI_PORT`, `DB_FORWARD_PORT`. Si pasa justo al recrear contenedores (`docker compose up -d`), Docker Desktop aún no había liberado el puerto: repite el comando. |
+| Desde otro equipo de la red no se abre el panel | Desde la Fase 12 todos los puertos escuchan solo en `127.0.0.1`. Para la app: `APP_BIND=0.0.0.0` en `.env` y `docker compose up -d nginx` (Grafana, Prometheus y Loki se quedan en local a propósito). |
+| Un email va a revisión humana con "presupuesto diario de IA" o "ha enviado más de N emails en 24 h" | Freno del gasto de IA. Mira `ai:budget <empresa>`; súbelo con `--daily=`, o espera al día siguiente / a que pasen 24 h. Luego `ai:process <id> --now --reprocess`. |
+| Una respuesta segura no se envía sola: "La respuesta incluye enlaces que no son de la empresa…" (o pedidos, importes, direcciones) | Revisión del texto antes de enviar: algo de la respuesta no sale ni del email ni de los datos que consultó la IA. Lo revisa una persona; es intencionado. |
+| Después de cambiar la contraseña, el panel pide entrar en otro navegador | Es lo previsto: cambiarla cierra las demás sesiones y revoca los tokens de API. |
+| Mi buzón local (GreenMail) da "dirección interna no permitida" | `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` solo vale con `APP_ENV=local`; y `169.254.x.x` no se permite nunca. |
 | Falta la extensión `vector` o la BD `app_testing` | El script de inicio de Postgres solo se ejecuta con un volumen nuevo: `docker compose down -v` (⚠️ borra los datos locales) y volver a levantar. |
 | `429 Too Many Requests` al probar el login | Límite de 5 intentos/min por email+IP; espera un minuto. |
 | Los tests del grupo `greenmail` fallan con "No se pudo conectar" | GreenMail no está levantado: `docker compose up -d greenmail`. |
