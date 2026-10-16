@@ -2876,7 +2876,27 @@ arquitectura que impidan regresiones.
   endurecido, `X-Forwarded-For` solo desde el proxy de confianza,
   `security:check` correcto con configuración de producción y fallando con
   cada valor por defecto, solo avisos en local)
-- [ ] 11. Tests de arquitectura y auditoría de dependencias en el CI
+- [x] 11. **Tests de arquitectura y auditoría de dependencias.**
+  `tests/Feature/Security/ArchitectureTest.php` protege decisiones de
+  fases anteriores: **todo modelo con columna `tenant_id` usa
+  `BelongsToTenant`** (salvo `User` y `AuditLog`, excepciones
+  documentadas; se comprueba con el esquema real, así un modelo nuevo que
+  lo olvide hace fallar el CI); **ningún modelo deja asignar `tenant_id`
+  en masa**; **toda ruta `/api/v1` lleva `auth:sanctum` + `tenant`** salvo
+  las públicas a propósito (health, login, session, callback de OAuth);
+  las rutas que comprueban credenciales o llaman fuera tienen **throttle
+  propio**; el SDK de Anthropic solo en su proveedor, ImapEngine y Symfony
+  Mailer solo en `app/Mail`; controladores sin la fachada `DB`; en `app/`
+  ni restos de depuración (`dd`, `dump`, `var_dump`, `print_r`, `die`…),
+  ni ejecución de comandos (`exec`, `shell_exec`, `system`, `proc_open`…),
+  ni `eval`/`unserialize`/`assert`, ni `env()` fuera de `config/`. Con el
+  **tokenizer de PHP** sobre `app/` (distingue `exec()` global de
+  `$obj->exec()`): el plugin `arch()` de Pest analiza también `vendor/` y
+  se quedaba sin memoria (128 MB); un test "sonda" escribe un fichero con
+  infracciones y comprueba que se detectan. CI: **`composer audit`** (job
+  de PHP) y **`npm audit --omit=dev --audit-level=high`** (job del panel)
+  fallan si una dependencia tiene una vulnerabilidad conocida; hoy, 0 en
+  ambos
 - [ ] 12. Prueba de ataques en el stack, README
 
 ### Pendientes anotados para más adelante

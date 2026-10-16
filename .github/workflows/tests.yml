@@ -81,6 +81,10 @@ jobs:
       - name: Instalar dependencias
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      # Fase 12: falla si alguna dependencia de PHP tiene una vulnerabilidad conocida.
+      - name: Auditar dependencias de PHP
+        run: composer audit --no-interaction
+
       - name: Generar APP_KEY para el entorno de test
         run: php artisan key:generate --env=testing
 
@@ -119,6 +123,10 @@ jobs:
 
       - name: Instalar dependencias
         run: npm ci
+
+      # Fase 12: vulnerabilidades altas o críticas en lo que llega al navegador.
+      - name: Auditar dependencias del panel
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Comprobar tipos (vue-tsc)
         run: npm run typecheck
