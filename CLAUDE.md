@@ -2573,6 +2573,79 @@ seguir "Actualizar un entorno que ya existía" del README. Pendiente para la
 Fase 16: Alertmanager (enviar avisos), token de métricas de producción,
 migrar Promtail (en fin de soporte) a Grafana Alloy.
 
+### Fase 12 (seguridad): EN CURSO (desde 2026-10-16)
+
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit, sin push (el usuario sube y
+revisa el CI).
+
+**Objetivo:** cerrar los huecos de seguridad que quedan. Ya existen (fases
+anteriores): roles y permisos con policies, aislamiento por empresa con
+tests, credenciales y tokens cifrados, anti-SSRF, HTML saneado, detección
+de prompt injection, límites del agente, rate limits de login y
+operaciones caras. Falta: **registro de auditoría** de las acciones de las
+personas, **protección del gasto de IA** (un atacante que inunda un buzón
+no puede vaciar la cuenta), **revisión de lo que la IA envía** antes de
+enviarlo, **cabeceras de seguridad**, **secretos fuera de los logs**,
+**retención y borrado de datos**, endurecer la infraestructura y tests de
+arquitectura que impidan regresiones.
+
+**Decisiones tomadas:**
+- Código en **`app/Security/`** (auditoría, cabeceras, redacción de
+  secretos, protecciones de la IA).
+- **Auditoría en tabla propia `audit_logs`**, escrita por un servicio
+  (`AuditLogger`), no por observers genéricos de modelos: se registra la
+  **intención** de una persona ("cambió el rol de X de agente a admin"),
+  con quién, desde dónde (IP, navegador, `request_id`) y qué cambió,
+  **nunca secretos** (contraseñas, tokens). Inmutable: el modelo no se
+  puede editar ni borrar y un **trigger de PostgreSQL** impide los
+  `UPDATE` (solo la retención borra lo antiguo). Los fallos de login sin
+  empresa conocida también se guardan (solo los ve el operador).
+
+**Tareas (commit):**
+- [x] 1. **Registro de auditoría.** Tabla `audit_logs`: `tenant_id`
+  nullable (restrict; null = sin empresa conocida, p. ej. login fallido
+  con un email que no existe), `user_id` **sin FK a propósito** (con
+  nullOnDelete, borrar un usuario modificaría sus registros y el trigger
+  lo impediría) + copia `actor_email`, `action` ("objeto.verbo":
+  `user.created`, `auth.login_failed`…), `subject_type` (nombre corto del
+  modelo) / `subject_id` / `subject_label` (nombre legible), `changes`
+  jsonb (`{campo: {from, to}}`), `metadata` jsonb, `ip`, `user_agent`,
+  `request_id`, `created_at`; índices tenant+created_at, tenant+action,
+  subject, user_id. **Trigger `audit_logs_no_update`** (función
+  `audit_logs_immutable`, `CREATE OR REPLACE`: `migrate:fresh` borra las
+  tablas pero no las funciones) rechaza todo `UPDATE`, también con SQL
+  directo. Modelo `AuditLog` (sin `updated_at`, nada asignable en masa;
+  `updating`/`deleting` → `LogicException`; **lectura con `TenantScope`**,
+  falla cerrado, pero sin `BelongsToTenant` para escribir: hay registros
+  sin empresa). **`App\Security\Audit\AuditLogger::record($action,
+  ?$subject, ?$label, $changes, $metadata, ?$actor, ?$tenantId)`**: actor
+  = el autenticado por defecto; empresa = la indicada, la del actor o la
+  del contexto; IP y navegador solo si es una petición HTTP con ruta (no
+  en comandos/jobs); `request_id` del Context. **Oculta secretos**
+  (`[oculto]`) en `changes` y `metadata`, también anidados: claves que
+  contengan password, secret, token, credential, api_key, authorization o
+  cookie. `AuditLogger::changesOf($model, $campos)` (tras `save()`, con
+  `getPrevious()`: el original ya está sincronizado; enums y fechas como
+  texto). Tests (9): datos completos, desde HTTP (IP, navegador,
+  `X-Request-Id`), desde un job sin usuario, sin empresa, secretos
+  anidados, `changesOf`, inmutable en la app y en la BD, aislamiento y
+  fallo cerrado. **Lección:** una ruta añadida en un test fuera de `/api`
+  la captura el comodín del panel
+- [ ] 2. Auditar las acciones: sesiones, usuarios, empresa, buzones,
+  automatización y documentación
+- [ ] 3. API y página de auditoría (propietario y administrador)
+- [ ] 4. Cuenta propia: cambiar la contraseña y cerrar las demás sesiones
+- [ ] 5. Protección del gasto de IA: presupuesto diario por empresa y
+  límite por remitente
+- [ ] 6. Revisión de la respuesta antes del envío automático
+- [ ] 7. Cabeceras de seguridad (panel y API)
+- [ ] 8. Secretos fuera de los logs
+- [ ] 9. Retención y borrado de datos
+- [ ] 10. Infraestructura: puertos solo en local, contraseñas por defecto
+- [ ] 11. Tests de arquitectura y auditoría de dependencias en el CI
+- [ ] 12. Prueba de ataques en el stack, README
+
 ### Pendientes anotados para más adelante
 
 - **Herramientas por tipo de negocio (Fase 14, integraciones)** — pedido
