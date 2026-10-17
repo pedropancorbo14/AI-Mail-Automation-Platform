@@ -47,6 +47,7 @@ class Email extends Model
             'ingested_at' => 'datetime',
             'ai_requested_at' => 'datetime',
             'ai_request_attempts' => 'integer',
+            'ai_pending_action' => 'array',
             'intent' => EmailIntent::class,
             'intent_confidence' => 'decimal:3',
             'needs_human' => 'boolean',
@@ -55,6 +56,19 @@ class Email extends Model
             'classified_at' => 'datetime',
             'assigned_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Acción que propuso ai-service y todavía nadie ha decidido (aprobar o
+     * rechazar). Null si no hay ninguna o ya se decidió.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function undecidedAction(): ?array
+    {
+        $action = $this->ai_pending_action;
+
+        return is_array($action) && ! array_key_exists('approved', $action) ? $action : null;
     }
 
     /** Rebote, respuesta automática, lista o boletín: la automatización nunca le responde. */

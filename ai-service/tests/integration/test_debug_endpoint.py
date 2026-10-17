@@ -56,7 +56,7 @@ async def test_returns_what_the_graph_decided() -> None:
     assert data["decision"] == "auto_send"
     assert data["category"] == "product_question"
     assert data["draft"]["body"].startswith("Hola:")
-    assert [c["purpose"] for c in data["calls"]] == ["ai_service.classify", "ai_service.draft"]
+    assert [c["purpose"] for c in data["calls"]] == ["ai_service.classification", "ai_service.draft"]
     [email] = agent.seen
     assert email.tenant_id.value == 7
 

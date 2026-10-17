@@ -74,6 +74,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/emails/{email}/replies', [EmailReviewController::class, 'reply']);
     Route::post('/emails/{email}/close', [EmailReviewController::class, 'close']);
     Route::post('/emails/{email}/reprocess', [EmailReviewController::class, 'reprocess']);
+    Route::post('/emails/{email}/action/approve', [EmailReviewController::class, 'approveAction']);
+    Route::post('/emails/{email}/action/reject', [EmailReviewController::class, 'rejectAction']);
     Route::put('/emails/{email}/assignee', [EmailReviewController::class, 'assign']);
     Route::post('/emails/{email}/review-checks', [EmailReviewController::class, 'check']);
     // Bandeja de revisión: lo que espera a una persona, lo urgente y lo más antiguo primero.

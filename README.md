@@ -1378,7 +1378,8 @@ agente):
 | **Descartar propuesta** | La propuesta queda descartada (con motivo opcional); el caso sigue esperando a una persona. |
 | **Enviar respuesta** (sin propuesta) | La persona escribe la suya. |
 | **Cerrar sin responder** | El email pasa a "Sin respuesta" (`ignored`), con motivo opcional. |
-| **Reprocesar con la IA** | La IA prepara una propuesta nueva (la anterior se descarta). **Nunca** si ya se intentó enviar una respuesta: podría llegar dos veces. |
+| **Reprocesar con la IA** | La IA prepara una propuesta nueva (la anterior se descarta). **Nunca** si ya se intentó enviar una respuesta: podría llegar dos veces. Con el servicio de IA en Python (`AI_ENGINE=python`) se puede añadir una **indicación** para la IA; esa respuesta vuelve siempre a revisión. |
+| **Aprobar / Rechazar acción** (solo con `AI_ENGINE=python`) | La IA propuso algo que modifica datos (p. ej. abrir un ticket de soporte) y espera en pausa. Aprobada, la hace (una sola vez) y prepara la respuesta con su resultado; rechazada, responde sin hacerla. Ver [ai-service](ai-service/README.md#acciones-con-aprobación-humana-fase-4). |
 
 - Lo que envía una persona sale **sin `Auto-Submitted`** (no es una respuesta
   automática) y el historial dice quién lo aprobó.
@@ -1605,7 +1606,9 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | POST | `/emails/{id}/replies/{reply}/reject` | `emails.review` | Descartar la propuesta (`reason` opcional) |
 | POST | `/emails/{id}/replies` | `emails.review` | Enviar una respuesta escrita por la persona (`body`) |
 | POST | `/emails/{id}/close` | `emails.review` | Cerrar sin responder (`reason` opcional) |
-| POST | `/emails/{id}/reprocess` | `emails.review` | Volver a procesarlo con la IA (409 si ya se intentó un envío) |
+| POST | `/emails/{id}/reprocess` | `emails.review` | Volver a procesarlo con la IA (409 si ya se intentó un envío; `instruction` opcional solo con `AI_ENGINE=python`, si no 422) |
+| POST | `/emails/{id}/action/approve` | `emails.review` | Aprobar la acción que propuso ai-service (409 si no hay ninguna pendiente o ya se decidió) |
+| POST | `/emails/{id}/action/reject` | `emails.review` | Rechazar la acción que propuso ai-service |
 | PUT | `/emails/{id}/assignee` | `emails.review` | Asignar el caso (`user_id`, o `null` para liberarlo) |
 | POST | `/emails/{id}/review-checks` | `emails.review` | Avisos de las comprobaciones automáticas sobre un texto (`body`, `reply_id` opcional) |
 | GET | `/reviews` | `emails.view` | Historial de decisiones (filtros `decision`, `user`, `from`, `to`; paginado) |

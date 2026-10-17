@@ -32,7 +32,7 @@ def outcome(decision: Decision = Decision.AUTO_SEND, reasons: tuple[str, ...] = 
         draft=make_draft(),
         outcome=DecisionOutcome(decision, reasons),
         calls=(
-            make_call("ai_service.classify", model="claude-opus-5-5"),
+            make_call("ai_service.classification", model="claude-opus-5-5"),
             make_call("ai_service.draft", model="claude-sonnet-5-5"),
         ),
     )
@@ -55,7 +55,7 @@ async def test_publishes_the_processed_event_with_everything_laravel_needs() -> 
     assert event.confidence == 0.93
     assert event.model == "claude-sonnet-5-5"  # el que redactó
     assert event.classification.order_numbers == ["45821"]
-    assert [c.purpose for c in event.usage.calls] == ["ai_service.classify", "ai_service.draft"]
+    assert [c.purpose for c in event.usage.calls] == ["ai_service.classification", "ai_service.draft"]
     assert_matches_contract("email.processed.v1", event.to_json_dict())
 
 

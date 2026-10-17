@@ -22,7 +22,7 @@ from ai_service.domain.email import Email, TenantId
 from ai_service.domain.knowledge import KnowledgeChunk
 
 
-def make_call(purpose: str = "ai_service.classify", **overrides: object) -> LLMCall:
+def make_call(purpose: str = "ai_service.classification", **overrides: object) -> LLMCall:
     values: dict[str, object] = {
         "purpose": purpose,
         "provider": "fake",

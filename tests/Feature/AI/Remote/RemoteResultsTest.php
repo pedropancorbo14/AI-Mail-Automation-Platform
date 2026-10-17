@@ -87,7 +87,7 @@ it('applies a safe result: classification, AI requests with cost and automatic s
 
     $requests = inTenant($this->tenant, fn () => AiRequest::query()->orderBy('id')->get());
     expect($requests)->toHaveCount(2)
-        ->and($requests->pluck('purpose')->all())->toBe(['ai_service.classify', 'ai_service.draft'])
+        ->and($requests->pluck('purpose')->all())->toBe(['ai_service.classification', 'ai_service.draft'])
         ->and($requests[0]->cost_usd)->toBe('0.011020') // 1960/159 tokens a precio de Opus 5.5 (config/ai.php)
         ->and($requests[0]->response)->toMatchArray(['source' => 'ai-service', 'prompt' => 'email_classification@1'])
         ->and($requests[0]->email_id)->toBe($email->id)

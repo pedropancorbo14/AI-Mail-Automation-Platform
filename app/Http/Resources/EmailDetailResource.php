@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\AI\Agent\Enums\EmailReplyStatus;
+use App\AI\Remote\AIEngine;
 use App\Automation\Review\HumanReviewService;
 use App\Mail\Enums\RecipientType;
 use App\Models\Email;
@@ -102,6 +103,15 @@ class EmailDetailResource extends EmailListResource
             // Ya se intentó enviar una respuesta (puede haber llegado): no se reprocesa con la IA.
             'send_attempted' => $this->replies->contains(fn (EmailReply $reply) => in_array($reply->status, [EmailReplyStatus::Sending, EmailReplyStatus::Sent, EmailReplyStatus::Failed], true)),
             'assigned_at' => $this->assigned_at?->toIso8601String(),
+            // Acción que propuso ai-service (p. ej. abrir un ticket) y espera a que una persona decida.
+            'pending_action' => ($action = $this->undecidedAction()) === null ? null : [
+                'tool' => $action['tool'],
+                'summary' => $action['summary'],
+                'arguments' => $action['arguments'],
+                'proposed_at' => $action['proposed_at'] ?? null,
+            ],
+            // Se puede reprocesar con una indicación para la IA (solo con ai-service).
+            'can_instruct' => AIEngine::current()->isRemote(),
             'reviews' => $this->reviews->map(fn (EmailReview $review) => [
                 'id' => $review->id,
                 'decision' => $review->decision->value,

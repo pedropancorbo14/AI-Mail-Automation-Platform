@@ -8,12 +8,12 @@ import type { ReviewHistoryEntry, ReviewSummary } from '@/api/types';
 const summary: ReviewSummary = {
     days: 30,
     pending: 4,
-    decisions: { approved: 3, rejected: 1, replied: 1, closed: 1, reprocessed: 0 },
+    decisions: { approved: 3, rejected: 1, replied: 1, closed: 1, reprocessed: 0, action_approved: 0, action_rejected: 0 },
     resolved: 5,
     wait_seconds: { average: 2700, median: 1800 },
     ai_proposals: { reviewed: 4, approved_unchanged: 2, approved_edited: 1, rejected: 1, unchanged_rate: 0.5 },
     people: [
-        { user: { id: 2, name: 'Bea' }, total: 4, decisions: { approved: 2, rejected: 1, replied: 1, closed: 0, reprocessed: 0 }, edited: 1, average_wait_seconds: 3600 },
+        { user: { id: 2, name: 'Bea' }, total: 4, decisions: { approved: 2, rejected: 1, replied: 1, closed: 0, reprocessed: 0, action_approved: 0, action_rejected: 0 }, edited: 1, average_wait_seconds: 3600 },
     ],
 };
 

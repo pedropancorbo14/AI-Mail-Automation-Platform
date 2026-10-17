@@ -145,11 +145,13 @@ const columns = computed<DataTableColumns<ReviewQueueItem>>(() => [
     {
         title: 'Propuesta',
         key: 'has_draft',
-        width: 120,
+        width: 150,
         render: (row) =>
             row.status === 'failed'
                 ? h(NTag, { type: statusTagTypes.failed, size: 'small' }, () => statusLabels.failed)
-                : row.has_draft
+                : row.has_pending_action
+                  ? h(NTag, { type: 'warning', size: 'small', bordered: false }, () => 'Acción por aprobar')
+                  : row.has_draft
                   ? h(NText, null, () => 'De la IA')
                   : h(NText, { depth: 3 }, () => 'Sin propuesta'),
     },

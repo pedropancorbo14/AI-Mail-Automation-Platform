@@ -51,8 +51,14 @@ export function closeEmail(emailId: number, reason: string | null): Promise<Emai
     return detail(api.post(`/emails/${emailId}/close`, { reason }));
 }
 
-export function reprocessEmail(emailId: number): Promise<EmailDetail> {
-    return detail(api.post(`/emails/${emailId}/reprocess`));
+/** Vuelve a procesar el email con la IA; con ai-service, con una indicación opcional de la persona. */
+export function reprocessEmail(emailId: number, instruction: string | null = null): Promise<EmailDetail> {
+    return detail(api.post(`/emails/${emailId}/reprocess`, instruction ? { instruction } : {}));
+}
+
+/** Aprueba o rechaza la acción que propuso ai-service: la IA sigue con la decisión. */
+export function decideAction(emailId: number, approved: boolean): Promise<EmailDetail> {
+    return detail(api.post(`/emails/${emailId}/action/${approved ? 'approve' : 'reject'}`));
 }
 
 /** Asigna el caso a una persona (null = liberarlo). */

@@ -84,7 +84,7 @@ async def test_a_simple_question_flows_classify_retrieve_draft_validate_and_ends
 
     assert result.outcome.decision is Decision.AUTO_SEND
     assert result.draft is not None
-    assert [c.purpose for c in result.calls] == ["ai_service.classify", "ai_service.draft"]
+    assert [c.purpose for c in result.calls] == ["ai_service.classification", "ai_service.draft"]
     _, classification, context = llm.draft_calls[0]
     assert classification.category is Category.PRODUCT_QUESTION  # el borrador ve la clasificación
     assert context.knowledge == ()  # sin RAG configurado
@@ -142,7 +142,7 @@ async def test_retrieve_gives_the_draft_the_documentation_of_the_email_tenant() 
     assert search.result["results"][0]["source"] == CANARIAS
     assert result.tools_used == ("search_company_documents",)
     assert [c.purpose for c in result.calls] == [
-        "ai_service.classify",
+        "ai_service.classification",
         "ai_service.knowledge_search",
         "ai_service.draft",
     ]
@@ -230,7 +230,7 @@ async def test_a_failure_in_draft_reports_every_billed_call() -> None:
 
     assert caught.value.code == "refusal"
     assert [c.purpose for c in caught.value.calls] == [
-        "ai_service.classify",
+        "ai_service.classification",
         "ai_service.knowledge_search",
         "ai_service.draft",
     ]

@@ -3943,8 +3943,46 @@ pasos) que mandan el caso a una persona en vez de fallar.
   persona."). Tests: bloque solo con indicación y antes del email, etiqueta
   falsa en el email neutralizada, regla de decisión, llega al agente desde
   el evento de ejemplo. 316 tests
-- [ ] 4.7 Laravel: acción pendiente en el panel (aprobar/rechazar),
-  reprocesar con indicación, publicadores, estados y auditoría
+- [x] 4.7 **Laravel: acción pendiente y reproceso con indicación.**
+  Migración `add_ai_pending_action_to_emails`: `emails.ai_pending_action`
+  (jsonb: action_id, tool, arguments, summary, thread_id, proposed_at y, al
+  decidir, approved/decided_by/decided_at) y `ai_review_instruction`
+  (text); `Email::undecidedAction()`. `RemoteResultHandler`: cada resultado
+  borra indicación y acción anterior; con `pending_action` la guarda y pasa
+  a human_review **sin propuesta**; tras reanudar (sin llamada de
+  clasificación) conserva `classification_ai_request_id`.
+  **`ReviewResumedPublisher`** (`email.review_resumed.v1`, validado contra el
+  contrato, after commit, `ai_event_id`/`ai_requested_at`; `decide()` guarda
+  la decisión y reinicia los intentos). `EmailEventPublisher` envía
+  `review_instruction`; `traceId()` pública. `HumanReviewService::
+  decideAction()` (human_review/failed → processing, `ReviewDecision`
+  nuevas **`action_approved`/`action_rejected`** —cuentan como resueltas en
+  `ReviewStats`—, 409 si no hay acción, ya se decidió o `AI_ENGINE=laravel`)
+  y `reprocess($email, $user, ?$instruction)` (guarda la indicación, motivo
+  de la decisión = la indicación, descarta la acción); responder y cerrar
+  también descartan la acción. API: `POST /emails/{id}/action/approve|reject`
+  (`DecideActionRequest`), `reprocess` con `instruction` (`ReprocessEmailRequest`:
+  máx. 2000; con el motor de Laravel → **422**). Auditoría
+  `email.action_approved|rejected` (solo `tool`) y `email.reprocessed` con
+  `with_instruction` (nunca el texto). Detalle: `pending_action` (tool,
+  summary, arguments, proposed_at) y `can_instruct`; bandeja:
+  `has_pending_action`. `ai:reconcile-remote`: con decisión tomada republica
+  **la reanudación**, no el email. Panel: bloque "La IA propone: …" con sus
+  datos y **Aprobar acción** / **Rechazar acción** en `ReviewPanel`,
+  reprocesar con un diálogo (indicación solo si `can_instruct`), etiqueta
+  "Acción por aprobar" en la bandeja, `create_support_ticket` en
+  `toolLabels`, auditoría en español. **Arreglado de paso:** los ejemplos
+  del contrato y los fakes usaban el propósito `ai_service.classify`, pero
+  ai-service envía `ai_service.classification` (y Laravel enlaza la
+  clasificación por ese sufijo): corregidos. Tests: `RemoteApprovalTest`
+  (10: pausa guardada sin propuesta y visible en detalle y bandeja,
+  aprobar/rechazar publica la reanudación válida con auditoría sin datos del
+  cliente, resultado tras reanudar con la clasificación original y el
+  ticket como fuente, 409 en segunda decisión/sin acción/motor de Laravel,
+  indicación que viaja una vez, 422 con el motor de Laravel, el
+  reconciliador republica la decisión, `expired` → persona, otra empresa →
+  404) y Vitest (2 nuevos en `ReviewPanel.test.ts`, 87 en total). Laravel
+  1219 + los 25 del entorno
 - [ ] 4.8 Compose, CI, README y prueba de punta a punta
 
 ### Pendientes anotados para más adelante

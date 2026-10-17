@@ -60,6 +60,10 @@ export const toolLabels: Record<string, { label: string; description: string }> 
         label: 'Consultar pedido',
         description: 'Estado, productos, envío y seguimiento de un pedido. Solo de los pedidos del cliente que escribe.',
     },
+    create_support_ticket: {
+        label: 'Abrir un ticket de soporte',
+        description: 'Crea un ticket en el sistema de soporte. Solo con la aprobación de una persona.',
+    },
     get_customer_orders: {
         label: 'Pedidos del cliente',
         description: 'Últimos pedidos del cliente que escribe, cuando no indica el número.',
@@ -69,10 +73,12 @@ export const toolLabels: Record<string, { label: string; description: string }> 
 export const toolLabel = (tool: string): string => toolLabels[tool]?.label ?? tool;
 
 /** Decisiones de la revisión humana. */
-export const reviewDecisionLabels: Record<'approved' | 'rejected' | 'replied' | 'closed' | 'reprocessed', string> = {
+export const reviewDecisionLabels: Record<'approved' | 'rejected' | 'replied' | 'closed' | 'reprocessed' | 'action_approved' | 'action_rejected', string> = {
     approved: 'Aprobada',
     rejected: 'Propuesta descartada',
     replied: 'Respondida por una persona',
     closed: 'Cerrado sin responder',
     reprocessed: 'Reprocesado con la IA',
+    action_approved: 'Acción de la IA aprobada',
+    action_rejected: 'Acción de la IA rechazada',
 };

@@ -44,6 +44,10 @@ use Illuminate\Support\Facades\Log;
  * el tenant_id del evento; si no, no se toca nada (cola de errores + log
  * crítico). Idempotente: solo se aplica si el email sigue en processing
  * (entregas repetidas y resultados tardíos se descartan).
+ *
+ * Acción pendiente (pending_action): ai-service quedó en pausa esperando a
+ * una persona; se guarda en emails.ai_pending_action y el email pasa a
+ * human_review. La decisión vuelve a ai-service con ReviewResumedPublisher.
  */
 class RemoteResultHandler
 {
@@ -118,6 +122,9 @@ class RemoteResultHandler
             }
 
             $requests = $this->recordRequests($email, $event['usage']['calls'] ?? []);
+
+            // La indicación ya se usó y una acción anterior ya no está pendiente.
+            $email->forceFill(['ai_review_instruction' => null, 'ai_pending_action' => null])->save();
 
             $type === self::PROCESSED
                 ? $this->applyProcessed($email, $event, $requests)
@@ -195,7 +202,8 @@ class RemoteResultHandler
             orderNumbers: $c['order_numbers'],
             invoiceNumbers: $c['invoice_numbers'],
             customerName: $c['customer_name'],
-            aiRequestId: $classifyRequest?->id,
+            // Un resultado tras reanudar no vuelve a clasificar: se conserva la petición original.
+            aiRequestId: $classifyRequest?->id ?? $email->classification_ai_request_id,
         ));
 
         if ($reason = EmailProcessor::ignoreReason($email)) {
@@ -208,6 +216,21 @@ class RemoteResultHandler
         $prefix = $event['decision'] === 'escalate' ? 'La IA lo escala a una persona' : 'La IA pide revisión humana';
 
         $run = $this->recordAgentRun($email, $event, $requests);
+
+        if ($action = $event['pending_action'] ?? null) {
+            // El grafo de ai-service queda en pausa hasta que una persona decida en el panel.
+            $email->forceFill(['ai_pending_action' => [
+                'action_id' => $action['action_id'],
+                'tool' => $action['tool'],
+                'arguments' => $action['arguments'],
+                'summary' => $action['summary'],
+                'thread_id' => $event['thread_id'],
+                'proposed_at' => now()->toIso8601ZuluString(),
+            ]])->save();
+            $email->transitionTo(EmailStatus::HumanReview, "La IA propone una acción que necesita la aprobación de una persona: {$action['summary']}");
+
+            return;
+        }
 
         if (trim($event['draft']) === '') {
             $email->transitionTo(EmailStatus::HumanReview, $reasons !== '' ? "{$prefix}: {$reasons}" : "{$prefix} (sin propuesta de respuesta).");

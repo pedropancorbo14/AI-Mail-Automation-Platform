@@ -20,6 +20,12 @@ enum ReviewDecision: string
     /** Lo mandó a procesar otra vez con la IA. */
     case Reprocessed = 'reprocessed';
 
+    /** Aprobó la acción que propuso ai-service (p. ej. abrir un ticket): la IA sigue. */
+    case ActionApproved = 'action_approved';
+
+    /** Rechazó la acción que propuso ai-service: la IA sigue sin hacerla. */
+    case ActionRejected = 'action_rejected';
+
     public function label(): string
     {
         return match ($this) {
@@ -28,6 +34,8 @@ enum ReviewDecision: string
             self::Replied => 'Respondida por una persona',
             self::Closed => 'Cerrado sin responder',
             self::Reprocessed => 'Reprocesado con la IA',
+            self::ActionApproved => 'Acción de la IA aprobada',
+            self::ActionRejected => 'Acción de la IA rechazada',
         };
     }
 

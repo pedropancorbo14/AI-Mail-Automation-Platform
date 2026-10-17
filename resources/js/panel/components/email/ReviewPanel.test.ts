@@ -133,6 +133,56 @@ describe('revisión humana del email', () => {
         expect(failed.find('[data-test="review-reprocess"]').exists()).toBe(false);
     });
 
+    it('reprocesa con una indicación para la IA solo si hay ai-service', async () => {
+        const fetchMock = stubApi();
+        const { wrapper } = mountPanel(emailFixture({ can_instruct: true, replies: [replyFixture()] }));
+
+        await wrapper.find('[data-test="review-reprocess"]').trigger('click');
+        await flushPromises();
+        const instruction = document.body.querySelector('[data-test="review-instruction"] textarea') as HTMLTextAreaElement;
+        instruction.value = 'Ofrece cambiarla por otra nueva.';
+        instruction.dispatchEvent(new Event('input'));
+        Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Reprocesar')?.click();
+        await flushPromises();
+
+        expect(JSON.parse(call(fetchMock, '/api/v1/emails/12/reprocess')?.[1].body)).toEqual({ instruction: 'Ofrece cambiarla por otra nueva.' });
+
+        document.body.innerHTML = '';
+        const { wrapper: laravel } = mountPanel(emailFixture({ can_instruct: false, replies: [replyFixture()] }));
+        await laravel.find('[data-test="review-reprocess"]').trigger('click');
+        await flushPromises();
+        expect(document.body.querySelector('[data-test="review-instruction"]')).toBeNull();
+    });
+
+    it('enseña la acción que propone la IA y la aprueba o la rechaza', async () => {
+        const fetchMock = stubApi();
+        const pending = {
+            tool: 'create_support_ticket',
+            summary: 'Crear un ticket de soporte «La lámpara no enciende» (prioridad normal) para cliente@cliente.test.',
+            arguments: { subject: 'La lámpara no enciende', description: 'No enciende.', priority: 'normal' },
+            proposed_at: '2026-10-17T10:00:00Z',
+        };
+        const { wrapper, updated } = mountPanel(emailFixture({ pending_action: pending }));
+
+        const block = wrapper.get('[data-test="pending-action"]');
+        expect(block.text()).toContain('Abrir un ticket de soporte');
+        expect(block.text()).toContain('La lámpara no enciende');
+        expect(block.text()).toContain('Prioridad');
+
+        await wrapper.find('[data-test="action-approve"]').trigger('click');
+        await flushPromises();
+        Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Aprobar')?.click();
+        await flushPromises();
+        expect(call(fetchMock, '/api/v1/emails/12/action/approve')?.[1].method).toBe('POST');
+        expect(updated).toHaveBeenCalledOnce();
+
+        await wrapper.find('[data-test="action-reject"]').trigger('click');
+        await flushPromises();
+        expect(call(fetchMock, '/api/v1/emails/12/action/reject')).toBeDefined();
+
+        expect(describeMetadata({ action: 'email.action_approved', metadata: { tool: 'create_support_ticket' } } as never)).toContain('Abrir un ticket de soporte');
+    });
+
     it('se asigna el caso y lo libera', async () => {
         const fetchMock = stubApi();
         const { wrapper } = mountPanel(emailFixture({ assignee: { id: 2, name: 'Bea' } }));

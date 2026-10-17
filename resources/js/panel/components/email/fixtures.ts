@@ -71,6 +71,8 @@ export function emailFixture(overrides: Partial<EmailDetail> = {}): EmailDetail 
         send_attempted: false,
         assignee: null,
         assigned_at: null,
+        pending_action: null,
+        can_instruct: false,
         reviews: [],
         ...overrides,
     };

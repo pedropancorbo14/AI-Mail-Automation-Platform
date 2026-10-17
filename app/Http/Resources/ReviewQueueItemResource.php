@@ -20,6 +20,7 @@ class ReviewQueueItemResource extends EmailListResource
             'waiting_since' => $this->waiting_since ? Carbon::parse($this->waiting_since)->toIso8601String() : null,
             'waiting_reason' => $this->waiting_reason,
             'has_draft' => (bool) $this->has_draft,
+            'has_pending_action' => $this->resource->undecidedAction() !== null,
         ];
     }
 }

@@ -151,10 +151,21 @@ export interface EmailDetail extends EmailListItem {
     /** Ya se intentó enviar una respuesta (puede haber llegado): no se reprocesa con la IA. */
     send_attempted: boolean;
     assigned_at: string | null;
+    /** Acción que propuso ai-service (p. ej. abrir un ticket) y espera a que una persona decida. */
+    pending_action: PendingAction | null;
+    /** Se puede reprocesar con una indicación para la IA (solo con ai-service). */
+    can_instruct: boolean;
     reviews: Review[];
 }
 
-export type ReviewDecision = 'approved' | 'rejected' | 'replied' | 'closed' | 'reprocessed';
+export interface PendingAction {
+    tool: string;
+    summary: string;
+    arguments: Record<string, unknown>;
+    proposed_at: string | null;
+}
+
+export type ReviewDecision = 'approved' | 'rejected' | 'replied' | 'closed' | 'reprocessed' | 'action_approved' | 'action_rejected';
 
 /** Una decisión de una persona sobre un email. */
 export interface Review {
@@ -174,6 +185,7 @@ export interface ReviewQueueItem extends EmailListItem {
     waiting_since: string | null;
     waiting_reason: string | null;
     has_draft: boolean;
+    has_pending_action: boolean;
 }
 
 export interface ReviewQueueCounts {

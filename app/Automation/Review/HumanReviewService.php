@@ -3,6 +3,8 @@
 namespace App\Automation\Review;
 
 use App\AI\Agent\Enums\EmailReplyStatus;
+use App\AI\Remote\AIEngine;
+use App\AI\Remote\ReviewResumedPublisher;
 use App\Automation\EmailProcessor;
 use App\Automation\ProcessEmailJob;
 use App\Automation\ReplySender;
@@ -31,6 +33,9 @@ use LogicException;
  *
  * Un email "espera a una persona" en human_review o en failed (un envío
  * fallido o un error de procesamiento también los resuelve una persona).
+ *
+ * Con ai-service (AI-Service, Fase 4) además: aprobar o rechazar la acción
+ * que la IA dejó pendiente y reprocesar con una indicación.
  */
 class HumanReviewService
 {
@@ -41,6 +46,7 @@ class HumanReviewService
         private readonly ReplySender $sender,
         private readonly TenantService $tenants,
         private readonly ReplyContentGuard $guard,
+        private readonly ReviewResumedPublisher $resumes,
     ) {
     }
 
@@ -106,6 +112,7 @@ class HumanReviewService
             $waited = $this->waitedSeconds($email);
 
             $this->discardOtherDrafts($email, null, $by, "Sustituida por una respuesta escrita por {$by->name}.");
+            $this->dropPendingAction($email);
             $this->toHumanReview($email, $by);
 
             $reply = $email->replies()->make([
@@ -135,6 +142,7 @@ class HumanReviewService
             $waited = $this->waitedSeconds($email);
 
             $this->discardOtherDrafts($email, null, $by, 'El caso se cerró sin responder.');
+            $this->dropPendingAction($email);
             $email->transitionTo(EmailStatus::Ignored, "Cerrado sin responder por {$by->name}" . ($reason ? ": {$reason}" : '.'), $by);
             $this->record($email, $by, ReviewDecision::Closed, reason: $reason, waited: $waited);
         });
@@ -142,10 +150,15 @@ class HumanReviewService
 
     /**
      * Vuelve a procesar el email con la IA (clasificación ya hecha + agente
-     * de nuevo). Las propuestas anteriores se descartan. Nunca si ya se
-     * intentó enviar una respuesta: podría llegar dos veces.
+     * de nuevo). Las propuestas anteriores (y la acción pendiente, si la hay)
+     * se descartan. Nunca si ya se intentó enviar una respuesta: podría
+     * llegar dos veces.
+     *
+     * Con $instruction (solo con ai-service, AI_ENGINE=python), la persona le
+     * dice a la IA qué tener en cuenta; viaja en el email.received.v1 y la
+     * respuesta así redactada la revisa siempre una persona.
      */
-    public function reprocess(Email $email, User $by): void
+    public function reprocess(Email $email, User $by, ?string $instruction = null): void
     {
         if (! in_array($email->status, [...self::REVIEWABLE, EmailStatus::Ignored], true)) {
             throw ReviewException::notReprocessable();
@@ -155,15 +168,50 @@ class HumanReviewService
             throw ReviewException::sendAttempted();
         }
 
-        $this->decide(function () use ($email, $by) {
+        $instruction = $instruction !== null && trim($instruction) !== '' ? trim($instruction) : null;
+
+        $this->decide(function () use ($email, $by, $instruction) {
             $waited = $this->waitedSeconds($email);
 
             $this->discardOtherDrafts($email, null, $by, 'Sustituida al reprocesar el email con la IA.');
+            $this->dropPendingAction($email);
+            $email->forceFill(['ai_review_instruction' => $instruction])->save();
             // El job sigue desde processing (como un reintento) y repite el agente.
-            $email->transitionTo(EmailStatus::Processing, "Reprocesado con la IA por {$by->name}.", $by);
-            $this->record($email, $by, ReviewDecision::Reprocessed, waited: $waited);
+            $email->transitionTo(EmailStatus::Processing, $instruction
+                ? "Reprocesado con la IA por {$by->name}, con una indicación."
+                : "Reprocesado con la IA por {$by->name}.", $by);
+            $this->record($email, $by, ReviewDecision::Reprocessed, reason: $instruction, waited: $waited);
 
             ProcessEmailJob::dispatch($email->tenant_id, $email->id, reprocess: true)->afterCommit();
+        });
+    }
+
+    /**
+     * Aprueba o rechaza la acción que propuso ai-service (p. ej. abrir un
+     * ticket). El email vuelve a processing y ai-service reanuda el grafo en
+     * pausa: aprobada, la ejecuta (una sola vez) y redacta con su resultado;
+     * rechazada, redacta sin ella. El resultado llega como cualquier otro.
+     */
+    public function decideAction(Email $email, User $by, bool $approved): void
+    {
+        $email = $this->reviewableEmail($email);
+
+        if (! AIEngine::current()->isRemote()) {
+            throw ReviewException::remoteEngineOff();
+        }
+
+        if (($action = $email->undecidedAction()) === null) {
+            throw ReviewException::noPendingAction();
+        }
+
+        $this->decide(function () use ($email, $by, $approved, $action) {
+            $waited = $this->waitedSeconds($email);
+
+            ReviewResumedPublisher::decide($email, $approved, $by);
+            $email->transitionTo(EmailStatus::Processing, ($approved ? "Acción aprobada por {$by->name}: " : "Acción rechazada por {$by->name}: ") . $action['summary'], $by);
+            $this->record($email, $by, $approved ? ReviewDecision::ActionApproved : ReviewDecision::ActionRejected, waited: $waited);
+
+            $this->resumes->publish($email);
         });
     }
 
@@ -262,6 +310,14 @@ class HumanReviewService
             ->when($keep, fn ($q) => $q->whereKeyNot($keep->id))
             ->get()
             ->each(fn (EmailReply $draft) => $this->markRejected($draft, $by, $reason));
+    }
+
+    /** La acción pendiente deja de estarlo (su pausa en ai-service caduca sola). */
+    private function dropPendingAction(Email $email): void
+    {
+        if ($email->ai_pending_action !== null) {
+            $email->forceFill(['ai_pending_action' => null])->save();
+        }
     }
 
     private function markRejected(EmailReply $reply, User $by, ?string $reason): bool

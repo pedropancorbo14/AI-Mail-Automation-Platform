@@ -12,17 +12,19 @@ import {
     useMessage,
 } from 'naive-ui';
 import { ApiError } from '@/api/http';
-import { approveReply, assignEmail, checkReply, closeEmail, rejectReply, reprocessEmail, writeReply } from '@/api/reviews';
+import { approveReply, assignEmail, checkReply, closeEmail, decideAction, rejectReply, reprocessEmail, writeReply } from '@/api/reviews';
 import type { EmailDetail } from '@/api/types';
 import { useAuthStore } from '@/stores/auth';
 import { useReviewQueueStore } from '@/stores/reviewQueue';
 import { formatAddress } from '@/utils/format';
+import { toolLabel } from '@/utils/labels';
 
 /**
  * Lo que puede hacer una persona con un email que espera revisión humana:
  * aprobar la respuesta de la IA (tal cual o editada), descartarla, escribir
- * una propia, cerrar el caso sin responder, reprocesarlo con la IA y
- * asignárselo. La API vuelve a comprobarlo todo; cada acción devuelve el
+ * una propia, cerrar el caso sin responder, reprocesarlo con la IA (con una
+ * indicación, si se usa ai-service), aprobar o rechazar la acción que
+ * propuso ai-service y asignárselo. La API vuelve a comprobarlo todo; cada acción devuelve el
  * email actualizado.
  */
 const props = defineProps<{ email: EmailDetail }>();
@@ -103,27 +105,47 @@ function send(): void {
     }
 }
 
-// Descartar la propuesta y cerrar sin responder piden un motivo opcional.
-const dialog = ref<'reject' | 'close' | null>(null);
+// Descartar la propuesta y cerrar sin responder piden un motivo opcional;
+// reprocesar, una indicación para la IA (solo con ai-service).
+type DialogKind = 'reject' | 'close' | 'reprocess';
+const dialog = ref<DialogKind | null>(null);
 const reason = ref('');
+const MAX_INSTRUCTION_CHARS = 2000;
 
-function openDialog(kind: 'reject' | 'close'): void {
+const dialogTexts: Record<DialogKind, { title: string; confirm: string }> = {
+    reject: { title: 'Descartar la propuesta de la IA', confirm: 'Descartar' },
+    close: { title: 'Cerrar sin responder', confirm: 'Cerrar el caso' },
+    reprocess: { title: 'Reprocesar con la IA', confirm: 'Reprocesar' },
+};
+
+function openDialog(kind: DialogKind): void {
     reason.value = '';
     dialog.value = kind;
 }
 
 async function confirmDialog(): Promise<void> {
     const why = reason.value.trim() || null;
-    const ok = dialog.value === 'reject'
-        ? await run('reject', () => rejectReply(props.email.id, draft.value!.id, why), 'Propuesta descartada. Puedes escribir tu respuesta.')
-        : await run('close', () => closeEmail(props.email.id, why), 'Caso cerrado sin responder.');
+    const actions: Record<DialogKind, () => Promise<boolean>> = {
+        reject: () => run('reject', () => rejectReply(props.email.id, draft.value!.id, why), 'Propuesta descartada. Puedes escribir tu respuesta.'),
+        close: () => run('close', () => closeEmail(props.email.id, why), 'Caso cerrado sin responder.'),
+        reprocess: () => run('reprocess', () => reprocessEmail(props.email.id, props.email.can_instruct ? why : null), 'Enviado a la IA otra vez: en unos segundos tendrás una propuesta nueva.'),
+    };
 
-    if (ok) {
+    if (dialog.value && await actions[dialog.value]()) {
         dialog.value = null;
     }
 }
 
-const reprocess = () => run('reprocess', () => reprocessEmail(props.email.id), 'Enviado a la IA otra vez: en unos segundos tendrás una propuesta nueva.');
+// Acción propuesta por ai-service (p. ej. abrir un ticket): la IA espera la decisión.
+const action = computed(() => props.email.pending_action);
+const actionArguments = computed(() => Object.entries(action.value?.arguments ?? {})
+    .map(([key, value]) => ({ key, label: argumentLabels[key] ?? key, value: typeof value === 'string' ? value : JSON.stringify(value) })));
+const argumentLabels: Record<string, string> = { subject: 'Asunto', description: 'Descripción', priority: 'Prioridad' };
+const decide = (approved: boolean) => run(
+    approved ? 'action-approve' : 'action-reject',
+    () => decideAction(props.email.id, approved),
+    approved ? 'Acción aprobada: la IA la hará y preparará la respuesta.' : 'Acción rechazada: la IA preparará la respuesta sin hacerla.',
+);
 const assign = (userId: number | null) => run('assign', () => assignEmail(props.email.id, userId), userId ? 'Caso asignado a ti.' : 'Caso liberado.');
 </script>
 
@@ -143,6 +165,26 @@ const assign = (userId: number | null) => run('assign', () => assignEmail(props.
 
         <NAlert v-if="email.send_attempted" type="warning" title="Ya se intentó enviar una respuesta" class="review__alert" data-test="send-attempted">
             Puede haber llegado al cliente: compruébalo antes de enviar otra. Por eso no se puede reprocesar con la IA.
+        </NAlert>
+
+        <NAlert v-if="action" type="info" :title="`La IA propone: ${toolLabel(action.tool)}`" class="review__alert" data-test="pending-action">
+            <NText tag="p" class="review__action-summary">{{ action.summary }}</NText>
+            <dl class="review__arguments">
+                <template v-for="arg in actionArguments" :key="arg.key">
+                    <dt>{{ arg.label }}</dt>
+                    <dd>{{ arg.value }}</dd>
+                </template>
+            </dl>
+            <NText depth="3" tag="p" class="review__hint">No se hace nada hasta que lo decidas. Después, la IA preparará la respuesta al cliente.</NText>
+            <NSpace :size="8">
+                <NPopconfirm positive-text="Aprobar" negative-text="Cancelar" @positive-click="decide(true)">
+                    <template #trigger>
+                        <NButton type="primary" size="small" :loading="busy === 'action-approve'" data-test="action-approve">Aprobar acción</NButton>
+                    </template>
+                    La IA hará la acción ahora. No se puede deshacer desde aquí.
+                </NPopconfirm>
+                <NButton secondary size="small" :loading="busy === 'action-reject'" data-test="action-reject" @click="decide(false)">Rechazar acción</NButton>
+            </NSpace>
         </NAlert>
 
         <NText depth="3" tag="p" class="review__hint">
@@ -181,12 +223,7 @@ const assign = (userId: number | null) => run('assign', () => assignEmail(props.
                 <NButton v-if="draft" secondary :loading="busy === 'reject'" data-test="review-reject" @click="openDialog('reject')">Descartar propuesta</NButton>
             </NSpace>
             <NSpace :size="8" wrap>
-                <NPopconfirm v-if="!email.send_attempted" positive-text="Reprocesar" negative-text="Cancelar" @positive-click="reprocess">
-                    <template #trigger>
-                        <NButton secondary :loading="busy === 'reprocess'" data-test="review-reprocess">Reprocesar con la IA</NButton>
-                    </template>
-                    La IA preparará una propuesta nueva; la actual se descartará.
-                </NPopconfirm>
+                <NButton v-if="!email.send_attempted" secondary :loading="busy === 'reprocess'" data-test="review-reprocess" @click="openDialog('reprocess')">Reprocesar con la IA</NButton>
                 <NButton secondary :loading="busy === 'close'" data-test="review-close" @click="openDialog('close')">Cerrar sin responder</NButton>
             </NSpace>
         </NSpace>
@@ -194,20 +231,38 @@ const assign = (userId: number | null) => run('assign', () => assignEmail(props.
         <NModal
             :show="dialog !== null"
             preset="dialog"
-            :title="dialog === 'reject' ? 'Descartar la propuesta de la IA' : 'Cerrar sin responder'"
-            :positive-text="dialog === 'reject' ? 'Descartar' : 'Cerrar el caso'"
+            :title="dialog ? dialogTexts[dialog].title : ''"
+            :positive-text="dialog ? dialogTexts[dialog].confirm : ''"
             negative-text="Cancelar"
-            :loading="busy === 'reject' || busy === 'close'"
+            :loading="busy === 'reject' || busy === 'close' || busy === 'reprocess'"
             @positive-click="() => { void confirmDialog(); return false; }"
             @negative-click="dialog = null"
             @close="dialog = null"
         >
-            <NText tag="p" depth="3">
-                {{ dialog === 'reject'
-                    ? 'El email seguirá esperando a una persona: después podrás escribir tu respuesta, reprocesarlo o cerrarlo.'
-                    : 'No se enviará nada al cliente. Úsalo si no necesita respuesta o ya se atendió por otra vía.' }}
-            </NText>
-            <NInput v-model:value="reason" type="textarea" :maxlength="1000" placeholder="Motivo (opcional): queda en el historial" data-test="review-reason" />
+            <template v-if="dialog === 'reprocess'">
+                <NText tag="p" depth="3">
+                    La IA preparará una propuesta nueva con los datos de ahora; la actual{{ action ? ' y la acción pendiente' : '' }} se descartará.
+                </NText>
+                <template v-if="email.can_instruct">
+                    <NInput
+                        v-model:value="reason"
+                        type="textarea"
+                        :maxlength="MAX_INSTRUCTION_CHARS"
+                        show-count
+                        placeholder="Indicación para la IA (opcional): p. ej. «Ofrece cambiar la lámpara por otra nueva»"
+                        data-test="review-instruction"
+                    />
+                    <NText tag="p" depth="3" class="review__note">Con una indicación, la respuesta siempre vuelve a revisión: no se envía sola.</NText>
+                </template>
+            </template>
+            <template v-else>
+                <NText tag="p" depth="3">
+                    {{ dialog === 'reject'
+                        ? 'El email seguirá esperando a una persona: después podrás escribir tu respuesta, reprocesarlo o cerrarlo.'
+                        : 'No se enviará nada al cliente. Úsalo si no necesita respuesta o ya se atendió por otra vía.' }}
+                </NText>
+                <NInput v-model:value="reason" type="textarea" :maxlength="1000" placeholder="Motivo (opcional): queda en el historial" data-test="review-reason" />
+            </template>
         </NModal>
     </NCard>
 </template>
@@ -232,5 +287,29 @@ const assign = (userId: number | null) => run('assign', () => assignEmail(props.
 
 .review__actions {
     margin-top: 12px;
+}
+
+.review__action-summary {
+    margin: 0 0 8px;
+}
+
+.review__arguments {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    margin: 0 0 8px;
+}
+
+.review__arguments dt {
+    font-weight: 500;
+}
+
+.review__arguments dd {
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.review__note {
+    margin: 8px 0 0;
 }
 </style>

@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 class ReviewStats
 {
     /** Decisiones que resuelven el caso (descartar una propuesta no lo resuelve). */
-    private const array RESOLVING = [ReviewDecision::Approved, ReviewDecision::Replied, ReviewDecision::Closed, ReviewDecision::Reprocessed];
+    private const array RESOLVING = [ReviewDecision::Approved, ReviewDecision::Replied, ReviewDecision::Closed, ReviewDecision::Reprocessed, ReviewDecision::ActionApproved, ReviewDecision::ActionRejected];
 
     /** @return array<string, mixed> */
     public function summary(int $days): array

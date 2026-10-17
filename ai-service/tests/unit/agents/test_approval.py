@@ -69,7 +69,7 @@ async def test_support_without_ticket_pauses_with_the_proposed_action() -> None:
         "La IA propone una acción que necesita la aprobación de una persona: "
         + result.pending_action.summary,
     )
-    assert [c.purpose for c in result.calls] == ["ai_service.classify"]
+    assert [c.purpose for c in result.calls] == ["ai_service.classification"]
     assert [t.tool for t in result.tool_calls] == ["get_customer_tickets"]
 
 

@@ -86,7 +86,7 @@ it('summarises the period: decisions, waiting time and what happens to the ai pr
 
     expect($summary['days'])->toBe(30)
         ->and($summary['pending'])->toBe(1)
-        ->and($summary['decisions'])->toBe(['approved' => 3, 'rejected' => 1, 'replied' => 0, 'closed' => 1, 'reprocessed' => 0])
+        ->and($summary['decisions'])->toBe(['approved' => 3, 'rejected' => 1, 'replied' => 0, 'closed' => 1, 'reprocessed' => 0, 'action_approved' => 0, 'action_rejected' => 0])
         ->and($summary['resolved'])->toBe(4)
         // Esperas de las decisiones que resuelven el caso: 60, 120, 300, 600 (el descarte no cuenta).
         ->and($summary['wait_seconds'])->toBe(['average' => 270, 'median' => 210])
@@ -96,7 +96,7 @@ it('summarises the period: decisions, waiting time and what happens to the ai pr
         ->and($summary['people'][0])->toBe([
             'user' => ['id' => $this->bea->id, 'name' => 'Bea'],
             'total' => 3,
-            'decisions' => ['approved' => 1, 'rejected' => 1, 'replied' => 0, 'closed' => 1, 'reprocessed' => 0],
+            'decisions' => ['approved' => 1, 'rejected' => 1, 'replied' => 0, 'closed' => 1, 'reprocessed' => 0, 'action_approved' => 0, 'action_rejected' => 0],
             'edited' => 0,
             'average_wait_seconds' => 450,
         ])

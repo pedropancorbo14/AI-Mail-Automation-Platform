@@ -14,7 +14,7 @@ const item = (overrides: Partial<ReviewQueueItem> = {}): ReviewQueueItem => ({
     status: 'human_review', status_label: 'Revisión humana', assignee: null, intent: 'order_status', intent_confidence: 0.92,
     summary: null, language: 'es', urgency: 'high', sentiment: 'negative', injection_suspected: false, automated_reason: null,
     sent_at: null, received_at: '2026-10-17T08:00:00Z',
-    waiting_since: new Date(Date.now() - 2 * 3600_000).toISOString(), waiting_reason: 'Confianza baja (0.60 < 0.75).', has_draft: true,
+    waiting_since: new Date(Date.now() - 2 * 3600_000).toISOString(), waiting_reason: 'Confianza baja (0.60 < 0.75).', has_draft: true, has_pending_action: false,
     ...overrides,
 });
 

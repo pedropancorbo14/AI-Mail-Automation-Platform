@@ -8,8 +8,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Emails\ApproveReplyRequest;
 use App\Http\Requests\Emails\AssignEmailRequest;
 use App\Http\Requests\Emails\CheckReplyRequest;
+use App\Http\Requests\Emails\DecideActionRequest;
 use App\Http\Requests\Emails\RejectReplyRequest;
-use App\Http\Requests\Emails\ReviewEmailRequest;
+use App\Http\Requests\Emails\ReprocessEmailRequest;
 use App\Http\Requests\Emails\WriteReplyRequest;
 use App\Http\Resources\EmailDetailResource;
 use App\Models\Email;
@@ -20,7 +21,8 @@ use Illuminate\Http\JsonResponse;
 /**
  * Revisión humana de un email (Fase 13): aprobar (o editar y aprobar) la
  * respuesta de la IA, descartarla, responder, cerrar sin responder,
- * reprocesar con la IA y asignarse el caso. La lógica está en
+ * reprocesar con la IA (con una indicación, si se usa ai-service), aprobar
+ * o rechazar la acción que propuso ai-service y asignarse el caso. La lógica está en
  * HumanReviewService; aquí, permiso, auditoría y respuesta.
  *
  * Cada acción devuelve el detalle actualizado del email. Si otra persona o
@@ -70,13 +72,27 @@ class EmailReviewController extends Controller
         return EmailDetailResource::for($email->refresh());
     }
 
-    public function reprocess(ReviewEmailRequest $request, Email $email): EmailDetailResource
+    public function reprocess(ReprocessEmailRequest $request, Email $email): EmailDetailResource
     {
-        $this->attempt(fn () => $this->review->reprocess($email, $request->user()));
+        $instruction = $request->validated('instruction');
+        $this->attempt(fn () => $this->review->reprocess($email, $request->user(), $instruction));
 
-        $this->audit->record('email.reprocessed', $email, self::label($email));
+        // Sin el texto de la indicación: puede llevar datos del cliente.
+        $this->audit->record('email.reprocessed', $email, self::label($email), metadata: [
+            'with_instruction' => is_string($instruction) && trim($instruction) !== '',
+        ]);
 
         return EmailDetailResource::for($email->refresh());
+    }
+
+    public function approveAction(DecideActionRequest $request, Email $email): EmailDetailResource
+    {
+        return $this->decideAction($request, $email, true);
+    }
+
+    public function rejectAction(DecideActionRequest $request, Email $email): EmailDetailResource
+    {
+        return $this->decideAction($request, $email, false);
     }
 
     public function assign(AssignEmailRequest $request, Email $email): EmailDetailResource
@@ -121,6 +137,19 @@ class EmailReviewController extends Controller
         } catch (ReviewException $e) {
             abort(409, $e->getMessage());
         }
+    }
+
+    private function decideAction(DecideActionRequest $request, Email $email, bool $approved): EmailDetailResource
+    {
+        $tool = $email->undecidedAction()['tool'] ?? null;
+        $this->attempt(fn () => $this->review->decideAction($email, $request->user(), $approved));
+
+        // Solo qué acción y qué se decidió (sus argumentos llevan datos del cliente).
+        $this->audit->record($approved ? 'email.action_approved' : 'email.action_rejected', $email, self::label($email), metadata: [
+            'tool' => $tool,
+        ]);
+
+        return EmailDetailResource::for($email->refresh());
     }
 
     private static function label(Email $email): string

@@ -43,6 +43,8 @@ const actionLabels: Record<string, string> = {
     'email.replied': 'Respondió un email con su propio texto',
     'email.closed': 'Cerró un email sin responder',
     'email.reprocessed': 'Reprocesó un email con la IA',
+    'email.action_approved': 'Aprobó una acción propuesta por la IA',
+    'email.action_rejected': 'Rechazó una acción propuesta por la IA',
     'email.assigned': 'Cambió a quién está asignado un email',
     'retention.emails_purged': 'Borrado automático de emails antiguos',
     'retention.address_forgotten': 'Borró todos los emails de una persona (derecho de supresión)',
@@ -114,6 +116,10 @@ export function describeMetadata(entry: AuditLogEntry): string[] {
         lines.push(`Con el email ${meta.email}`);
     } else if (entry.action === 'mail_connection.tested') {
         lines.push(`Recepción ${meta.incoming_ok ? 'correcta' : 'con error'}, envío ${meta.outgoing_ok ? 'correcto' : 'con error'}`);
+    } else if ((entry.action === 'email.action_approved' || entry.action === 'email.action_rejected') && typeof meta.tool === 'string') {
+        lines.push(toolLabel(meta.tool));
+    } else if (entry.action === 'email.reprocessed' && meta.with_instruction) {
+        lines.push('Con una indicación para la IA');
     } else if (entry.action === 'automation.tool_changed' && typeof meta.tool === 'string') {
         lines.push(`${toolLabel(meta.tool)}: ${meta.enabled ? 'activada' : 'desactivada'}`);
     } else if (entry.action === 'mail_connection.oauth_connected' && meta.reconnected) {

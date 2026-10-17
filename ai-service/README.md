@@ -463,7 +463,7 @@ un `httpx2.AsyncClient` que lleva el token):
 
 ## Acciones con aprobación humana (Fase 4)
 
-> En curso. El contrato y el flujo completo están en
+> En curso (falta la tarea 4.8: compose, CI y prueba de punta a punta). El contrato y el flujo completo están en
 > [`contracts/README.md`](../contracts/README.md#acciones-con-aprobación-humana-fase-4-de-ai-service).
 
 ### Checkpoints en PostgreSQL (tarea 4.2)
@@ -573,6 +573,38 @@ cero, con datos frescos (no reanuda nada):
 - La regla de decisión la manda **siempre a revisión humana** ("Redactada
   con una indicación del equipo: la revisa una persona"): quien la dio quiere
   ver cómo quedó antes de que salga.
+
+### Laravel: la acción en el panel (tarea 4.7)
+
+Del lado de Laravel (`app/AI/Remote/`, `app/Automation/Review/`):
+
+- **`RemoteResultHandler`**: un resultado con `pending_action` se guarda en
+  `emails.ai_pending_action` (acción, argumentos, resumen y `thread_id`) y el
+  email pasa a revisión humana **sin propuesta**. Un resultado tras reanudar
+  no trae llamada de clasificación: se conserva la petición de la
+  clasificación original. Cada resultado borra la indicación ya usada y la
+  acción anterior.
+- **Panel**: la tarjeta *Revisión* muestra "La IA propone: Abrir un ticket
+  de soporte" con sus datos y los botones **Aprobar acción** / **Rechazar
+  acción** (`POST /api/v1/emails/{id}/action/approve|reject`, permiso
+  `emails.review`). La bandeja marca el caso como "Acción por aprobar".
+- **`HumanReviewService::decideAction()`**: el email vuelve a `processing`,
+  la decisión se guarda en la acción (`approved`, `decided_by`) y
+  **`ReviewResumedPublisher`** publica `email.review_resumed.v1` tras el
+  commit. Decisión `action_approved` / `action_rejected` en `email_reviews`
+  y en la auditoría (solo la herramienta, nunca los argumentos: llevan datos
+  del cliente). Si otra persona se adelantó, no hay acción o
+  `AI_ENGINE=laravel` → **409**.
+- **Reconciliador** (`ai:reconcile-remote`): si la decisión se perdió (Redis
+  caído al publicar), vuelve a publicar **la decisión**, no el email (el
+  grafo sigue esperándola). Repetirla no duplica el ticket.
+- **Reprocesar con una indicación**: `POST /emails/{id}/reprocess` acepta
+  `instruction` (máx. 2000); se guarda en `emails.ai_review_instruction` y
+  viaja en el siguiente `email.received.v1`. Con `AI_ENGINE=laravel` → 422
+  (el motor de Laravel no la entendería: mejor rechazarla que ignorarla). La
+  acción pendiente, si la había, se descarta.
+- **Cerrar** o **responder** a mano también descartan la acción pendiente
+  (su pausa en ai-service caduca con la purga).
 
 ### Límites del agente (tarea 4.3)
 

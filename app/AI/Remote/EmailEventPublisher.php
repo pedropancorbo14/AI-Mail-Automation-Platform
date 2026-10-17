@@ -99,11 +99,13 @@ class EmailEventPublisher
             'attachment_names' => $email->attachments->take(50)
                 ->map(fn ($attachment) => mb_substr((string) $attachment->filename, 0, 255))->values()->all(),
             'tenant_name' => mb_substr($email->tenant->name, 0, 255),
+            // Indicación de la persona al reprocesar: la respuesta la revisa siempre una persona.
+            'review_instruction' => $email->ai_review_instruction ? mb_substr($email->ai_review_instruction, 0, 2000) : null,
         ];
     }
 
     /** El request_id de la petición o del job que lo encoló; si no hay, uno nuevo. */
-    private static function traceId(): string
+    public static function traceId(): string
     {
         $requestId = Context::get('request_id');
 

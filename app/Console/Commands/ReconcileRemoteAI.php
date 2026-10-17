@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\AI\Remote\AIEngine;
 use App\AI\Remote\EmailEventPublisher;
 use App\AI\Remote\Exceptions\InvalidEventException;
+use App\AI\Remote\ReviewResumedPublisher;
 use App\Automation\ProcessEmailJob;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
@@ -19,6 +20,9 @@ use Illuminate\Support\Facades\Log;
  *
  *  - Con AI_ENGINE=python se vuelven a publicar (evento nuevo) hasta
  *    ai.remote.max_publish_attempts; agotados → failed.
+ *  - Si una persona ya decidió la acción pendiente de ai-service, se vuelve
+ *    a publicar su decisión (email.review_resumed.v1), no el email: el grafo
+ *    sigue en pausa esperándola.
  *  - Si se volvió a AI_ENGINE=laravel, los procesa el motor de Laravel.
  */
 class ReconcileRemoteAI extends Command
@@ -27,7 +31,7 @@ class ReconcileRemoteAI extends Command
 
     protected $description = 'Vuelve a publicar (o da por fallidos) los emails sin respuesta del servicio de IA';
 
-    public function handle(EmailEventPublisher $publisher, TenantService $tenants): int
+    public function handle(EmailEventPublisher $publisher, ReviewResumedPublisher $resumes, TenantService $tenants): int
     {
         $limit = now()->subMinutes((int) config('ai.remote.reconcile_after_minutes'));
         $maxAttempts = (int) config('ai.remote.max_publish_attempts');
@@ -40,9 +44,9 @@ class ReconcileRemoteAI extends Command
             ->where('status', EmailStatus::Processing)
             ->whereNotNull('ai_requested_at')
             ->where('ai_requested_at', '<', $limit)
-            ->chunkById(100, function ($emails) use ($publisher, $tenants, $remote, $maxAttempts, &$counts) {
+            ->chunkById(100, function ($emails) use ($publisher, $resumes, $tenants, $remote, $maxAttempts, &$counts) {
                 foreach ($emails as $email) {
-                    $tenants->runAs($email->tenant, function () use ($email, $publisher, $remote, $maxAttempts, &$counts) {
+                    $tenants->runAs($email->tenant, function () use ($email, $publisher, $resumes, $remote, $maxAttempts, &$counts) {
                         if (! $remote) {
                             ProcessEmailJob::dispatch($email->tenant_id, $email->id);
                             $counts['local']++;
@@ -53,6 +57,13 @@ class ReconcileRemoteAI extends Command
                         if ($email->ai_request_attempts >= $maxAttempts) {
                             $email->transitionTo(EmailStatus::Failed, "El servicio de IA no respondió tras {$email->ai_request_attempts} intentos.");
                             $counts['failed']++;
+
+                            return;
+                        }
+
+                        if (is_array($email->ai_pending_action) && array_key_exists('approved', $email->ai_pending_action)) {
+                            $resumes->publish($email);
+                            $counts['republished']++;
 
                             return;
                         }
