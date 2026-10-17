@@ -27,6 +27,8 @@ class AgentRunResource extends JsonResource
             'iterations' => $this->iterations,
             'tool_calls_count' => $this->tool_calls_count,
             'duration_ms' => $this->duration_ms,
+            // Especialistas de ai-service que intervinieron (el primero, el principal).
+            'specialists' => $this->final_output['specialists'] ?? [],
             'started_at' => $this->started_at?->toIso8601String(),
             'finished_at' => $this->finished_at?->toIso8601String(),
             'steps' => $this->whenLoaded('aiRequests', fn () => $this->aiRequests->map(fn (AiRequest $step) => [
@@ -41,6 +43,8 @@ class AgentRunResource extends JsonResource
                     'arguments' => $call->arguments,
                     'result' => $call->result,
                     'status' => $call->status->value,
+                    // plan, model o approval (ai-service); null = el motor de Laravel.
+                    'origin' => $call->origin,
                     'error' => $call->error,
                     'duration_ms' => $call->duration_ms,
                 ])->all(),

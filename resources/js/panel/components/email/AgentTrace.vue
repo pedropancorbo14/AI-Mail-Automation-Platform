@@ -2,7 +2,7 @@
 import { NCode, NCollapse, NCollapseItem, NEmpty, NSpace, NTag, NText } from 'naive-ui';
 import type { AgentRun, ToolCall } from '@/api/types';
 import { formatDateTime } from '@/utils/format';
-import { toolLabel } from '@/utils/labels';
+import { specialistLabels, toolLabel, toolOriginLabels } from '@/utils/labels';
 
 defineProps<{ runs: AgentRun[] }>();
 
@@ -27,6 +27,12 @@ const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toL
                 {{ formatDateTime(run.started_at) }} · {{ run.iterations }} pasos · {{ run.tool_calls_count }} herramientas · {{ seconds(run.duration_ms) }}
             </NText>
         </NSpace>
+        <NSpace v-if="run.specialists?.length" size="small" align="center" class="trace__specialists" data-test="specialists">
+            <NText depth="3">Especialistas:</NText>
+            <NTag v-for="(specialist, index) in run.specialists" :key="specialist" size="tiny" :bordered="false" :type="index === 0 ? 'info' : 'default'">
+                {{ specialistLabels[specialist] ?? specialist }}{{ index === 0 ? ' (principal)' : '' }}
+            </NTag>
+        </NSpace>
         <NText v-if="run.error" type="error" class="trace__error">{{ run.error }}</NText>
 
         <ol class="trace__steps">
@@ -44,6 +50,7 @@ const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toL
                             <NSpace size="small" align="center">
                                 <NTag :type="toolStatus[call.status].type" size="tiny">{{ toolStatus[call.status].label }}</NTag>
                                 <strong>{{ toolLabel(call.tool) }}</strong>
+                                <NTag v-if="call.origin && toolOriginLabels[call.origin]" size="tiny" :bordered="false" data-test="tool-origin">{{ toolOriginLabels[call.origin] }}</NTag>
                                 <NText depth="3" code>{{ JSON.stringify(call.arguments) }}</NText>
                             </NSpace>
                         </template>
@@ -62,6 +69,10 @@ const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toL
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px dashed #e5e5e5;
+}
+
+.trace__specialists {
+    margin-bottom: 4px;
 }
 
 .trace__error {

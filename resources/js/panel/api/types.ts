@@ -58,7 +58,7 @@ export interface EmailReply {
     confidence: number | null;
     needs_human: boolean;
     needs_human_reason: string | null;
-    sources: { type: 'document' | 'order'; reference: string }[];
+    sources: { type: 'document' | 'order' | 'invoice' | 'ticket' | 'customer'; reference: string }[];
     pending_actions: string[];
     internal_note: string | null;
     approved_by?: { id: number; name: string } | null;
@@ -81,6 +81,8 @@ export interface ToolCall {
     arguments: Record<string, unknown>;
     result: unknown;
     status: 'success' | 'error' | 'rejected';
+    /** Quién decidió la consulta (ai-service): plan del backend, el modelo o una persona. */
+    origin?: 'plan' | 'model' | 'approval' | null;
     error: string | null;
     duration_ms: number | null;
 }
@@ -103,6 +105,8 @@ export interface AgentRun {
     iterations: number;
     tool_calls_count: number;
     duration_ms: number | null;
+    /** Especialistas de ai-service que intervinieron; el primero es el principal. */
+    specialists?: string[];
     started_at: string | null;
     finished_at: string | null;
     steps: AgentStep[];

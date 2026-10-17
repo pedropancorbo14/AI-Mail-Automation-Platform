@@ -4168,7 +4168,21 @@ el de Python afecte a nada.
   `is_error`), IA simulada y **grafo + IA simulada + MCP real** ("¿cuándo
   llega mi pedido?" → lista por el plan → detalle pedido por el modelo →
   seguimiento en la respuesta). 366 tests de Python
-- [ ] 5.4 Laravel: especialistas y origen de las herramientas en la traza
+- [x] 5.4 **Laravel: especialistas y origen en la traza.** Migración
+  `add_origin_to_ai_tool_calls` (`origin` nullable: plan/model/approval;
+  null = motor de Laravel o resultados anteriores), `AiToolCall` fillable,
+  `RemoteResultHandler` guarda `origin` y `final_output.specialists`;
+  `AgentRunResource` expone `specialists` y `origin` de cada herramienta.
+  Panel: `AgentTrace` con "Especialistas: Soporte (principal) · Pedidos" y
+  etiqueta "Pedida por la IA" / "Aprobada por una persona" (el plan no se
+  marca); `toolLabels` de las herramientas de ai-service (`get_customer`,
+  `get_customer_tickets`, `get_invoice`, `get_customer_invoices`);
+  `specialistLabels`, `toolOriginLabels`, `sourceTypeLabels`. **Arreglado
+  de paso:** `ReplyCard` mostraba "Documento" para cualquier fuente que no
+  fuera un pedido (tickets, cuenta y ahora facturas). Tests: Pest (el
+  ejemplo de especialistas guarda los orígenes y la API del detalle los
+  devuelve con los especialistas) y Vitest (especialistas, origen marcado
+  solo para el modelo, tipos de fuente; 89 en total)
 - [ ] 5.5 Modo sombra en ai-service
 - [ ] 5.6 Laravel: publicar en sombra y guardar el resultado
 - [ ] 5.7 Comparación, métricas, Grafana e informe

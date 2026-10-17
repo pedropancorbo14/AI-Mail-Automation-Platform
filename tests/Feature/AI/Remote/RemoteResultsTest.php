@@ -280,6 +280,25 @@ it('records what ai-service did as an agent run with its tool calls (also for th
         ->and($call->aiRequest->cost_usd)->toBe('0.000000'); // bge-m3 local: coste 0
 });
 
+it('records the specialists and who decided each lookup, and shows them in the trace', function () {
+    $event = json_decode(file_get_contents(base_path('contracts/events/examples/valid/email.processed.v1--specialists.json')), true);
+    deliverResult(array_merge($event, [
+        'event_id' => (string) Str::uuid(),
+        'tenant_id' => $this->email->tenant_id,
+        'email_id' => $this->email->id,
+        'causation_id' => null,
+    ]));
+
+    $calls = inTenant($this->tenant, fn () => App\Models\AiToolCall::orderBy('id')->get());
+    expect($calls->pluck('origin')->all())->toBe(['plan', 'model'])
+        ->and(inTenant($this->tenant, fn () => App\Models\AiAgentRun::sole())->final_output['specialists'])->toBe(['support', 'orders']);
+
+    $owner = App\Models\User::factory()->for($this->tenant)->owner()->create();
+    $run = $this->actingAs($owner, 'sanctum')->getJson("/api/v1/emails/{$this->email->id}")->assertOk()->json('data.agent_runs.0');
+    expect($run['specialists'])->toBe(['support', 'orders'])
+        ->and(collect($run['steps'])->flatMap(fn ($step) => $step['tool_calls'])->pluck('origin')->all())->toBe(['plan', 'model']);
+});
+
 it('lets a reply quote the order data ai-service consulted through MCP', function () {
     $order = ['order_number' => '45821', 'status' => 'shipped', 'status_label' => 'Enviado', 'total' => 89.9, 'currency' => 'EUR',
         'shipment' => ['carrier' => 'SEUR', 'tracking_number' => 'SEU123456789ES']];

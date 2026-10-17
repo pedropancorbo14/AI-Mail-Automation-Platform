@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { NAlert, NCard, NCollapse, NCollapseItem, NDescriptions, NDescriptionsItem, NEmpty, NTag, NText } from 'naive-ui';
 import type { EmailReply } from '@/api/types';
 import { formatDateTime, formatPercent } from '@/utils/format';
+import { sourceTypeLabels } from '@/utils/labels';
 
 const props = defineProps<{
     reply: EmailReply | null;
@@ -71,7 +72,7 @@ const reasons = computed(() =>
                 <NDescriptionsItem v-if="!reply.author" label="Confianza">{{ formatPercent(reply.confidence) }}</NDescriptionsItem>
                 <NDescriptionsItem v-if="reply.sources.length" label="Fuentes">
                     <div v-for="source in reply.sources" :key="source.type + source.reference">
-                        <NTag size="tiny" :bordered="false">{{ source.type === 'order' ? 'Pedido' : 'Documento' }}</NTag>
+                        <NTag size="tiny" :bordered="false">{{ sourceTypeLabels[source.type] ?? source.type }}</NTag>
                         {{ source.reference }}
                     </div>
                 </NDescriptionsItem>

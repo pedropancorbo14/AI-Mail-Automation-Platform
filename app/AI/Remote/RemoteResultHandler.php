@@ -320,6 +320,7 @@ class RemoteResultHandler
                 'decision' => $event['decision'],
                 'reasons' => $event['reasons'],
                 'sources' => $event['sources'] ?? [],
+                'specialists' => $event['specialists'] ?? [],
             ],
             'finished_at' => now(),
         ])->save();
@@ -351,6 +352,7 @@ class RemoteResultHandler
                 'arguments' => $call['arguments'],
                 'result' => $call['result'],
                 'status' => ToolCallStatus::from($call['status']),
+                'origin' => $call['origin'] ?? null,
                 'error' => $call['error'],
                 'duration_ms' => $call['duration_ms'],
             ]);

@@ -60,6 +60,22 @@ export const toolLabels: Record<string, { label: string; description: string }> 
         label: 'Consultar pedido',
         description: 'Estado, productos, envío y seguimiento de un pedido. Solo de los pedidos del cliente que escribe.',
     },
+    get_customer: {
+        label: 'Datos del cliente',
+        description: 'Nombre, número de pedidos y fechas del cliente que escribe.',
+    },
+    get_customer_tickets: {
+        label: 'Tickets del cliente',
+        description: 'Tickets de soporte del cliente que escribe, con su estado.',
+    },
+    get_invoice: {
+        label: 'Consultar factura',
+        description: 'Número, pedido, fecha, importe y estado de pago de una factura del cliente que escribe.',
+    },
+    get_customer_invoices: {
+        label: 'Facturas del cliente',
+        description: 'Facturas del cliente que escribe, de la más reciente a la más antigua.',
+    },
     create_support_ticket: {
         label: 'Abrir un ticket de soporte',
         description: 'Crea un ticket en el sistema de soporte. Solo con la aprobación de una persona.',
@@ -71,6 +87,29 @@ export const toolLabels: Record<string, { label: string; description: string }> 
 };
 
 export const toolLabel = (tool: string): string => toolLabels[tool]?.label ?? tool;
+
+/** Especialistas de ai-service (Fase 5). */
+export const specialistLabels: Record<string, string> = {
+    orders: 'Pedidos',
+    billing: 'Facturación',
+    support: 'Soporte',
+    general: 'General',
+};
+
+/** Quién decidió una consulta de ai-service (el plan del backend no se marca). */
+export const toolOriginLabels: Record<string, string> = {
+    model: 'Pedida por la IA',
+    approval: 'Aprobada por una persona',
+};
+
+/** Tipo de dato citado en una respuesta. */
+export const sourceTypeLabels: Record<string, string> = {
+    document: 'Documento',
+    order: 'Pedido',
+    invoice: 'Factura',
+    ticket: 'Ticket',
+    customer: 'Cliente',
+};
 
 /** Decisiones de la revisión humana. */
 export const reviewDecisionLabels: Record<'approved' | 'rejected' | 'replied' | 'closed' | 'reprocessed' | 'action_approved' | 'action_rejected', string> = {

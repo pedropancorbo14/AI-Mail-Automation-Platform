@@ -671,6 +671,13 @@ hilo ya terminado (`expired`).
   sin tocar el email) para comparar los dos motores (intención, decisión,
   coste, tiempo).
 
+**En Laravel y el panel (tarea 5.4):** cada consulta se guarda con su
+`origin` (`ai_tool_calls.origin`) y la ejecución con sus especialistas
+(`final_output.specialists`). En "Lo que hizo la IA" del detalle del email se
+ve "Especialistas: Soporte (principal), Pedidos" y qué consultas pidió la IA
+por su cuenta ("Pedida por la IA") o aprobó una persona; las fuentes citadas
+se nombran por tipo (documento, pedido, factura, ticket, cliente).
+
 **Redactor agéntico (tarea 5.3):** hecho (`draft` ⇄ `lookup`, ver la tabla
 de nodos). Lo normal es que el plan ya traiga los datos y el modelo no pida
 nada: una sola llamada, como antes. Con Claude, `bind_tools` (herramientas

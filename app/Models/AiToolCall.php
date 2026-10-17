@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * @property ToolCallStatus $status
  */
-#[Fillable(['ai_request_id', 'email_id', 'tool', 'arguments', 'result', 'status', 'error', 'duration_ms'])]
+#[Fillable(['ai_request_id', 'email_id', 'tool', 'arguments', 'result', 'status', 'origin', 'error', 'duration_ms'])]
 class AiToolCall extends Model
 {
     use BelongsToTenant;
