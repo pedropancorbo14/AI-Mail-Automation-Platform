@@ -4096,8 +4096,40 @@ el de Python afecte a nada.
   en la métrica) aunque la sombra aún no se publique: un resultado en
   sombra nunca debe aplicarse. 53 tests de contrato (Python), 118 de
   `tests/Feature/AI/Remote`
-- [ ] 5.2 Especialistas y supervisor (subgrafos, `Send`, prompt de
-  redacción con las reglas de cada especialista)
+- [x] 5.2 **Supervisor y especialistas.** `domain/specialist.py`
+  (`Specialist`, `primary_specialist`, `route`: principal por intención y
+  secundarios `orders`/`billing` solo por números extraídos, nunca por el
+  texto). `tool_planner`: `plan_for(especialista, clasificación, disponibles,
+  primary)` y `READ_TOOLS` (cada herramienta de lectura es de **un solo**
+  especialista: en paralelo sin repetir consultas; como secundario solo lo
+  mencionado, no el historial). Grafo: retrieve → **supervisor** →
+  `Send` por especialista → **`specialist`** (subgrafo compilado con
+  `input_schema`/`output_schema`: devuelve solo consultas, problemas,
+  propuestas y visitados; si devolviera el email, varias ramas lo
+  escribirían a la vez) con `consult` y `propose` (solo soporte, con
+  checkpoints) → **`gather`** (acción propuesta) → await_approval/draft.
+  Aprobación en el grafo principal. `ToolCallRecord.origin` (`plan` por
+  defecto, `approval` en la acción aprobada o rechazada);
+  `AgentOutcome.specialists` y `DraftContext.specialists` → evento
+  (`specialists`, `tool_calls[].origin`). **Facturación con datos propios:**
+  servidor MCP con `get_invoice` y `get_customer_invoices` (demostración:
+  una factura `FAC-<pedido>` por pedido facturado —no los cancelados ni
+  pendientes de pago—, `refunded` si se devolvió; factura ajena = no
+  existe, mismo mensaje); cliente MCP con las dos de lectura;
+  `references_in` reconoce facturas; fuente `invoice` en el dominio, en el
+  prompt y en el contrato (`source.type`: valor nuevo de enum, los dos
+  lados en el mismo cambio). Prompt **`email_draft@5`**: reglas por
+  especialista en el system (fijo, cacheable) y en el mensaje "Especialistas
+  que han consultado datos: soporte (principal), pedidos" + facturas
+  mencionadas. IA simulada: extrae `FAC-n` aparte de los pedidos (un número
+  de factura no es un pedido) y usa y cita las facturas. Tests: rutas del
+  supervisor (11 intenciones, secundarios, sin repetir, el texto no cuenta),
+  planes por especialista, backend de facturas (propia, ajena, cancelada,
+  otra empresa), grafo (soporte + pedidos en paralelo con el contexto del
+  email, facturación citando la factura, problemas de todos los
+  especialistas, solo soporte propone, injection sin supervisor), origen
+  en aprobada/rechazada y en el evento, y **grafo + IA simulada + MCP real**
+  (factura; soporte + pedido de Marcos). 355 tests de Python
 - [ ] 5.3 Redactor agéntico (bucle de tool calling con límites)
 - [ ] 5.4 Laravel: especialistas y origen de las herramientas en la traza
 - [ ] 5.5 Modo sombra en ai-service

@@ -29,7 +29,14 @@ from ai_service.application.dto import PendingAction, ToolCallRecord, ToolContex
 # Lo pone siempre este cliente, nunca los argumentos.
 RESERVED = frozenset({"tenant_id", "customer_email", "idempotency_key"})
 READ_ONLY_TOOLS = frozenset(
-    {"get_customer", "get_order", "get_customer_orders", "get_customer_tickets"}
+    {
+        "get_customer",
+        "get_order",
+        "get_customer_orders",
+        "get_invoice",
+        "get_customer_invoices",
+        "get_customer_tickets",
+    }
 )
 WRITE_TOOLS = frozenset({"create_support_ticket"})
 

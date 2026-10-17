@@ -79,7 +79,7 @@ async def test_drafts_with_order_data_cite_the_order() -> None:
     )
     assert [(s.type.value, s.reference) for s in result.draft.sources] == [("order", "45821")]
     assert result.draft.confidence.value == 0.9
-    assert result.calls[0].prompt == "email_draft@4"
+    assert result.calls[0].prompt == "email_draft@5"
 
 
 async def test_replies_in_english_to_english_emails() -> None:
@@ -118,3 +118,23 @@ async def test_the_whole_graph_runs_with_it_without_api_key() -> None:
         "ai_service.knowledge_search",
         "ai_service.draft",
     ]
+
+
+async def test_invoices_are_extracted_apart_from_orders_and_cited() -> None:
+    llm = SimulatedLLM()
+    email = make_email(subject="Factura", body="Hola, la factura FAC-44102 del pedido 44102.")
+
+    question = await llm.classify(email)
+    invoice = {
+        "invoice_number": "FAC-44102",
+        "total": 120.5,
+        "currency": "EUR",
+        "status_label": "Pagada",
+    }
+    record = ToolCallRecord("get_invoice", {"invoice_number": "FAC-44102"}, invoice, "success")
+    result = await llm.draft(email, question.classification, DraftContext(tool_results=(record,)))
+
+    assert question.classification.invoice_numbers == ("FAC-44102",)
+    assert question.classification.order_numbers == ("44102",)
+    assert "Factura FAC-44102: 120.5 EUR, Pagada." in result.draft.body
+    assert ("invoice", "FAC-44102") in [(s.type.value, s.reference) for s in result.draft.sources]

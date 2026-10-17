@@ -26,6 +26,8 @@ async def test_lists_the_business_tools_with_read_only_annotations() -> None:
         "get_customer",
         "get_order",
         "get_customer_orders",
+        "get_invoice",
+        "get_customer_invoices",
         "get_customer_tickets",
         "create_support_ticket",
     }

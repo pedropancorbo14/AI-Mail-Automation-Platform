@@ -8,6 +8,7 @@ from ai_service.domain.decision import DecisionOutcome
 from ai_service.domain.draft import Draft
 from ai_service.domain.email import EmailAddress, TenantId
 from ai_service.domain.knowledge import KnowledgeChunk
+from ai_service.domain.specialist import Specialist
 
 CallStatus = Literal["success", "failed", "refused"]
 
@@ -43,6 +44,8 @@ class ToolCallRecord:
     status: Literal["success", "error", "rejected"]
     error: str | None = None
     duration_ms: int = 0
+    # Quién decidió la llamada: el plan del backend, el modelo o una persona.
+    origin: Literal["plan", "model", "approval"] = "plan"
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +89,8 @@ class AgentOutcome:
     # Grafo en pausa esperando la aprobación de esta acción.
     pending_action: PendingAction | None = None
     thread_id: str | None = None
+    # Especialistas que intervinieron; el primero es el principal (Fase 5).
+    specialists: tuple[Specialist, ...] = ()
 
     @property
     def tools_used(self) -> tuple[str, ...]:
@@ -122,6 +127,9 @@ class DraftContext:
     knowledge_unavailable: bool = False
     # Datos del cliente de los sistemas de la empresa (MCP), con su estado.
     tool_results: tuple["ToolCallRecord", ...] = ()
+    # Especialistas que intervinieron (el primero es el principal): sus reglas
+    # de redacción aplican.
+    specialists: tuple[Specialist, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

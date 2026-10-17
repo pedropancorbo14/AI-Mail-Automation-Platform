@@ -84,7 +84,9 @@ _INJECTION = (
     "[/email]",
 )
 _ENGLISH = re.compile(r"\b(the|my|order|please|hello|thank you|do you)\b")
-_ORDER = re.compile(r"#?\b(\d{5,6})\b")
+# Un número de factura (FAC-44102) no es un número de pedido.
+_ORDER = re.compile(r"(?<!FAC-)(?<!FAC)#?\b(\d{5,6})\b", re.IGNORECASE)
+_INVOICE = re.compile(r"\bFAC-?(\d{5,6})\b", re.IGNORECASE)
 
 
 class SimulatedLLM:
@@ -122,6 +124,7 @@ class SimulatedLLM:
             if needs_human
             else None,
             order_numbers=tuple(dict.fromkeys(_ORDER.findall(email.body))),
+            invoice_numbers=tuple(dict.fromkeys(f"FAC-{n}" for n in _INVOICE.findall(email.body))),
         )
         call = self._call(
             "ai_service.classification", prompts.CLASSIFICATION.ref, text, 120, started
@@ -138,9 +141,11 @@ class SimulatedLLM:
         # Solo "confía" si tiene datos: documentación, pedidos o un ticket abierto.
         best = context.knowledge[0] if context.knowledge else None
         orders = _orders(context)
+        invoices = _invoices(context)
         tickets = _created_tickets(context)
         facts = [best.content] if best else []
         facts += [_order_fact(order, english=english) for order in orders]
+        facts += [_invoice_fact(invoice, english=english) for invoice in invoices]
         facts += [
             f"We have opened ticket {t['id']} for you."
             if english
@@ -154,6 +159,7 @@ class SimulatedLLM:
             body = f"Hola:\n\nGracias por escribirnos. [Respuesta de la IA simulada]{fact}\n\nUn saludo,\nEl equipo de atención al cliente de {company}"
         sources = [Source(SourceType.DOCUMENT, best.source)] if best else []
         sources += [Source(SourceType.ORDER, str(order["order_number"])) for order in orders]
+        sources += [Source(SourceType.INVOICE, str(i["invoice_number"])) for i in invoices]
         sources += [Source(SourceType.TICKET, str(t["id"])) for t in tickets]
         confident = bool(facts)
         draft = Draft(
@@ -218,6 +224,30 @@ def _order_fact(order: dict[str, Any], *, english: bool) -> str:
         if shipment.get("carrier"):
             text += f" Transportista {shipment['carrier']}, seguimiento {shipment.get('tracking_number')}."
     return text
+
+
+def _invoices(context: DraftContext) -> list[dict[str, Any]]:
+    """Facturas devueltas con éxito por get_invoice / get_customer_invoices."""
+    found: list[dict[str, Any]] = []
+    for record in context.tool_results:
+        if record.status != "success" or not record.result:
+            continue
+        if record.tool == "get_invoice":
+            found.append(record.result)
+        elif record.tool == "get_customer_invoices":
+            found += [i for i in record.result.get("invoices", []) if isinstance(i, dict)][:1]
+    return [i for i in found if i.get("invoice_number")]
+
+
+def _invoice_fact(invoice: dict[str, Any], *, english: bool) -> str:
+    number, total, currency = (
+        invoice["invoice_number"],
+        invoice.get("total"),
+        invoice.get("currency"),
+    )
+    if english:
+        return f"Invoice {number}: {total} {currency}, {invoice.get('status')}."
+    return f"Factura {number}: {total} {currency}, {invoice.get('status_label')}."
 
 
 def _created_tickets(context: DraftContext) -> list[dict[str, Any]]:

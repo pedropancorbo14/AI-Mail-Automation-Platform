@@ -1,6 +1,11 @@
 import pytest
 
-from ai_service.mcp_server.backends import NOT_FOUND, ToolInputError, normalize_order_number
+from ai_service.mcp_server.backends import (
+    INVOICE_NOT_FOUND,
+    NOT_FOUND,
+    ToolInputError,
+    normalize_order_number,
+)
 from tests.support.mcp import demo_data
 
 CLIENTE = "cliente@cliente.test"
@@ -90,3 +95,41 @@ def test_creating_a_ticket_is_idempotent_and_visible_to_the_customer() -> None:
 def test_invalid_tickets_are_refused(tenant_id: int, subject: str, priority: str) -> None:
     with pytest.raises(ToolInputError):
         demo_data().create_ticket(tenant_id, "marcos@cliente.test", subject, "D", priority, "k")
+
+
+@pytest.mark.parametrize("number", ["FAC-44102", "fac-44102", "factura 44102", "44102"])
+def test_returns_the_invoice_of_the_customer(number: str) -> None:
+    invoice = demo_data().get_invoice(1, CLIENTE, number)
+
+    assert invoice == {
+        "invoice_number": "FAC-44102",
+        "order_number": "44102",
+        "issued_at": invoice["issued_at"],
+        "total": invoice["total"],
+        "currency": "EUR",
+        "status": "paid",
+        "status_label": "Pagada",
+    }
+
+
+@pytest.mark.parametrize(
+    ("tenant", "customer", "number"),
+    [
+        (1, CLIENTE, "FAC-76540"),  # existe, pero es de otro cliente
+        (1, "laura@cliente.test", "FAC-74400"),  # pedido cancelado: sin factura
+        (2, CLIENTE, "FAC-44102"),  # otra empresa
+    ],
+)
+def test_other_customers_invoices_get_the_same_not_found(
+    tenant: int, customer: str, number: str
+) -> None:
+    with pytest.raises(ToolInputError, match=INVOICE_NOT_FOUND):
+        demo_data().get_invoice(tenant, customer, number)
+
+
+def test_customer_invoices_are_only_theirs_newest_first() -> None:
+    invoices = demo_data().get_customer_invoices(1, "laura@cliente.test", 10)["invoices"]
+
+    # 78123 está en preparación (facturado) y 74400 cancelado (sin factura).
+    assert [i["invoice_number"] for i in invoices] == ["FAC-78123"]
+    assert demo_data().get_customer_invoices(1, "nadie@cliente.test", 5)["note"]

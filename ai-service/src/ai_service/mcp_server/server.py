@@ -37,7 +37,9 @@ READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_wo
 def build_server(data: DemoData) -> MCPServer:
     server = MCPServer(
         "ai-mail-business-tools",
-        instructions="Datos de CRM, ERP y tickets de la empresa, siempre del cliente indicado.",
+        instructions=(
+            "Datos de CRM, ERP, facturación y tickets de la empresa, siempre del cliente indicado."
+        ),
     )
 
     @server.tool(
@@ -67,6 +69,28 @@ def build_server(data: DemoData) -> MCPServer:
     )
     def get_customer_orders(tenant_id: int, customer_email: str, limit: int = 5) -> dict[str, Any]:
         return data.get_customer_orders(tenant_id, customer_email, limit)
+
+    @server.tool(
+        description=(
+            "Detalle de una factura del cliente que escribe: número, pedido, fecha, "
+            "importe y estado de pago. Una factura de otro cliente no se encuentra."
+        ),
+        annotations=READ_ONLY,
+    )
+    def get_invoice(tenant_id: int, customer_email: str, invoice_number: str) -> dict[str, Any]:
+        try:
+            return data.get_invoice(tenant_id, customer_email, invoice_number)
+        except ToolInputError as error:
+            raise ToolError(str(error)) from error
+
+    @server.tool(
+        description="Facturas del cliente que escribe, de la más reciente a la más antigua.",
+        annotations=READ_ONLY,
+    )
+    def get_customer_invoices(
+        tenant_id: int, customer_email: str, limit: int = 5
+    ) -> dict[str, Any]:
+        return data.get_customer_invoices(tenant_id, customer_email, limit)
 
     @server.tool(
         description="Tickets de soporte del cliente que escribe, con su estado.",

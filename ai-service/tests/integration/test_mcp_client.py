@@ -105,6 +105,34 @@ async def test_the_graph_answers_an_order_question_with_real_mcp_data() -> None:
     assert any("get_order no fue bien" in r for r in other.outcome.reasons)
 
 
+async def test_specialists_consult_their_own_domains_through_real_mcp() -> None:
+    """Facturación consulta la factura (el número de factura no se confunde con un
+    pedido); soporte y pedidos, en paralelo, los tickets y el pedido mencionado.
+    Todo del cliente del email."""
+    async with running(18129) as url:
+        agent = LangGraphEmailAgent(
+            SimulatedLLM(), DecisionPolicy(), tools=McpToolClient(url, TOKEN)
+        )
+        invoice = await agent.run(
+            make_email(subject="Factura", body="Necesito la factura FAC-44102, por favor.")
+        )
+        support = await agent.run(
+            make_email(
+                subject="Avería",
+                sender=EmailAddress("marcos@cliente.test"),
+                body="El robot del pedido 76540 no enciende.",
+            )
+        )
+
+    assert [s.value for s in invoice.specialists] == ["billing"]
+    assert invoice.draft is not None
+    assert "Factura FAC-44102:" in invoice.draft.body
+    assert invoice.tools_used == ("get_invoice",)
+    assert [s.value for s in support.specialists] == ["support", "orders"]
+    assert set(support.tools_used) == {"get_customer_tickets", "get_order"}
+    assert support.outcome.decision is Decision.AUTO_SEND
+
+
 async def test_approved_actions_run_once_with_tenant_customer_and_idempotency_key() -> None:
     action = PendingAction(
         action_id="0f6a3f7c-3a43-4f3e-9c55-1a2b3c4d5e6f",

@@ -109,6 +109,7 @@ def processed_event(cause: Cause, result: AgentOutcome) -> EmailProcessed:
                 status=t.status,
                 error=t.error[:500] if t.error else None,
                 duration_ms=t.duration_ms,
+                origin=t.origin,
             )
             for t in result.tool_calls
         ][:50],
@@ -123,6 +124,7 @@ def processed_event(cause: Cause, result: AgentOutcome) -> EmailProcessed:
         )
         if pending
         else None,
+        specialists=[s.value for s in result.specialists][:4],
     )
 
 

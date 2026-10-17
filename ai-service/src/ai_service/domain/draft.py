@@ -9,6 +9,7 @@ from ai_service.domain.confidence import Confidence
 class SourceType(StrEnum):
     DOCUMENT = "document"
     ORDER = "order"
+    INVOICE = "invoice"
     TICKET = "ticket"
     CUSTOMER = "customer"
 

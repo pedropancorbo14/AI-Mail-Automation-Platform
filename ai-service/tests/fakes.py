@@ -177,7 +177,14 @@ class FakeToolPort:
     @property
     def available(self) -> frozenset[str]:
         return frozenset(
-            {"get_order", "get_customer_orders", "get_customer", "get_customer_tickets"}
+            {
+                "get_order",
+                "get_customer_orders",
+                "get_invoice",
+                "get_customer_invoices",
+                "get_customer",
+                "get_customer_tickets",
+            }
         )
 
     async def call(

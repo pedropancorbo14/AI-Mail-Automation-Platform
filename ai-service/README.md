@@ -125,17 +125,18 @@ flowchart LR
     human_review --> END
 ```
 
-Grafo **actual** (Fase 4, con checkpoints y acciones configurados), generado por LangGraph con
-`agent.graph.get_graph().draw_mermaid()` (las líneas discontinuas son
-aristas condicionales):
+Grafo **actual** (Fase 5, con checkpoints y acciones configurados), generado por LangGraph con
+`agent.graph.get_graph(xray=True).draw_mermaid()` (las líneas discontinuas son
+aristas condicionales; `supervisor` lanza un `specialist` por especialista, en
+paralelo, con `Send`):
 
 ```mermaid
 graph TD;
 	__start__([inicio]):::first
 	classify(classify)
 	retrieve(retrieve)
-	tools(tools)
-	propose_action(propose_action)
+	supervisor(supervisor)
+	gather(gather)
 	await_approval(await_approval<br/>interrupt)
 	draft(draft)
 	validate(validate)
@@ -144,15 +145,21 @@ graph TD;
 	__start__ --> classify;
 	classify -. router .-> retrieve;
 	classify -. router .-> validate;
-	retrieve --> tools;
-	tools --> propose_action;
-	propose_action -. hay acción .-> await_approval;
-	propose_action -. sin acción .-> draft;
+	retrieve --> supervisor;
+	supervisor -. Send por especialista .-> specialist_consult;
+	specialist_propose --> gather;
+	gather -. hay acción .-> await_approval;
+	gather -. sin acción .-> draft;
 	await_approval --> draft;
 	draft --> validate;
 	validate -. auto_send .-> __end__;
 	validate -. human_review / escalate .-> human_review;
 	human_review --> __end__;
+	subgraph specialist [specialist: subgrafo]
+	specialist_consult(consult)
+	specialist_propose(propose)
+	specialist_consult --> specialist_propose;
+	end
 ```
 
 | Nodo | Qué hace |
@@ -160,10 +167,11 @@ graph TD;
 | `classify` | `LLMPort.classify` (structured outputs) |
 | `router` (arista condicional) | **Determinista, sin IA**: sospecha de manipulación o categoría que no se contesta (spam, respuesta automática) → directo a `validate` sin buscar ni redactar; el resto → `retrieve` |
 | `retrieve` | Documentación de **la empresa del email** (RAG). Se registra como la herramienta `search_company_documents`. Si Ollama o la BD fallan, el email sigue y va a revisión |
-| `tools` | Datos del cliente en CRM, ERP y tickets por **MCP**, con un plan **determinista** según la intención (`plan_tool_calls`: pedido mencionado → `get_order`, hasta 3; sin número → `get_customer_orders`; factura o cobro → también sus pedidos; soporte o queja → `get_customer_tickets`; cambio de cuenta → `get_customer`). Empresa y cliente salen del email, nunca del modelo. Máximo `AI_SERVICE_MAX_TOOL_CALLS` (5), en paralelo. Una consulta que falla o no encuentra lo pedido → revisión humana |
-| `propose_action` | **Determinista** (`plan_action`): soporte técnico de un cliente sin ticket abierto → propone `create_support_ticket` con argumentos del backend. Solo con checkpoints y acciones configurados |
+| `supervisor` | **Determinista, sin IA** (`route`): especialista principal por la intención (`orders`: estado, devolución, cancelación; `billing`: factura, cobro; `support`: soporte técnico, queja; `general`: el resto) y secundarios si el email menciona pedidos (`orders`) o facturas (`billing`). Los lanza en paralelo con `Send` |
+| `specialist` (subgrafo) | `consult`: datos de **su** dominio por **MCP** con un plan determinista (`plan_for`): `orders` → `get_order` por pedido mencionado (hasta 3) o, como principal, `get_customer_orders`; `billing` → `get_invoice` por factura mencionada (hasta 3) o, como principal, `get_customer_invoices`; `support` → `get_customer_tickets`; `general` → `get_customer` si es un cambio de cuenta. Cada herramienta es de un solo especialista: no se repiten consultas. Máximo `AI_SERVICE_MAX_TOOL_CALLS` (5) por especialista. `propose`: solo soporte propone acciones (`plan_action`: soporte técnico sin ticket abierto → `create_support_ticket`), y solo con checkpoints y acciones configurados. Empresa y cliente salen del email, nunca del modelo; una consulta que falla o no encuentra lo pedido → revisión humana |
+| `gather` | Junta lo de los especialistas (LangGraph espera a todas las ramas) y se queda con la acción propuesta, si la hay |
 | `await_approval` | **`interrupt()`**: el grafo se para y su estado queda en PostgreSQL hasta que una persona decide en el panel (`email.review_resumed.v1`). Aprobada → la ejecuta (MCP, idempotente); rechazada → sigue sin ella |
-| `draft` | `LLMPort.draft` con la clasificación, la documentación (`<documentacion>` con fuentes citables), los datos del cliente (`<datos>`) y la indicación de la persona si la hay (`<indicacion_del_equipo>`, prompt `email_draft@4`); el borrador devuelve `sources` (`document`, `order`, `ticket`, `customer`). No se llama si el email superó su presupuesto de tokens |
+| `draft` | `LLMPort.draft` con la clasificación, la documentación (`<documentacion>` con fuentes citables), los datos del cliente (`<datos>`) y la indicación de la persona si la hay (`<indicacion_del_equipo>`) y las **reglas de los especialistas** que intervinieron (prompt `email_draft@5`: pedidos, facturación, soporte, general; el principal primero); el borrador devuelve `sources` (`document`, `order`, `invoice`, `ticket`, `customer`). No se llama si el email superó su presupuesto de tokens |
 | `validate` | `DecisionPolicy` con `Evidence` (lo consultado de verdad: fuentes de la documentación + pedidos, tickets y cuenta devueltos por las herramientas, `references_in`): **una cita a algo que no se consultó → revisión humana**, y cualquier problema al consultar también |
 | `human_review` | Nodo final: la revisión de la respuesta la hace una persona en el panel de Laravel (Fase 13). Reprocesar con una indicación empieza un grafo nuevo (no reanuda) |
 
@@ -417,6 +425,8 @@ constante; `/health` sin token). Sin token no arranca.
 | `get_customer` | CRM | lectura | Nombre, número de pedidos y fechas del cliente |
 | `get_order` | ERP | lectura | Estado, fechas, productos, envío y seguimiento de un pedido |
 | `get_customer_orders` | ERP | lectura | Pedidos del cliente, del más reciente al más antiguo (máx. 10) |
+| `get_invoice` | Facturación | lectura | Una factura del cliente (número, pedido, fecha, importe, estado de pago). Demostración: una por pedido facturado, `FAC-<pedido>`. Una de otro cliente = no existe (Fase 5) |
+| `get_customer_invoices` | Facturación | lectura | Facturas del cliente, de la más reciente a la más antigua (Fase 5) |
 | `get_customer_tickets` | Tickets | lectura | Tickets de soporte del cliente con su estado |
 | `create_support_ticket` | Tickets | **escritura** (`destructive_hint`) | No se ofrece al agente hasta la Fase 4 (aprobación humana con `interrupt`) |
 
@@ -655,6 +665,11 @@ hilo ya terminado (`expired`).
   emails se procesa también aquí **sin efectos** (sin acciones, sin pausa,
   sin tocar el email) para comparar los dos motores (intención, decisión,
   coste, tiempo).
+
+**Supervisor y especialistas (tarea 5.2):** hechos (ver el grafo y la tabla
+de nodos de "Arquitectura"). Sin llamadas extra al modelo: el coste por
+email no cambia. Especialista de facturación con herramientas propias en el
+servidor MCP (`get_invoice`, `get_customer_invoices`).
 
 Contrato (tarea 5.1): `specialists`, `tool_call.origin` y `mode`
 (`live`/`shadow`), ver [`contracts/README.md`](../contracts/README.md#especialistas-y-modo-sombra-fase-5-de-ai-service).

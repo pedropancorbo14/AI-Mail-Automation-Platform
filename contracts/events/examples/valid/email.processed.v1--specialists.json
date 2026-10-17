@@ -90,6 +90,10 @@
     {
       "type": "order",
       "reference": "45821"
+    },
+    {
+      "type": "invoice",
+      "reference": "FAC-45821"
     }
   ],
   "tool_calls": [

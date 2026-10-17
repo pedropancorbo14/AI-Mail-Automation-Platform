@@ -24,8 +24,12 @@ STATUS_LABELS = {
     "returned": "Devuelto",
 }
 TICKET_LABELS = {"open": "Abierto", "pending": "Esperando al cliente", "closed": "Cerrado"}
+INVOICE_LABELS = {"paid": "Pagada", "refunded": "Abonada (devolución)"}
+# Pedidos que todavía no (o nunca) se facturan.
+NOT_INVOICED = frozenset({"pending_payment", "cancelled"})
 
 NOT_FOUND = "No hay ningún pedido con ese número asociado a este cliente."
+INVOICE_NOT_FOUND = "No hay ninguna factura con ese número asociada a este cliente."
 
 
 class ToolInputError(ValueError):
@@ -90,6 +94,30 @@ class DemoData:
         result: dict[str, Any] = {"orders": summary}
         if not summary:
             result["note"] = "Este cliente no tiene pedidos. No inventes ninguno."
+        return result
+
+    def _invoices(self, tenant_id: int, customer: str) -> list[dict[str, Any]]:
+        """Demostración: una factura por pedido facturado (FAC-<pedido>, por el total)."""
+        return [
+            present_invoice(o)
+            for o in self._orders(tenant_id, customer)
+            if o.get("status") not in NOT_INVOICED
+        ]
+
+    def get_invoice(self, tenant_id: int, customer: str, invoice_number: str) -> dict[str, Any]:
+        number = normalize_order_number(invoice_number)
+        if number and not number.startswith("FAC-"):
+            number = f"FAC-{number}"
+        for invoice in self._invoices(tenant_id, customer) if number else []:
+            if invoice["invoice_number"] == number:
+                return invoice
+        raise ToolInputError(INVOICE_NOT_FOUND)
+
+    def get_customer_invoices(self, tenant_id: int, customer: str, limit: int) -> dict[str, Any]:
+        invoices = self._invoices(tenant_id, customer)[: max(1, min(limit, 10))]
+        result: dict[str, Any] = {"invoices": invoices}
+        if not invoices:
+            result["note"] = "Este cliente no tiene facturas. No inventes ninguna."
         return result
 
     def get_customer(self, tenant_id: int, customer: str) -> dict[str, Any]:
@@ -165,6 +193,19 @@ class DemoData:
         visible = {k: v for k, v in ticket.items() if k != "customer_email"}
         self.created[key] = visible
         return {"created": True, "ticket": visible}
+
+
+def present_invoice(order: dict[str, Any]) -> dict[str, Any]:
+    status = "refunded" if order.get("status") == "returned" else "paid"
+    return {
+        "invoice_number": f"FAC-{order['number']}",
+        "order_number": order["number"],
+        "issued_at": order.get("placed_at"),
+        "total": order.get("total"),
+        "currency": order.get("currency"),
+        "status": status,
+        "status_label": INVOICE_LABELS[status],
+    }
 
 
 def present_order(order: dict[str, Any]) -> dict[str, Any]:

@@ -1,10 +1,11 @@
 """Grafo de LangGraph que decide qué hacer con un email.
 
-    START → classify ─router─┬─→ retrieve → tools → propose_action ─┬────────────────┬→ draft
-                             │                                      └→ await_approval ┘
-                             └──────────────────────────────────────────────────→ validate
-    draft → validate ─┬─→ END            (auto_send)
-                      └─→ human_review → END
+    START → classify ─router─┬─→ retrieve → supervisor ═Send═╦═ specialist(orders)  ═╗
+                             │                                ╠═ specialist(billing) ═╣→ gather
+                             │                                ╚═ specialist(support) ═╝
+                             └────────────────────────────────────────────────────────→ validate
+    gather ─┬────────────────┬→ draft → validate ─┬─→ END            (auto_send)
+            └→ await_approval ┘                    └─→ human_review → END
 
 - **classify**: clasificación con structured outputs (`LLMPort.classify`).
 - **router**: arista condicional **determinista** (sin IA): sospecha de
@@ -13,21 +14,29 @@
 - **retrieve**: documentación de la empresa (RAG, `KnowledgeRetriever`),
   siempre de la empresa del email. Se registra como la herramienta
   `search_company_documents`. Si falla, el email sigue y va a revisión.
-- **tools**: datos del cliente en los sistemas de la empresa (CRM, ERP,
-  tickets) por MCP, planificados de forma determinista según la intención
-  (`plan_tool_calls`). Empresa y cliente los pone el backend. Cualquier
-  consulta que falle o no encuentre lo pedido manda el caso a una persona.
-- **propose_action**: acción que modifica datos (crear un ticket) planificada
-  de forma determinista (`plan_action`). Solo con checkpoints configurados:
-  hace falta poder esperar a la persona.
+- **supervisor**: elige los especialistas del email con la clasificación
+  (`route`, determinista: el principal por la intención y secundarios si el
+  email menciona pedidos o facturas) y los lanza en paralelo con `Send`.
+- **specialist** (subgrafo, uno por especialista): consulta los datos de su
+  dominio en los sistemas de la empresa (CRM, ERP, facturación, tickets) por
+  MCP con un plan determinista (`plan_for`) y propone sus acciones (soporte:
+  abrir un ticket, `plan_action`; solo con checkpoints configurados, porque
+  hace falta poder esperar a la persona). Empresa y cliente los pone el
+  backend. Cualquier consulta que falle o no encuentre lo pedido manda el caso
+  a una persona.
+- **gather**: junta lo de los especialistas (las ramas en paralelo ya han
+  terminado) y se queda con la acción propuesta, si la hay.
 - **await_approval**: `interrupt` de LangGraph. El grafo queda **en pausa**
   (checkpoint en PostgreSQL) y el servicio publica el resultado con la acción
   pendiente; cuando una persona decide, `resume()` lo reanuda aquí: si la
   aprobó se ejecuta (idempotente, por MCP) y se redacta con su resultado; si
   no, se redacta sin ella. Va en un nodo aparte de propose_action porque al
   reanudar LangGraph repite el nodo del `interrupt` entero: así la acción no se
-  vuelve a planificar (tendría otro `action_id`).
-- **draft**: borrador (`LLMPort.draft`) con la documentación encontrada. Si
+  vuelve a planificar (tendría otro `action_id`). Está en el grafo principal,
+  no dentro de un especialista: un `interrupt` dentro de una rama en paralelo
+  complicaría reanudar.
+- **draft**: borrador (`LLMPort.draft`) con la documentación encontrada, los
+  datos consultados y las reglas de los especialistas que intervinieron. Si
   el email ya gastó su presupuesto de tokens, no se redacta (a una persona).
 - **validate**: reglas puras del dominio (`DecisionPolicy`), con lo que se
   consultó de verdad (`Evidence`: una cita a algo no consultado → persona).
@@ -45,6 +54,7 @@ import operator
 import time
 import uuid
 from collections.abc import Awaitable
+from dataclasses import replace
 from typing import Annotated, Any, Literal, NotRequired, Protocol, TypedDict
 
 from langchain_core.runnables import RunnableConfig
@@ -52,7 +62,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import Command, interrupt
+from langgraph.types import Command, Send, interrupt
 
 from ai_service.application.dto import (
     AgentOutcome,
@@ -73,13 +83,14 @@ from ai_service.application.errors import (
 from ai_service.application.ports import ActionPort, LLMPort, ToolPort
 from ai_service.application.services.action_planner import plan_action
 from ai_service.application.services.knowledge import KnowledgeRetriever
-from ai_service.application.services.tool_planner import plan_tool_calls, references_in
+from ai_service.application.services.tool_planner import plan_for, references_in
 from ai_service.domain.classification import Classification
 from ai_service.domain.decision import Decision, DecisionOutcome
 from ai_service.domain.draft import Draft
 from ai_service.domain.email import Email, TenantId
 from ai_service.domain.knowledge import KnowledgeChunk
 from ai_service.domain.policy import DecisionPolicy, Evidence
+from ai_service.domain.specialist import Specialist, route
 
 Route = Literal["retrieve", "validate"]
 SEARCH_TOOL = "search_company_documents"
@@ -108,6 +119,32 @@ class EmailState(TypedDict):
     issues: Annotated[list[str], operator.add]
     visited: Annotated[list[str], operator.add]
     pending_action: NotRequired[PendingAction | None]
+    specialists: NotRequired[tuple[Specialist, ...]]
+    # Acciones que propusieron los especialistas (gather se queda con la primera).
+    proposals: Annotated[list[PendingAction], operator.add]
+
+
+class SpecialistInput(TypedDict):
+    """Lo que el supervisor le pasa a cada especialista (con `Send`)."""
+
+    email: Email
+    classification: Classification
+    specialist: Specialist
+    primary: bool
+    can_propose: bool
+
+
+class SpecialistOutput(TypedDict):
+    """Lo que un especialista devuelve al grafo principal (se suma con sus reductores)."""
+
+    tool_calls: Annotated[list[ToolCallRecord], operator.add]
+    issues: Annotated[list[str], operator.add]
+    proposals: Annotated[list[PendingAction], operator.add]
+    visited: Annotated[list[str], operator.add]
+
+
+class SpecialistState(SpecialistInput, SpecialistOutput):
+    pass
 
 
 class Node(Protocol):
@@ -163,14 +200,35 @@ class LangGraphEmailAgent:
         self._max_steps = max_steps
         self._policy = policy
         self._timeout = timeout_seconds
+        self.specialist_graph = self._build_specialist()
         self.graph = self._build()
+
+    def _build_specialist(
+        self,
+    ) -> CompiledStateGraph[SpecialistState, None, SpecialistInput, SpecialistOutput]:
+        """Subgrafo de un especialista: consultar su dominio y proponer sus acciones.
+
+        Solo devuelve sus consultas, problemas y propuestas (`output_schema`): el
+        email y la clasificación los comparten las ramas en paralelo y no se
+        pueden escribir desde varias a la vez.
+        """
+        graph = StateGraph(
+            SpecialistState, input_schema=SpecialistInput, output_schema=SpecialistOutput
+        )
+        graph.add_node("consult", self._consult)
+        graph.add_node("propose", self._propose)
+        graph.add_edge(START, "consult")
+        graph.add_edge("consult", "propose")
+        graph.add_edge("propose", END)
+        return graph.compile()
 
     def _build(self) -> CompiledStateGraph[EmailState, None, EmailState, EmailState]:
         graph = StateGraph(EmailState)
         graph.add_node("classify", _billed(self._classify))
         graph.add_node("retrieve", self._retrieve)
-        graph.add_node("tools", self._call_tools)
-        graph.add_node("propose_action", self._propose_action)
+        graph.add_node("supervisor", self._supervisor)
+        graph.add_node("specialist", self.specialist_graph)
+        graph.add_node("gather", self._gather)
         graph.add_node("await_approval", self._await_approval)
         graph.add_node("draft", _billed(self._draft))
         graph.add_node("validate", self._validate)
@@ -180,10 +238,11 @@ class LangGraphEmailAgent:
         graph.add_conditional_edges(
             "classify", router, {"retrieve": "retrieve", "validate": "validate"}
         )
-        graph.add_edge("retrieve", "tools")
-        graph.add_edge("tools", "propose_action")
+        graph.add_edge("retrieve", "supervisor")
+        graph.add_conditional_edges("supervisor", self._dispatch, ["specialist"])
+        graph.add_edge("specialist", "gather")
         graph.add_conditional_edges(
-            "propose_action",
+            "gather",
             self._after_proposal,
             {"await_approval": "await_approval", "draft": "draft"},
         )
@@ -206,6 +265,7 @@ class LangGraphEmailAgent:
             "tool_calls": [],
             "issues": [],
             "visited": [],
+            "proposals": [],
         }
         thread_id = thread_id or f"t{email.tenant_id.value}-e{email.email_id}-{uuid.uuid4()}"
         return await self._invoke(initial, thread_id, reported_calls=0)
@@ -282,6 +342,7 @@ class LangGraphEmailAgent:
                 duration_ms=duration_ms,
                 pending_action=pending,
                 thread_id=thread_id,
+                specialists=state.get("specialists", ()),
             )
         if self._checkpointer is not None:
             # Terminado: su estado (con el email) no se guarda.
@@ -293,6 +354,7 @@ class LangGraphEmailAgent:
             calls=calls,
             tool_calls=tuple(state["tool_calls"]),
             duration_ms=duration_ms,
+            specialists=state.get("specialists", ()),
         )
 
     async def _classify(self, state: EmailState) -> dict[str, Any]:
@@ -342,11 +404,35 @@ class LangGraphEmailAgent:
             "visited": ["retrieve"],
         }
 
-    async def _call_tools(self, state: EmailState) -> dict[str, Any]:
+    async def _supervisor(self, state: EmailState) -> dict[str, Any]:
+        return {"specialists": route(state["classification"]), "visited": ["supervisor"]}
+
+    def _dispatch(self, state: EmailState) -> list[Send]:
+        """Un `Send` por especialista: se ejecutan en paralelo y gather espera a todos."""
+        specialists = state["specialists"]
+        return [
+            Send(
+                "specialist",
+                SpecialistInput(
+                    email=state["email"],
+                    classification=state["classification"],
+                    specialist=specialist,
+                    primary=index == 0,
+                    can_propose=self.can_wait_for_approval,
+                ),
+            )
+            for index, specialist in enumerate(specialists)
+        ]
+
+    async def _consult(self, state: SpecialistState) -> dict[str, Any]:
+        specialist = state["specialist"]
+        visited = [f"specialist:{specialist.value}"]
         if self._tools is None:  # sin servidor MCP configurado
-            return {"visited": ["tools"]}
+            return {"visited": visited}
         email = state["email"]
-        plan = plan_tool_calls(state["classification"], self._tools.available)
+        plan = plan_for(
+            specialist, state["classification"], self._tools.available, primary=state["primary"]
+        )
         plan = plan[: self._max_tool_calls]
         context = ToolContext(tenant_id=email.tenant_id, customer=email.sender)
         records = await asyncio.gather(
@@ -357,18 +443,27 @@ class LangGraphEmailAgent:
             for r in records
             if r.status != "success"
         ]
-        return {"tool_calls": list(records), "issues": issues, "visited": ["tools"]}
+        return {"tool_calls": list(records), "issues": issues, "visited": visited}
 
-    async def _propose_action(self, state: EmailState) -> dict[str, Any]:
-        if not self.can_wait_for_approval or self._actions is None:
-            return {"visited": ["propose_action"]}
+    async def _propose(self, state: SpecialistState) -> dict[str, Any]:
+        """De momento solo soporte propone una acción (abrir un ticket)."""
+        if (
+            state["specialist"] is not Specialist.SUPPORT
+            or not state["can_propose"]
+            or self._actions is None
+        ):
+            return {}
         action = plan_action(
             state["email"],
             state["classification"],
-            [r for r in state["tool_calls"] if r.tool != SEARCH_TOOL],
+            state["tool_calls"],
             self._actions.available_actions,
         )
-        return {"pending_action": action, "visited": ["propose_action"]}
+        return {"proposals": [action]} if action else {}
+
+    async def _gather(self, state: EmailState) -> dict[str, Any]:
+        proposals = state.get("proposals", [])
+        return {"pending_action": proposals[0] if proposals else None, "visited": ["gather"]}
 
     @staticmethod
     def _after_proposal(state: EmailState) -> Literal["await_approval", "draft"]:
@@ -385,12 +480,20 @@ class LangGraphEmailAgent:
         approved = bool(decision.get("approved")) and decision.get("action_id") == action.action_id
         if not approved:
             rejected = ToolCallRecord(
-                action.tool, dict(action.arguments), None, "rejected", "Una persona la rechazó."
+                action.tool,
+                dict(action.arguments),
+                None,
+                "rejected",
+                "Una persona la rechazó.",
+                origin="approval",
             )
             return {"tool_calls": [rejected], "visited": ["await_approval"]}
         email = state["email"]
-        record = await self._actions.execute(
-            action, ToolContext(tenant_id=email.tenant_id, customer=email.sender)
+        record = replace(
+            await self._actions.execute(
+                action, ToolContext(tenant_id=email.tenant_id, customer=email.sender)
+            ),
+            origin="approval",
         )
         issues = (
             []
@@ -412,6 +515,7 @@ class LangGraphEmailAgent:
             knowledge=state.get("knowledge", ()),
             knowledge_unavailable=state.get("knowledge_unavailable", False),
             tool_results=tuple(r for r in state["tool_calls"] if r.tool != SEARCH_TOOL),
+            specialists=state.get("specialists", ()),
         )
         result = await self._llm.draft(state["email"], state["classification"], context)
         return {"draft": result.draft, "calls": list(result.calls), "visited": ["draft"]}

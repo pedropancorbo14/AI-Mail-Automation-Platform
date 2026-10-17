@@ -72,10 +72,10 @@
       "additionalProperties": false
     },
     "source": {
-      "description": "Dato citado en la respuesta: documento (fuente citable \"Título, sección «X»\"), pedido, ticket o cliente.",
+      "description": "Dato citado en la respuesta: documento (fuente citable \"Título, sección «X»\"), pedido, factura (Fase 5), ticket o cliente.",
       "type": "object",
       "properties": {
-        "type": { "type": "string", "enum": ["document", "order", "ticket", "customer"] },
+        "type": { "type": "string", "enum": ["document", "order", "invoice", "ticket", "customer"] },
         "reference": { "type": "string", "minLength": 1, "maxLength": 255 }
       },
       "required": ["type", "reference"],

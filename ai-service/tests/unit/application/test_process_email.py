@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from ai_service.application.contracts.events import (
@@ -17,6 +19,7 @@ from ai_service.domain.category import Category
 from ai_service.domain.decision import Decision, DecisionOutcome
 from ai_service.domain.draft import Source, SourceType
 from ai_service.domain.email import Email
+from ai_service.domain.specialist import Specialist
 from tests.fakes import FakeAgent, InMemoryEventBus, make_call
 from tests.support.contracts import assert_matches_contract, example
 from tests.unit.domain.factories import make_classification, make_draft
@@ -163,8 +166,9 @@ async def test_sources_tool_calls_and_duration_reach_the_event() -> None:
         draft=make_draft(sources=(source,)),
         outcome=DecisionOutcome(Decision.AUTO_SEND),
         calls=(make_call(),),
-        tool_calls=(search,),
+        tool_calls=(search, replace(search, tool="get_order", origin="model")),
         duration_ms=4200,
+        specialists=(Specialist.GENERAL, Specialist.ORDERS),
     )
 
     await ProcessEmail(FakeAgent(outcome=result), bus).execute(received())
@@ -173,7 +177,9 @@ async def test_sources_tool_calls_and_duration_reach_the_event() -> None:
     assert isinstance(event, EmailProcessed)
     assert [(s.type, s.reference) for s in event.sources] == [("document", source.reference)]
     assert event.tool_calls[0].tool == "search_company_documents"
-    assert event.tools_used == ["search_company_documents"]
+    assert event.tools_used == ["search_company_documents", "get_order"]
+    assert [t.origin for t in event.tool_calls] == ["plan", "model"]
+    assert event.specialists == ["general", "orders"]
     assert event.duration_ms == 4200
     assert_matches_contract("email.processed.v1", event.to_json_dict())
 

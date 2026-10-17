@@ -100,6 +100,7 @@ async def test_an_approved_action_runs_once_and_the_reply_cites_the_ticket() -> 
     assert [c.purpose for c in result.calls] == ["ai_service.draft"]
     # La evidencia completa (para la revisión del texto en Laravel).
     assert [t.tool for t in result.tool_calls] == ["get_customer_tickets", "create_support_ticket"]
+    assert [t.origin for t in result.tool_calls] == ["plan", "approval"]
 
 
 async def test_a_rejected_action_is_not_run_and_is_recorded() -> None:
@@ -122,6 +123,7 @@ async def test_a_rejected_action_is_not_run_and_is_recorded() -> None:
         "rejected",
         "Una persona la rechazó.",
     )
+    assert rejected.origin == "approval"
     assert len(llm.draft_calls) == 1
 
 

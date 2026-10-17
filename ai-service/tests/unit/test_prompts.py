@@ -1,5 +1,6 @@
 from ai_service.application.dto import DraftContext, ToolCallRecord
 from ai_service.domain.category import Category
+from ai_service.domain.specialist import Specialist
 from ai_service.infrastructure.llm import prompts
 from tests.unit.domain.factories import make_classification, make_email
 
@@ -8,7 +9,7 @@ from tests.unit.domain.factories import make_classification, make_email
 # qué texto exacto se envió (mismo criterio que ai_prompt_versions en Laravel).
 KNOWN_VERSIONS = {
     "email_classification@1": "03ecdefea2ee8948dc116d58721e686fd8a2e71aa97fe4d738219377fcbf758c",
-    "email_draft@4": "8e728d43ccc8468ecf3fb854388885b2070519d6af5a32728fb9e85bf0c12f27",
+    "email_draft@5": "53e5a02190bc4a3b3c60e511613bbd78b7e35ab14f3c5f1db08aaa1f263c23fb",
 }
 
 
@@ -116,3 +117,16 @@ def test_an_email_cannot_fake_a_team_instruction() -> None:
 
     assert "<indicacion_del_equipo>" not in block
     assert "[indicacion_del_equipo]" in block
+
+
+def test_the_draft_names_the_specialists_with_the_primary_first() -> None:
+    classification = make_classification(
+        category=Category.TECHNICAL_SUPPORT, order_numbers=("45821",), invoice_numbers=("FAC-1",)
+    )
+    context = DraftContext(specialists=(Specialist.SUPPORT, Specialist.ORDERS))
+
+    content = prompts.draft_context(make_email(), classification, context, 20_000)
+
+    assert "Especialistas que han consultado datos: soporte (principal), pedidos" in content
+    assert "- facturas mencionadas: FAC-1" in content
+    assert "Facturación: números de factura" in prompts.DRAFT.system

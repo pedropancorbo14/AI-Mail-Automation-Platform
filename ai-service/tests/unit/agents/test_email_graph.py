@@ -68,6 +68,7 @@ def initial(email: Email | None = None) -> EmailState:
         "tool_calls": [],
         "issues": [],
         "visited": [],
+        "proposals": [],
     }
 
 
@@ -99,8 +100,9 @@ async def test_low_confidence_goes_through_human_review() -> None:
     assert state["visited"] == [
         "classify",
         "retrieve",
-        "tools",
-        "propose_action",
+        "supervisor",
+        "specialist:general",
+        "gather",
         "draft",
         "validate",
         "human_review",
@@ -116,8 +118,9 @@ async def test_auto_send_does_not_visit_human_review() -> None:
     assert state["visited"] == [
         "classify",
         "retrieve",
-        "tools",
-        "propose_action",
+        "supervisor",
+        "specialist:general",
+        "gather",
         "draft",
         "validate",
     ]
@@ -390,8 +393,9 @@ def test_the_graph_has_the_expected_shape() -> None:
         "__start__",
         "classify",
         "retrieve",
-        "tools",
-        "propose_action",
+        "supervisor",
+        "specialist",
+        "gather",
         "await_approval",
         "draft",
         "validate",
@@ -399,7 +403,7 @@ def test_the_graph_has_the_expected_shape() -> None:
         "__end__",
     }
     edges = {(e.source, e.target) for e in graph.edges}
-    assert {("classify", "retrieve"), ("classify", "validate"), ("retrieve", "tools")} <= edges
-    assert {("tools", "propose_action"), ("await_approval", "draft")} <= edges
-    assert {("propose_action", "await_approval"), ("propose_action", "draft")} <= edges
+    assert {("classify", "retrieve"), ("classify", "validate"), ("retrieve", "supervisor")} <= edges
+    assert {("supervisor", "specialist"), ("specialist", "gather")} <= edges
+    assert {("gather", "await_approval"), ("gather", "draft"), ("await_approval", "draft")} <= edges
     assert {("validate", "human_review"), ("validate", "__end__")} <= edges
