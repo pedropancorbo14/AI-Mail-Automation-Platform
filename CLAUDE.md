@@ -3867,7 +3867,19 @@ pasos) que mandan el caso a una persona en vez de fallar.
   reanuda tras reiniciar el worker**, borrar, purga solo de lo antiguo, el
   rol no toca tablas de Laravel, `ping`, worker y mantenimiento). 272
   tests de Python; Laravel 1209 + los 25 del entorno
-- [ ] 4.3 Límites del agente (tokens, pasos, reanudaciones)
+- [x] 4.3 **Límites del agente.** `AI_SERVICE_MAX_TOKENS_PER_EMAIL`
+  (60.000: entrada + salida de todas las llamadas del email, también las
+  fallidas; las búsquedas de embeddings locales —`FREE_PURPOSES`— no
+  cuentan): antes de redactar, si se alcanzó, no se llama al modelo y va a
+  revisión humana con el motivo ("alcanzó su límite de tokens (X de Y)").
+  `AI_SERVICE_MAX_GRAPH_STEPS` (15) como `recursion_limit`;
+  `GraphRecursionError` → `AgentLimitError` (código `internal`, no
+  reintentable). Log `agent_limit_reached` con el límite. **Sin límite de
+  reanudaciones**: cada pausa espera una sola acción y una reanudación
+  repetida encuentra el hilo terminado (`expired`, tarea 4.5). Tests: sin
+  redactar al superar el presupuesto, embeddings fuera del presupuesto,
+  límite de pasos no reintentable, el contenedor pasa los límites. 276
+  tests
 - [ ] 4.4 Acción con aprobación: planificador, nodo con `interrupt`, MCP
   idempotente y solo por el camino aprobado
 - [ ] 4.5 Reanudar: consumidor de `email.review_resumed.v1` y caso de uso

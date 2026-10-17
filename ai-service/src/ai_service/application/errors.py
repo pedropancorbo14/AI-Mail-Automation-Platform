@@ -48,6 +48,13 @@ class LLMInvalidOutputError(LLMError):
     code: ErrorCode = "invalid_output"
 
 
+class AgentLimitError(LLMError):
+    """El grafo superó su límite de pasos (protección ante un ciclo por error).
+    Reintentar daría lo mismo: va a una persona."""
+
+    code: ErrorCode = "internal"
+
+
 class AgentError(Exception):
     """El agente no pudo terminar. Lleva todas las llamadas hechas (se facturan)."""
 

@@ -58,5 +58,7 @@ def build_agent(settings: Settings, llm: LLMPort | None = None) -> LangGraphEmai
         retriever=build_retriever(settings),
         tools=build_tools(settings),
         max_tool_calls=settings.max_tool_calls,
+        max_tokens=settings.max_tokens_per_email,
+        max_steps=settings.max_graph_steps,
         timeout_seconds=settings.agent_timeout_seconds,
     )

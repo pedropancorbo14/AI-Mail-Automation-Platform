@@ -7,6 +7,7 @@ from ai_service.agents.email_graph import EmailState, LangGraphEmailAgent
 from ai_service.application.dto import ClassificationResult, DraftResult
 from ai_service.application.errors import (
     AgentError,
+    AgentLimitError,
     KnowledgeBaseError,
     LLMRefusalError,
     LLMUnavailableError,
@@ -45,6 +46,8 @@ def agent(
     timeout: float = 5.0,
     tools: FakeToolPort | None = None,
     max_tool_calls: int = 5,
+    max_tokens: int | None = None,
+    max_steps: int = 15,
 ) -> LangGraphEmailAgent:
     return LangGraphEmailAgent(
         llm,
@@ -52,6 +55,8 @@ def agent(
         retriever=retriever,
         tools=tools,
         max_tool_calls=max_tool_calls,
+        max_tokens=max_tokens,
+        max_steps=max_steps,
         timeout_seconds=timeout,
     )
 
@@ -328,6 +333,46 @@ async def test_injection_never_reaches_the_tools() -> None:
 
     assert tools.calls == []
     assert result.outcome.decision is not Decision.AUTO_SEND
+
+
+async def test_an_email_over_its_token_budget_is_not_drafted() -> None:
+    expensive = ClassificationResult(
+        make_classification(), (make_call(input_tokens=1_800, output_tokens=300),)
+    )
+    llm = FakeLLM(classifications=[expensive], drafts=[drafted()])
+
+    result = await agent(llm, max_tokens=2_000).run(make_email())
+
+    assert llm.draft_calls == []  # no se paga la redacción
+    assert result.draft is None
+    assert result.outcome.decision is Decision.HUMAN_REVIEW
+    assert (
+        "El email alcanzó su límite de tokens (2100 de 2000): no se redactó la respuesta."
+        in result.outcome.reasons
+    )
+
+
+async def test_local_embedding_searches_do_not_count_for_the_budget() -> None:
+    store = FakeVectorStore(by_tenant={1: [make_chunk()]})
+    embeddings = FakeEmbeddings(tokens=50_000)
+    cited = (Source(SourceType.DOCUMENT, make_chunk().source),)
+    llm = FakeLLM(classifications=[classified()], drafts=[drafted(sources=cited)])
+
+    result = await agent(llm, retriever(store, embeddings), max_tokens=2_000).run(make_email())
+
+    assert len(llm.draft_calls) == 1
+    assert result.outcome.decision is Decision.AUTO_SEND
+
+
+async def test_the_step_limit_stops_the_graph_without_retrying() -> None:
+    llm = FakeLLM(classifications=[classified()], drafts=[drafted()])
+
+    with pytest.raises(AgentError) as caught:
+        await agent(llm, max_steps=3).run(make_email())
+
+    assert isinstance(caught.value.cause, AgentLimitError)
+    assert not caught.value.retryable
+    assert caught.value.code == "internal"
 
 
 def test_the_graph_has_the_expected_shape() -> None:

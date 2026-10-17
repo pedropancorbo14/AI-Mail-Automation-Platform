@@ -84,6 +84,12 @@ class Settings(BaseSettings):
 
     # --- Agente y reglas de decisión ---
     min_confidence: float = Field(default=0.85, ge=0, le=1)
+    # Presupuesto de tokens por email (entrada + salida de todas sus llamadas al
+    # modelo, también las fallidas). Los precios están en Laravel: aquí se
+    # limitan tokens, no dólares. Superado, no se redacta: a una persona.
+    max_tokens_per_email: int = Field(default=60_000, ge=1000)
+    # Pasos máximos del grafo (protección ante un ciclo por error).
+    max_graph_steps: int = Field(default=15, ge=5, le=100)
     # Tope del grafo entero (incluye los reintentos del SDK de cada llamada).
     agent_timeout_seconds: float = Field(default=240.0, gt=0)
 

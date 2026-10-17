@@ -321,6 +321,8 @@ Variables nuevas:
 | `AI_SERVICE_MCP_URL` / `AI_SERVICE_MCP_TOKEN` | — | Servidor MCP (sin URL, el grafo no consulta los sistemas de la empresa; con URL, el token es obligatorio) |
 | `AI_SERVICE_MCP_TIMEOUT_SECONDS` | `10` | Tope de cada llamada a una herramienta |
 | `AI_SERVICE_MAX_TOOL_CALLS` | `5` | Máximo de herramientas por email |
+| `AI_SERVICE_MAX_TOKENS_PER_EMAIL` | `60000` | Presupuesto de tokens del modelo por email (entrada + salida, también de llamadas fallidas; las búsquedas locales de embeddings no cuentan). Superado, no se redacta: a una persona |
+| `AI_SERVICE_MAX_GRAPH_STEPS` | `15` | Pasos máximos del grafo (protección ante un ciclo por error); superado → fallo definitivo, a una persona |
 | `AI_SERVICE_CHECKPOINT_DATABASE_URL` | — | Rol `ai_service_checkpoints` (solo el esquema `ai_service`). Sin URL, el agente no propone acciones que modifican datos |
 | `AI_SERVICE_CHECKPOINT_TTL_HOURS` | `336` | Una acción pendiente que nadie decide en este tiempo caduca (se borra su estado) |
 | `AI_SERVICE_DEBUG_ENDPOINTS` | `false` | Activa `POST /debug/process` (nunca en producción) |
@@ -482,6 +484,19 @@ estado se guarda con **`langgraph-checkpoint-postgres`**
   los streams) borra los que nadie decidió en
   `AI_SERVICE_CHECKPOINT_TTL_HOURS` (14 días).
 - `/ready` incluye `checkpoints` cuando está configurado.
+
+### Límites del agente (tarea 4.3)
+
+| Límite | Qué pasa al superarlo |
+|---|---|
+| Tiempo del grafo (`AI_SERVICE_AGENT_TIMEOUT_SECONDS`, 240 s) | Error temporal: se reintenta y, tras N entregas, `processing_failed` |
+| **Tokens por email** (`AI_SERVICE_MAX_TOKENS_PER_EMAIL`, 60.000) | No se redacta (no se paga la llamada) y el email va a **revisión humana** con el motivo. Python limita tokens, no dólares: los precios están en Laravel, que además tiene su presupuesto diario por empresa (`AiSpendGuard`) |
+| **Pasos del grafo** (`AI_SERVICE_MAX_GRAPH_STEPS`, 15) | El grafo no tiene ciclos; si un error futuro creara uno, se corta (`AgentLimitError`, no reintentable) → `processing_failed` → una persona |
+| Herramientas por email (`AI_SERVICE_MAX_TOOL_CALLS`, 5) | Solo se ejecutan las primeras |
+
+No hace falta un límite de reanudaciones: cada pausa espera **una** acción
+y una reanudación repetida (Redis entrega al menos una vez) encuentra el
+hilo ya terminado (`expired`).
 
 ## Eventos: Redis Streams y el worker
 

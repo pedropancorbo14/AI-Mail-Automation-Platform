@@ -108,12 +108,19 @@ class FakeEmbeddings:
     model: str = "bge-m3"
     error: LLMError | None = None
     queries: list[str] = field(default_factory=list)
+    tokens: int = 12
 
     async def embed_query(self, text: str) -> EmbeddingResult:
         self.queries.append(text)
         if self.error:
             raise self.error
-        call = make_call("ai_service.knowledge_search", provider="ollama", model=self.model)
+        call = make_call(
+            "ai_service.knowledge_search",
+            provider="ollama",
+            model=self.model,
+            input_tokens=self.tokens,
+            output_tokens=0,
+        )
         return EmbeddingResult((1.0, 0.0), call)
 
 

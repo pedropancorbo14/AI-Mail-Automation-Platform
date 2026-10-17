@@ -14,7 +14,8 @@
   tickets) por MCP, planificados de forma determinista según la intención
   (`plan_tool_calls`). Empresa y cliente los pone el backend. Cualquier
   consulta que falle o no encuentre lo pedido manda el caso a una persona.
-- **draft**: borrador (`LLMPort.draft`) con la documentación encontrada.
+- **draft**: borrador (`LLMPort.draft`) con la documentación encontrada. Si
+  el email ya gastó su presupuesto de tokens, no se redacta (a una persona).
 - **validate**: reglas puras del dominio (`DecisionPolicy`), con lo que se
   consultó de verdad (`Evidence`: una cita a algo no consultado → persona).
 - **human_review**: nodo final que deja constancia de que lo revisará una
@@ -26,11 +27,13 @@ que importe adaptadores.
 """
 
 import asyncio
+import logging
 import operator
 import time
 from collections.abc import Awaitable
 from typing import Annotated, Any, Literal, NotRequired, Protocol, TypedDict
 
+from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -41,7 +44,12 @@ from ai_service.application.dto import (
     ToolCallRecord,
     ToolContext,
 )
-from ai_service.application.errors import AgentError, LLMError, LLMUnavailableError
+from ai_service.application.errors import (
+    AgentError,
+    AgentLimitError,
+    LLMError,
+    LLMUnavailableError,
+)
 from ai_service.application.ports import LLMPort, ToolPort
 from ai_service.application.services.knowledge import KnowledgeRetriever
 from ai_service.application.services.tool_planner import plan_tool_calls, references_in
@@ -54,6 +62,15 @@ from ai_service.domain.policy import DecisionPolicy, Evidence
 
 Route = Literal["retrieve", "validate"]
 SEARCH_TOOL = "search_company_documents"
+# Las búsquedas de embeddings son locales (Ollama): no cuentan para el presupuesto.
+FREE_PURPOSES = frozenset({"ai_service.knowledge_search"})
+
+log = logging.getLogger(__name__)
+
+
+def tokens_used(calls: list[LLMCall] | tuple[LLMCall, ...]) -> int:
+    """Tokens facturados del email (entrada + salida, también de llamadas fallidas)."""
+    return sum(c.input_tokens + c.output_tokens for c in calls if c.purpose not in FREE_PURPOSES)
 
 
 class EmailState(TypedDict):
@@ -108,12 +125,16 @@ class LangGraphEmailAgent:
         retriever: KnowledgeRetriever | None = None,
         tools: ToolPort | None = None,
         max_tool_calls: int = 5,
+        max_tokens: int | None = None,
+        max_steps: int = 15,
         timeout_seconds: float = 240.0,
     ) -> None:
         self._llm = llm
         self._retriever = retriever
         self._tools = tools
         self._max_tool_calls = max_tool_calls
+        self._max_tokens = max_tokens
+        self._max_steps = max_steps
         self._policy = policy
         self._timeout = timeout_seconds
         self.graph = self._build()
@@ -151,11 +172,17 @@ class LangGraphEmailAgent:
         started = time.perf_counter()
         try:
             async with asyncio.timeout(self._timeout):
-                # El grafo no tiene ciclos: 10 pasos sobran; protege de errores futuros.
-                state = await self.graph.ainvoke(initial, config={"recursion_limit": 10})
+                # El grafo no tiene ciclos: el límite de pasos protege de errores futuros.
+                state = await self.graph.ainvoke(
+                    initial, config={"recursion_limit": self._max_steps}
+                )
         except TimeoutError as error:
-            cause = LLMUnavailableError(f"El agente superó {self._timeout:.0f} s.")
-            raise AgentError(cause, ()) from error
+            timeout = LLMUnavailableError(f"El agente superó {self._timeout:.0f} s.")
+            raise AgentError(timeout, ()) from error
+        except GraphRecursionError as error:
+            log.warning("agent_limit_reached", extra={"limit": "steps"})
+            limit = AgentLimitError(f"El agente superó el límite de {self._max_steps} pasos.")
+            raise AgentError(limit, ()) from error
 
         return AgentOutcome(
             classification=state["classification"],
@@ -231,6 +258,14 @@ class LangGraphEmailAgent:
         return {"tool_calls": list(records), "issues": issues, "visited": ["tools"]}
 
     async def _draft(self, state: EmailState) -> dict[str, Any]:
+        used = tokens_used(state["calls"])
+        if self._max_tokens is not None and used >= self._max_tokens:
+            log.warning("agent_limit_reached", extra={"limit": "tokens", "used": used})
+            issue = (
+                f"El email alcanzó su límite de tokens ({used} de {self._max_tokens}): "
+                "no se redactó la respuesta."
+            )
+            return {"draft": None, "issues": [issue], "visited": ["draft"]}
         context = DraftContext(
             knowledge=state.get("knowledge", ()),
             knowledge_unavailable=state.get("knowledge_unavailable", False),
