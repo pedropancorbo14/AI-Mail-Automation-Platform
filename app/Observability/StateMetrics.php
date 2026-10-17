@@ -54,6 +54,24 @@ class StateMetrics
         DB::table('emails')->select('tenant_id', 'status', DB::raw('count(*) as total'))
             ->groupBy('tenant_id', 'status')->get()
             ->each(fn ($row) => $gauge->set($row->total, [$this->labels->tenant($row->tenant_id), $row->status]));
+
+        // Revisión humana: cuánto lleva esperando el caso más antiguo de cada empresa.
+        $oldest = $registry->registerGauge($this->namespace, 'email_review_oldest_waiting_seconds', 'Segundos que lleva esperando a una persona el caso más antiguo (revisión humana o error).', ['tenant']);
+        $waitingSince = DB::table('email_status_changes')->selectRaw('max(created_at)')->whereColumn('email_id', 'emails.id');
+
+        DB::table('emails')
+            ->whereIn('status', ['human_review', 'failed'])
+            ->select('tenant_id')
+            ->selectSub($waitingSince, 'waiting_since')
+            ->get()
+            ->groupBy('tenant_id')
+            ->each(function ($rows, $tenantId) use ($oldest) {
+                $since = $rows->pluck('waiting_since')->filter()->min();
+
+                if ($since !== null) {
+                    $oldest->set(max(0, now()->getTimestamp() - Carbon::parse($since)->getTimestamp()), [$this->labels->tenant((int) $tenantId)]);
+                }
+            });
     }
 
     /** Buzones por estado y, de cada buzón activo, su sincronización. */

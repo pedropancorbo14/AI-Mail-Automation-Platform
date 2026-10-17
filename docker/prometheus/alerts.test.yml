@@ -76,6 +76,26 @@ tests:
               summary: "4 emails de acme han pasado a error en 15 min"
               description: "Revisar en el panel los emails con estado Error (motivo en su historial) y reprocesarlos con ai:process --failed."
 
+  # Revisión humana: un caso que pasa de 4 h esperando (tras 5 min) alerta; uno de 3 h, no.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_email_review_oldest_waiting_seconds{job="laravel", instance="nginx:80", tenant="acme"}'
+        values: "14000+60x20"
+      - series: 'aimail_email_review_oldest_waiting_seconds{job="laravel", instance="nginx:80", tenant="globex"}'
+        values: "10800+60x20"
+    alert_rule_test:
+      # Pasa de 4 h en el minuto 7: aún no han pasado los 5 min del for.
+      - eval_time: 10m
+        alertname: CasoSinAtender
+        exp_alerts: []
+      - eval_time: 13m
+        alertname: CasoSinAtender
+        exp_alerts:
+          - exp_labels: { severity: warning, tenant: acme }
+            exp_annotations:
+              summary: "El caso más antiguo de acme lleva 4h 6m 20s esperando a una persona"
+              description: "Abrir la bandeja de revisión del panel: los casos urgentes y los más antiguos salen primero."
+
   # IA: 50 % de errores con volumen suficiente → alerta; casi sin tráfico → no.
   - interval: 1m
     input_series:

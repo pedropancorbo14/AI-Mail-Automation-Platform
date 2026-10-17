@@ -3097,6 +3097,27 @@ casos, y un **historial** de todas las decisiones humanas.
   `ReviewHistoryApiTest` (6: orden y email, filtros y 422, resumen con
   espera/propuestas/personas y periodo, periodo vacío sin dividir por
   cero, aislamiento, 401)
+- [x] 6. **Métricas, Grafana y alerta.** Observer
+  `EmailReviewMetricsObserver` (`afterCommit`, sobre `email_reviews`):
+  **`email_reviews_total`** {tenant, decision, edited} y
+  **`email_review_wait_seconds`** {tenant, decision} (intervalos de 1 min
+  a 3 días). Estado actual en `StateMetrics` (sección `emails`):
+  **`email_review_oldest_waiting_seconds`** {tenant} = lo que lleva
+  esperando el caso más antiguo en `human_review`/`failed` (desde su
+  último cambio de estado). Dashboard **Emails**: fila nueva **"Revisión
+  humana"** (esperan a una persona —ámbar ≥ 1—, caso más antiguo —ámbar ≥
+  4 h—, decisiones del periodo, **% de propuestas aprobadas sin cambios**,
+  % de respuestas corregidas, espera mediana hasta resolver; barras de
+  decisiones por intervalo en 4 grupos de color fijo —aprobada, respondida
+  por una persona, propuesta descartada, cerrada o reprocesada— y mediana /
+  p95 de la espera); las filas de debajo se desplazan. Las 9 consultas
+  nuevas se ejecutaron contra un Prometheus real sin errores. Alerta
+  **`CasoSinAtender`** (warning): el caso más antiguo de una empresa pasa
+  de 4 h esperando durante 5 min; probada en `alerts.test.yml` (aún no a
+  los 5 min del `for`, sí después con el texto exacto —`humanizeDuration`
+  → "4h 6m 20s"—, y otra empresa con 3 h no alerta). Tests:
+  `ReviewMetricsTest` (decisiones y espera con sus intervalos, transacción
+  deshecha no cuenta, caso más antiguo por empresa)
 
 ### Pendientes anotados para más adelante
 

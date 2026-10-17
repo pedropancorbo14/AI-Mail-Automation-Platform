@@ -28,6 +28,9 @@ class Metrics
     /** Intervalos de duración en segundos (de 50 ms a 10 min). */
     private const array SECONDS = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600];
 
+    /** Intervalos de espera de un caso en revisión humana (de 1 min a 3 días). */
+    private const array REVIEW_WAIT = [60, 300, 900, 1800, 3600, 7200, 14400, 28800, 86400, 259200];
+
     /**
      * Etiquetas prohibidas: "job" e "instance" (las pone Prometheus a cada target).
      *
@@ -41,6 +44,10 @@ class Metrics
         'email_replies_sent_total' => ['type' => 'counter', 'help' => 'Respuestas enviadas al cliente.', 'labels' => ['tenant', 'automatic']],
         'email_replies_failed_total' => ['type' => 'counter', 'help' => 'Respuestas que no se pudieron enviar.', 'labels' => ['tenant']],
         'mail_syncs_total' => ['type' => 'counter', 'help' => 'Sincronizaciones de buzones (cada lote o fallo).', 'labels' => ['tenant', 'provider', 'result']],
+
+        // --- Revisión humana (Fase 13) ---
+        'email_reviews_total' => ['type' => 'counter', 'help' => 'Decisiones de las personas en la revisión humana (aprobar, descartar, responder, cerrar, reprocesar).', 'labels' => ['tenant', 'decision', 'edited']],
+        'email_review_wait_seconds' => ['type' => 'histogram', 'help' => 'Tiempo que esperó un caso a una persona hasta cada decisión.', 'labels' => ['tenant', 'decision'], 'buckets' => self::REVIEW_WAIT],
 
         // --- IA (Fases 5 a 8) ---
         'ai_requests_total' => ['type' => 'counter', 'help' => 'Peticiones a la IA (LLM y embeddings).', 'labels' => ['tenant', 'provider', 'model', 'purpose', 'status']],
