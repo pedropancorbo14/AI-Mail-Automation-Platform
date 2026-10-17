@@ -3606,6 +3606,55 @@ del servicio) y, si quiere, con Claude real
 (`AI_SERVICE_LLM_PROVIDER=anthropic`). Siguiente: Fase 2 (RAG) cuando lo
 apruebe.
 
+### AI-Service, Fases 2 (RAG) y 3 (MCP + tools): EN CURSO (2026-10-17)
+
+Misma rama `fase-ai-service` (pedido por el usuario: son cambios sobre lo
+que ya existe). Misma forma de trabajo: un commit por tarea, tests en
+verde, **CI comprobado tras cada push**, documentación al día.
+
+**Decisión (aprobada, opción A):** el RAG de Python usa el **mismo motor
+de embeddings** (Ollama + `bge-m3`, 1024 dimensiones, vectores
+normalizados, pregunta = asunto + cuerpo, máx. 2000 caracteres) pero
+**solo para buscar**: la indexación (subir, extraer, trocear, embeddings y
+guardar) **sigue en Laravel**, único escritor de `documents` y
+`document_chunks`. Python **lee** con un rol de PostgreSQL de solo
+lectura (`ai_service_reader`, permisos por columna) y **RLS por
+`tenant_id`** (`SET LOCAL app.tenant_id`; sin él no ve nada), además del
+filtro explícito por empresa en la consulta, y solo fragmentos cuyo
+`documents.embedding_model` sea el suyo. **No se borra nada del RAG ni de
+las tools de Laravel**: los usa el motor por defecto (`AI_ENGINE=laravel`)
+y el panel. Se retirarán en una tarea aparte cuando el motor de Python
+iguale al de Laravel (entonces se valorará mover la indexación a Python
+con eventos `document.uploaded.v1` / `document.indexed.v1`).
+
+**Tareas:**
+- [x] 2.1 **Rol de solo lectura + RLS.** `contracts/database/knowledge_base_reader.sql`
+  (con README): `GRANT SELECT` **por columna** a `ai_service_reader`
+  (`documents`: id, tenant_id, title, status, embedding_model;
+  `document_chunks`: id, tenant_id, document_id, position, content,
+  metadata, embedding), `ENABLE ROW LEVEL SECURITY` en ambas tablas y
+  política `ai_service_tenant_isolation` (`FOR SELECT TO
+  ai_service_reader USING tenant_id = NULLIF(current_setting('app.tenant_id',
+  true), '')::bigint`: sin valor no ve nada). Sin `FORCE`: no afecta al
+  dueño (Laravel). Migración `add_knowledge_base_reader`: crea el rol
+  (`LOGIN NOINHERIT`, contraseña `ai.remote.db_password` =
+  `AI_SERVICE_DB_PASSWORD`) si no existe y el usuario puede crear roles
+  (DO + `duplicate_object`: los tests en paralelo migran varias BD a la vez
+  y el rol es del clúster); si no existe, aviso y no aplica permisos; luego
+  ejecuta el SQL compartido. `down` quita políticas, RLS y permisos (el rol
+  no se borra). Tests `KnowledgeBaseReaderTest` (12, con `SET LOCAL ROLE`
+  dentro de la transacción del test): sin tenant no ve nada, solo su
+  empresa (ni con `WHERE tenant_id` de otra), búsqueda vectorial posible,
+  sin acceso a `path`/`sha256`/`uploaded_by`/otras tablas, no puede
+  escribir, Laravel ve todo, columnas del contrato presentes. Suite: 1181
+  en verde + los 25 del entorno
+- [ ] 2.2 Python: `EmbeddingPort` (Ollama) y `VectorStorePort` (pgvector, SQLAlchemy async + psycopg)
+- [ ] 2.3 Nodo `retrieve`, prompt con documentación, `sources` en el contrato
+- [ ] 3.1 Servidor MCP (SDK oficial) con CRM, ERP y tickets simulados
+- [ ] 3.2 `ToolPort` + cliente MCP (contexto inyectado, solo lectura, límites)
+- [ ] 3.3 Nodo `tools`, prompt con datos, `tool_calls` en el contrato → `ai_tool_calls`
+- [ ] 3.4 Compose, CI, README y prueba de punta a punta
+
 ### Pendientes anotados para más adelante
 
 - **Herramientas por tipo de negocio (Fase 14, integraciones)** — pedido

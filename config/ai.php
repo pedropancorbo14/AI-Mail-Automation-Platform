@@ -194,6 +194,9 @@ return [
         'block_ms' => (int) env('AI_REMOTE_BLOCK_MS', 5_000),
         // Retención en los streams (llevan datos personales).
         'retention_hours' => (int) env('AI_REMOTE_RETENTION_HOURS', 168),
+        // Contraseña del rol de PostgreSQL de solo lectura de ai-service
+        // (ai_service_reader: base de conocimiento, con RLS por empresa).
+        'db_password' => env('AI_SERVICE_DB_PASSWORD', 'reader-secret'),
     ],
 
     // Freno del gasto (App\Security\AiSpendGuard): superado un límite, el
