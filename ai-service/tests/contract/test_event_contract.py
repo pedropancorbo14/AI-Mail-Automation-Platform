@@ -13,6 +13,7 @@ from ai_service.application.contracts.events import (
     EmailProcessed,
     EmailProcessingFailed,
     EmailReceived,
+    EmailReviewResumed,
     InvalidEventError,
     _Event,
 )
@@ -23,6 +24,7 @@ MODELS: dict[str, type[_Event]] = {
     "email.received.v1": EmailReceived,
     "email.processed.v1": EmailProcessed,
     "email.processing_failed.v1": EmailProcessingFailed,
+    "email.review_resumed.v1": EmailReviewResumed,
 }
 
 
@@ -37,7 +39,7 @@ def _example(path: Path) -> Any:
 
 def test_the_schemas_are_valid_json_schema() -> None:
     schemas = list(CONTRACTS.glob("*.schema.json"))
-    assert len(schemas) == 4
+    assert len(schemas) == 5
     for path in schemas:
         Draft202012Validator.check_schema(load(path))
 

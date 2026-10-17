@@ -17,6 +17,7 @@ un esquema o un modelo sin el otro, falla el CI.
 | [`email.received.v1`](events/email.received.v1.schema.json) | `email.received.v1` | Laravel | ai-service |
 | [`email.processed.v1`](events/email.processed.v1.schema.json) | `email.processed.v1` | ai-service | Laravel |
 | [`email.processing_failed.v1`](events/email.processing_failed.v1.schema.json) | `email.processing_failed.v1` | ai-service | Laravel |
+| [`email.review_resumed.v1`](events/email.review_resumed.v1.schema.json) | `email.review_resumed.v1` | Laravel | ai-service |
 
 Definiciones comunes en [`events/common.schema.json`](events/common.schema.json).
 
@@ -50,6 +51,32 @@ Definiciones comunes en [`events/common.schema.json`](events/common.schema.json)
 - Cada llamada lleva `prompt` (`clave@versión`): cambiar el texto de un
   prompt obliga a subir su versión.
 - Los mensajes de error nunca llevan secretos ni el contenido del email.
+
+## Acciones con aprobación humana (Fase 4 de ai-service)
+
+Las herramientas que **modifican** datos de la empresa (crear un ticket…)
+nunca se ejecutan solas:
+
+1. ai-service las propone en `email.processed.v1` → `pending_action`
+   (`action_id`, `tool`, `arguments` construidos por el backend —nunca por
+   el modelo—, `summary` para la persona) y deja el grafo **en pausa**
+   (checkpoint de LangGraph) con su `thread_id`. Con acción pendiente la
+   `decision` nunca es `auto_send`.
+2. Una persona la aprueba o la rechaza en el panel → Laravel publica
+   `email.review_resumed.v1` (`thread_id`, `action_id`, `approved`).
+3. ai-service reanuda ese grafo (comprueba que el `thread_id` es de esa
+   empresa y ese email, y que `action_id` es la acción pendiente), ejecuta
+   la acción solo si se aprobó, redacta la respuesta y publica un **nuevo**
+   `email.processed.v1` con `causation_id` = el `event_id` de la
+   reanudación. Si la pausa ya no existe (caducó o ya se resolvió) publica
+   `email.processing_failed.v1` con `error_code: expired`.
+
+**Reprocesar con una indicación** no reanuda nada: Laravel publica otro
+`email.received.v1` con `review_instruction` y el grafo vuelve a empezar
+(con datos frescos de pedidos y documentación).
+
+`expired` es un valor nuevo de un enum (no un campo opcional): se acepta
+porque los dos lados se actualizan en el mismo cambio.
 
 ## Añadir un ejemplo
 

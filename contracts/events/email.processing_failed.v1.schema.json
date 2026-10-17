@@ -17,9 +17,9 @@
       "anyOf": [{ "$ref": "common.schema.json#/$defs/event_id" }, { "type": "null" }]
     },
     "error_code": {
-      "description": "llm_config: clave o saldo (Laravel -> failed); refusal: el modelo se negó; invalid_output: respuesta no válida; timeout: se agotó el tiempo tras los reintentos; internal: error inesperado.",
+      "description": "llm_config: clave o saldo (Laravel -> failed); refusal: el modelo se negó; invalid_output: respuesta no válida; timeout: se agotó el tiempo tras los reintentos; internal: error inesperado; expired: se pidió reanudar una ejecución en pausa que ya no existe (caducó o ya terminó).",
       "type": "string",
-      "enum": ["llm_config", "refusal", "invalid_output", "timeout", "internal"]
+      "enum": ["llm_config", "refusal", "invalid_output", "timeout", "internal", "expired"]
     },
     "message": {
       "description": "Motivo legible, nunca con secretos ni el contenido del email.",

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/events/email.review_resumed.v1.schema.json",
+  "title": "email.review_resumed.v1",
+  "description": "Laravel lo publica cuando una persona aprueba o rechaza en el panel la acción que ai-service dejó pendiente (pending_action). ai-service reanuda el grafo en pausa (thread_id) y publica un nuevo email.processed.v1 con causation_id = este event_id.",
+  "type": "object",
+  "properties": {
+    "event_id": { "$ref": "common.schema.json#/$defs/event_id" },
+    "event_type": { "const": "email.review_resumed" },
+    "event_version": { "const": 1 },
+    "occurred_at": { "$ref": "common.schema.json#/$defs/occurred_at" },
+    "trace_id": { "$ref": "common.schema.json#/$defs/trace_id" },
+    "tenant_id": { "$ref": "common.schema.json#/$defs/tenant_id" },
+    "email_id": { "$ref": "common.schema.json#/$defs/email_id" },
+    "thread_id": { "$ref": "common.schema.json#/$defs/thread_id" },
+    "action_id": {
+      "description": "La acción que se decide: tiene que ser la que está pendiente en ese thread_id.",
+      "$ref": "common.schema.json#/$defs/event_id"
+    },
+    "approved": { "type": "boolean" },
+    "reviewer_id": {
+      "description": "Usuario de Laravel que decidió (solo para los logs).",
+      "type": ["integer", "null"],
+      "minimum": 1
+    }
+  },
+  "required": [
+    "event_id", "event_type", "event_version", "occurred_at", "trace_id",
+    "tenant_id", "email_id", "thread_id", "action_id", "approved"
+  ],
+  "additionalProperties": true
+}

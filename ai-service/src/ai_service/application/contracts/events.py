@@ -20,6 +20,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     ValidationError,
     model_validator,
 )
@@ -31,6 +32,8 @@ EmailId = Annotated[int, Field(ge=1)]
 TraceId = Annotated[str, Field(pattern=r"^[A-Za-z0-9._-]{8,64}$")]
 Probability = Annotated[float, Field(ge=0, le=1)]
 TokenCount = Annotated[int, Field(ge=0)]
+ThreadId = Annotated[str, Field(pattern=r"^[A-Za-z0-9._:-]{8,128}$")]
+ToolName = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
 
 
 class InvalidEventError(ValueError):
@@ -81,6 +84,8 @@ class EmailReceived(_Event):
         default_factory=list, max_length=50
     )
     tenant_name: str | None = Field(default=None, max_length=255)
+    # Indicación de una persona del equipo al reprocesar desde el panel.
+    review_instruction: str | None = Field(default=None, max_length=2000)
 
 
 class LLMCallUsage(BaseModel):
@@ -135,12 +140,23 @@ class SourcePayload(BaseModel):
 class ToolCallPayload(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    tool: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    tool: ToolName
     arguments: dict[str, Any]
     result: dict[str, Any] | None
     status: Literal["success", "error", "rejected"]
     error: str | None = Field(max_length=500)
     duration_ms: Annotated[int, Field(ge=0)]
+
+
+class PendingActionPayload(BaseModel):
+    """Acción que modifica datos y espera la aprobación de una persona."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    action_id: uuid.UUID
+    tool: ToolName
+    arguments: dict[str, Any]
+    summary: str = Field(min_length=1, max_length=500)
 
 
 class EmailProcessed(_Event):
@@ -163,15 +179,23 @@ class EmailProcessed(_Event):
     tool_calls: list[ToolCallPayload] = Field(default_factory=list, max_length=50)
     duration_ms: Annotated[int, Field(ge=0)] = 0
     usage: Usage
+    # Grafo en pausa esperando la aprobación de `pending_action` (Fase 4).
+    thread_id: ThreadId | None = None
+    pending_action: PendingActionPayload | None = None
 
     @model_validator(mode="after")
-    def _auto_send_needs_a_draft(self) -> Self:
+    def _consistent(self) -> Self:
         if self.decision == "auto_send" and not self.draft:
             raise ValueError("auto_send exige un borrador")
+        if self.pending_action is not None:
+            if self.thread_id is None:
+                raise ValueError("una acción pendiente exige thread_id")
+            if self.decision == "auto_send":
+                raise ValueError("con una acción pendiente no se envía nada solo")
         return self
 
 
-ErrorCode = Literal["llm_config", "refusal", "invalid_output", "timeout", "internal"]
+ErrorCode = Literal["llm_config", "refusal", "invalid_output", "timeout", "internal", "expired"]
 
 
 class EmailProcessingFailed(_Event):
@@ -183,3 +207,13 @@ class EmailProcessingFailed(_Event):
     message: str = Field(min_length=1, max_length=500)
     retryable: bool
     usage: Usage
+
+
+class EmailReviewResumed(_Event):
+    """`email.review_resumed.v1`: una persona aprobó o rechazó la acción pendiente."""
+
+    event_type: Literal["email.review_resumed"] = "email.review_resumed"
+    thread_id: ThreadId
+    action_id: uuid.UUID
+    approved: StrictBool  # "yes" o 1 no valen: es la decisión de una persona
+    reviewer_id: Annotated[int, Field(ge=1)] | None = None

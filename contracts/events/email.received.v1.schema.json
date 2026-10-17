@@ -41,6 +41,11 @@
       "description": "Nombre de la empresa, para firmar la respuesta.",
       "type": ["string", "null"],
       "maxLength": 255
+    },
+    "review_instruction": {
+      "description": "Indicación de una persona del equipo al reprocesar el email desde el panel (\"ofrécele el cambio de talla\"). Es de la empresa, no del cliente; las reglas (no prometer reembolsos, citar solo lo consultado) siguen aplicando.",
+      "type": ["string", "null"],
+      "maxLength": 2000
     }
   },
   "required": [

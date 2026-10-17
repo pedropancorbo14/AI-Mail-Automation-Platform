@@ -99,6 +99,28 @@
       "type": "array",
       "items": { "$ref": "#/$defs/llm_call" },
       "maxItems": 50
+    },
+    "thread_id": {
+      "description": "Ejecución del grafo de ai-service en pausa esperando a una persona (checkpoint de LangGraph). Laravel la devuelve tal cual para reanudarla.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{8,128}$"
+    },
+    "pending_action": {
+      "description": "Acción que modifica datos de la empresa (p. ej. crear un ticket) propuesta por ai-service y que NO se ejecuta hasta que una persona la apruebe. Los argumentos los construye el backend, nunca el modelo; la empresa y el cliente se añaden al ejecutarla.",
+      "type": "object",
+      "properties": {
+        "action_id": { "$ref": "#/$defs/event_id" },
+        "tool": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+        "arguments": { "type": "object" },
+        "summary": {
+          "description": "Qué hará, en lenguaje de la empresa, para la persona que la aprueba.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": ["action_id", "tool", "arguments", "summary"],
+      "additionalProperties": false
     }
   }
 }

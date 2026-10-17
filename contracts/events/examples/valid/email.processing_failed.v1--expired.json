@@ -1,0 +1,16 @@
+{
+  "event_id": "6b5a4c3d-2e1f-4a0b-9c8d-7e6f5a4b3c2d",
+  "event_type": "email.processing_failed",
+  "event_version": 1,
+  "occurred_at": "2026-10-17T10:00:00.123456Z",
+  "trace_id": "9f2c4e6a8b1d4f3e",
+  "tenant_id": 1,
+  "email_id": 42,
+  "causation_id": "4f3e2d1c-0b9a-4876-9543-210fedcba987",
+  "error_code": "expired",
+  "message": "La acción pendiente ya no se puede reanudar (caducó o ya se resolvió). Reprocesa el email.",
+  "retryable": false,
+  "usage": {
+    "calls": []
+  }
+}

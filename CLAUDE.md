@@ -3781,6 +3781,78 @@ revise la rama `fase-ai-service`, el CI en verde y lo pruebe en su equipo:
 `AI_SERVICE_MCP_TOKEN` en el `.env`. Siguiente: Fase 4 (checkpointing,
 `interrupt`, límites y herramientas de escritura con aprobación).
 
+### AI-Service, Fase 4 (checkpointing, aprobación humana y límites): EN CURSO (2026-10-17)
+
+Misma rama `fase-ai-service`, misma forma de trabajo (un commit por tarea,
+tests en verde, CI comprobado tras cada push, documentación al día).
+
+**Objetivo:** que el agente pueda **proponer acciones que modifican datos**
+(crear un ticket de soporte) sin ejecutarlas hasta que una persona las
+apruebe en el panel, con el grafo **en pausa** (checkpoint de LangGraph
+en PostgreSQL) y reanudado con la decisión; que una persona pueda
+**reprocesar con una indicación**; y **límites** del agente (tokens,
+pasos) que mandan el caso a una persona en vez de fallar.
+
+**Decisiones tomadas:**
+- **`interrupt` + checkpointing solo para las acciones con aprobación.**
+  Cambio sobre lo anotado en la Fase 1: **reprocesar con una indicación NO
+  reanuda un checkpoint**; Laravel publica otro `email.received.v1` con
+  `review_instruction` y el grafo empieza de nuevo. Motivos: entre la
+  revisión y el reproceso pueden pasar horas o días y el estado del pedido
+  o la documentación cambian (reanudar respondería con datos viejos), y
+  así no quedan miles de ejecuciones en pausa (con datos personales) por
+  cada email que va a revisión. La clasificación se paga otra vez
+  (~0,01 $), asumible.
+- Las acciones las **planifica el backend de forma determinista** (como
+  las consultas de la Fase 3): p. ej. soporte técnico sin ticket abierto →
+  proponer `create_support_ticket` con asunto, descripción y prioridad
+  sacados del email y la clasificación. El modelo nunca elige la acción ni
+  sus argumentos; empresa y cliente los inyecta el cliente MCP al
+  ejecutarla, y solo por el camino "aprobada".
+- Checkpoints con **`langgraph-checkpoint-postgres`** (`AsyncPostgresSaver`)
+  en un **esquema propio `ai_service`** con un **rol propio**
+  (`ai_service_checkpoints`, solo ese esquema; el rol de solo lectura del
+  RAG no cambia). `durability="exit"` (se guarda al pausar o terminar, no
+  en cada nodo) y el hilo se borra al terminar; los que esperan aprobación
+  se purgan tras N días (`expired` si alguien los reanuda después).
+- Ejecución de la acción **idempotente** (clave = `action_id`): una
+  reanudación repetida (Redis entrega al menos una vez) no crea dos
+  tickets.
+- Límites: **presupuesto de tokens por email** (los precios están en
+  Laravel: Python limita tokens, no dólares), nº máximo de pasos del grafo
+  y de reanudaciones; superarlos → revisión humana con el motivo.
+
+**Tareas:**
+- [x] 4.1 **Contrato.** `common`: `thread_id` (`[A-Za-z0-9._:-]{8,128}`) y
+  `pending_action` (`action_id` UUID, `tool`, `arguments`, `summary` para
+  la persona; sin extras). `email.processed.v1`: opcionales `thread_id` y
+  `pending_action`; con acción pendiente, `thread_id` obligatorio y
+  `decision` ≠ `auto_send` (`allOf` con el `if/then` anterior).
+  `email.received.v1`: opcional `review_instruction` (máx. 2000).
+  `email.processing_failed.v1`: `error_code` `expired` (valor nuevo de
+  enum: los dos lados cambian a la vez). Evento nuevo
+  **`email.review_resumed.v1`** (Laravel → ai-service: `thread_id`,
+  `action_id`, `approved`, `reviewer_id` opcional). Ejemplos válidos
+  (acción pendiente, indicación, reanudación aprobada y rechazada,
+  `expired`) e inválidos (acción sin `thread_id`, acción con `auto_send`,
+  campo extra en la acción, indicación demasiado larga, reanudación sin
+  `thread_id`, `action_id` no UUID, `approved` no booleano, `thread_id`
+  con espacios). Python: `PendingActionPayload`, `EmailReviewResumed`
+  (`approved` con `StrictBool`: "yes" no vale), validación de coherencia
+  en `EmailProcessed`. Laravel: `EventContract` y sus tests recogen el
+  esquema y los ejemplos nuevos solos. `contracts/README.md`: flujo de
+  aprobación. 43 tests de contrato (Python) y 89 de `tests/Feature/AI/Remote`
+- [ ] 4.2 Checkpoints en PostgreSQL (rol y esquema `ai_service`, migración
+  de Laravel, `AsyncPostgresSaver`, purga)
+- [ ] 4.3 Límites del agente (tokens, pasos, reanudaciones)
+- [ ] 4.4 Acción con aprobación: planificador, nodo con `interrupt`, MCP
+  idempotente y solo por el camino aprobado
+- [ ] 4.5 Reanudar: consumidor de `email.review_resumed.v1` y caso de uso
+- [ ] 4.6 Indicación de la persona (`review_instruction`, prompt nuevo)
+- [ ] 4.7 Laravel: acción pendiente en el panel (aprobar/rechazar),
+  reprocesar con indicación, publicadores, estados y auditoría
+- [ ] 4.8 Compose, CI, README y prueba de punta a punta
+
 ### Pendientes anotados para más adelante
 
 - **Herramientas por tipo de negocio (Fase 14, integraciones)** — pedido
