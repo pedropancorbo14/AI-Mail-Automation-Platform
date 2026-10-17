@@ -129,6 +129,7 @@ class EmailProcessed(_Event):
     """`email.processed.v1`: resultado del grafo. `decision` es una recomendación."""
 
     event_type: Literal["email.processed"] = "email.processed"
+    causation_id: uuid.UUID | None = None
     category: Category
     draft: str = Field(max_length=20_000)
     confidence: Probability
@@ -156,6 +157,7 @@ class EmailProcessingFailed(_Event):
     """`email.processing_failed.v1`: error definitivo (los temporales se reintentan aquí)."""
 
     event_type: Literal["email.processing_failed"] = "email.processing_failed"
+    causation_id: uuid.UUID | None = None
     error_code: ErrorCode
     message: str = Field(min_length=1, max_length=500)
     retryable: bool

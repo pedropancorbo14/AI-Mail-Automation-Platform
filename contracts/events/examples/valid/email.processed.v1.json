@@ -6,6 +6,7 @@
   "trace_id": "9f2c4e6a8b1d4f3e",
   "tenant_id": 1,
   "email_id": 42,
+  "causation_id": "0b8f6c1e-3a52-4c1f-9a77-2f1d5e4b9c10",
   "category": "order_status",
   "draft": "Hola Juan:\n\nGracias por escribirnos. Hemos revisado tu pedido #45821 y una persona del equipo te confirmará la fecha de entrega.\n\nUn saludo,\nEl equipo de atención al cliente de Empresa Demo",
   "confidence": 0.72,

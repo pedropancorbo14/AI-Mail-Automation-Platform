@@ -12,6 +12,10 @@
     "trace_id": { "$ref": "common.schema.json#/$defs/trace_id" },
     "tenant_id": { "$ref": "common.schema.json#/$defs/tenant_id" },
     "email_id": { "$ref": "common.schema.json#/$defs/email_id" },
+    "causation_id": {
+      "description": "event_id del email.received.v1 que provocó este resultado (trazabilidad; Laravel lo compara con el último que publicó).",
+      "anyOf": [{ "$ref": "common.schema.json#/$defs/event_id" }, { "type": "null" }]
+    },
     "error_code": {
       "description": "llm_config: clave o saldo (Laravel -> failed); refusal: el modelo se negó; invalid_output: respuesta no válida; timeout: se agotó el tiempo tras los reintentos; internal: error inesperado.",
       "type": "string",

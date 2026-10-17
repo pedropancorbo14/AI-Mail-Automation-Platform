@@ -883,6 +883,17 @@ email nuevo (mail:sync, cada minuto) ── EmailIngested ──► ProcessEmail
                  └─ cualquier motivo ─► human_review (con todos los motivos)
 ```
 
+**Con el motor de IA en Python (`AI_ENGINE=python`)** el flujo es el mismo
+hasta el freno del gasto; a partir de ahí, en vez de clasificar y ejecutar
+el agente en Laravel, el email se **publica como evento**
+(`email.received.v1`, Redis Streams) y se queda en `processing` hasta que
+[`ai-service`](ai-service/README.md) devuelve el resultado
+(`email.processed.v1`). Las reglas finales (`AutoSendPolicy`) y el envío
+siguen en Laravel. Si no llega respuesta en 15 minutos,
+`ai:reconcile-remote` (cada 5 minutos) lo vuelve a publicar; tras 3
+intentos, `failed`. Con `AI_ENGINE=laravel` (por defecto) todo sigue como
+en el diagrama.
+
 Cada cambio de estado se guarda en **`email_status_changes`** con su motivo
 y quién lo decidió (null = la plataforma; una persona en la Fase 13). Un
 email no puede saltarse pasos: las transiciones válidas están en

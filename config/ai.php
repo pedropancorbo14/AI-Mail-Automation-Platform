@@ -169,6 +169,33 @@ return [
         'max_auto_reply_chars' => (int) env('AI_MAX_AUTO_REPLY_CHARS', 3000),
     ],
 
+    // Motor de IA (App\AI\Remote\AIEngine): "laravel" = el de las Fases 5–9
+    // en este proceso; "python" = el microservicio ai-service por eventos en
+    // Redis Streams (ver ai-service/README.md y contracts/README.md).
+    'engine' => env('AI_ENGINE', 'laravel'),
+
+    // Comunicación con ai-service (solo con AI_ENGINE=python).
+    'remote' => [
+        // Prefijo de los streams (igual que AI_SERVICE_STREAM_PREFIX del servicio).
+        'stream_prefix' => env('AI_STREAM_PREFIX', ''),
+        // Consumer group de Laravel en los streams de resultados y nombre de
+        // este consumidor (único por proceso consumidor).
+        'consumer_group' => env('AI_STREAM_GROUP', 'laravel'),
+        'consumer_name' => env('AI_STREAM_CONSUMER', gethostname() ?: 'laravel'),
+        // Un email que lleva más de esto en processing sin respuesta se vuelve a
+        // publicar (servicio caído, Redis caído al publicar, evento perdido)...
+        'reconcile_after_minutes' => (int) env('AI_REMOTE_RECONCILE_MINUTES', 15),
+        // ...hasta este número de intentos; después, failed (lo revisa una persona).
+        'max_publish_attempts' => (int) env('AI_REMOTE_MAX_ATTEMPTS', 3),
+        // Consumidor de resultados: reclamar mensajes abandonados, entregas
+        // máximas antes de la cola de errores y espera de cada lectura.
+        'claim_idle_ms' => (int) env('AI_REMOTE_CLAIM_IDLE_MS', 60_000),
+        'max_deliveries' => (int) env('AI_REMOTE_MAX_DELIVERIES', 3),
+        'block_ms' => (int) env('AI_REMOTE_BLOCK_MS', 5_000),
+        // Retención en los streams (llevan datos personales).
+        'retention_hours' => (int) env('AI_REMOTE_RETENTION_HOURS', 168),
+    ],
+
     // Freno del gasto (App\Security\AiSpendGuard): superado un límite, el
     // email va a revisión humana sin llamar a la IA.
     'limits' => [

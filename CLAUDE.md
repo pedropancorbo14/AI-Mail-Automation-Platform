@@ -3474,7 +3474,42 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   duplicados, fallo definitivo, reintentos con `XAUTOCLAIM`, error
   inesperado, concurrencia, empresa de cada resultado, recorte, parada y
   el worker completo con `/ready` y `/metrics`. 161 tests
-- [ ] 1.8 Laravel: `AI_ENGINE`, publicador y reconciliador (Pest)
+- [x] 1.8 **Laravel: publicador** (`app/AI/Remote/`). `AIEngine`
+  (`config ai.engine` = `AI_ENGINE`, laravel por defecto), interfaz
+  `Contracts\EventStream` + `RedisEventStream` (phpredis 6.3 en la
+  conexión **`streams`**: `REDIS_STREAMS_DB` 3, `options.prefix` vacío,
+  `read_timeout` 30; `xAdd` con MAXLEN ~, `xGroup CREATE ... 0 MKSTREAM`,
+  `xReadGroup`, `xAutoClaim` + `xPending` para las entregas, ack =
+  `xAck`+`xDel` en MULTI, DLQ `<stream>.dlq`, `XTRIM MINID` exacto),
+  `Data\StreamMessage`, `EventContract` (opis contra
+  `contracts/events/*.schema.json` registrados por `$id`;
+  `InvalidEventException`) y **`EmailEventPublisher`** (evento con texto
+  plano — HTML → `HtmlToText` —, recorte a `ai.classification.max_body_chars`
+  con `body_truncated`, adjuntos, `tenant_name`, `trace_id` = `request_id`
+  del Context o uno nuevo; valida contra el contrato; guarda
+  `ai_event_id`/`ai_requested_at`/`ai_request_attempts` y publica
+  **after commit**; si Redis falla, warning y sigue en processing).
+  Migración `add_remote_ai_to_emails` (+ índice status+ai_requested_at).
+  **`EmailProcessor`**: con el motor remoto no exige `ANTHROPIC_API_KEY`
+  en Laravel y, tras automático/modo off/`AiSpendGuard`, publica y deja el
+  email en processing (un reintento del job no republica dentro del
+  plazo; `reprocess` sí; sin remitente válido → human_review);
+  `ignoreReason()` pasa a pública (la usará el consumidor). Comando
+  **`ai:reconcile-remote`** (cada 5 min, `withoutOverlapping`): en
+  processing con `ai_requested_at` > `ai.remote.reconcile_after_minutes`
+  (15) → republica con evento nuevo; con `max_publish_attempts` (3)
+  agotados → failed; si se volvió a `AI_ENGINE=laravel` → `ProcessEmailJob`
+  (lo termina el motor de Laravel). **Contrato:** `causation_id` opcional
+  (nullable) en `email.processed.v1` y `email.processing_failed.v1`
+  (= `event_id` del `email.received.v1`; Python lo rellena). Tests:
+  `EventContractTest` (los ejemplos compartidos), `RemotePublishingTest`
+  (16, con `Tests\Fakes\InMemoryEventStream`) y `RedisEventStreamTest`
+  (Redis real, BD 14 de `phpunit.xml`). **Lecciones:** en datasets de
+  Pest no hay `base_path()` al cargar el archivo (ruta con
+  `dirname(__DIR__, n)`); el facade `Redis` tapa la clase `\Redis`;
+  **Pint no se aplica en este repo** (reformatea líneas ajenas: `' . '`
+  → `'.'`), no pasarlo. Suite Laravel: 1156 en verde y los mismos 25
+  fallos del entorno de la nube (pgvector 0.6, BD en paralelo)
 - [ ] 1.9 Laravel: consumidor de `email.processed.v1` (Pest)
 - [ ] 1.10 Dockerfile multi-stage, compose, Prometheus/Promtail (el CI se adelantó a la 1.3)
 - [ ] 1.11 Prueba de punta a punta en el stack + README final

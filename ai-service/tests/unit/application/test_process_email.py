@@ -46,6 +46,7 @@ async def test_publishes_the_processed_event_with_everything_laravel_needs() -> 
     [event] = bus.published
     assert isinstance(event, EmailProcessed)
     assert (event.tenant_id, event.email_id, event.trace_id) == (1, 42, "9f2c4e6a8b1d4f3e")
+    assert event.causation_id == received().event_id
     assert event.decision == "auto_send"
     assert event.category == "product_question"
     assert event.draft.startswith("Hola:")

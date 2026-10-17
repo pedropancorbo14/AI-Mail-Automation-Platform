@@ -11,6 +11,9 @@ use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Prompts\PromptRegistry;
 use App\AI\Providers\Anthropic\AnthropicProvider;
 use App\AI\Providers\Simulated\SimulatedLLMProvider;
+use App\AI\Remote\Contracts\EventStream;
+use App\AI\Remote\EventContract;
+use App\AI\Remote\RedisEventStream;
 use App\Automation\QueueEmailProcessing;
 use App\Documents\Chunking\TextChunker;
 use App\ERP\Contracts\OrderProvider;
@@ -32,6 +35,10 @@ class AIServiceProvider extends ServiceProvider
     {
         // Caché de versiones de prompt durante toda la vida del worker.
         $this->app->singleton(PromptRegistry::class);
+
+        // Motor remoto (ai-service): streams de Redis y validación del contrato.
+        $this->app->singleton(EventStream::class, RedisEventStream::class);
+        $this->app->singleton(EventContract::class);
 
         $this->app->singleton(LLMProvider::class, fn () => match (config('ai.provider')) {
             'anthropic' => new AnthropicProvider(

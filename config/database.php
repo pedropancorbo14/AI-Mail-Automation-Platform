@@ -166,6 +166,20 @@ return [
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
         ],
 
+        // Redis Streams con ai-service (AI_ENGINE=python): BD propia y SIN el
+        // prefijo de claves de Laravel (el servicio Python usa los mismos nombres).
+        'streams' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_STREAMS_DB', '3'),
+            // Las lecturas bloquean hasta block_ms: más margen que el defecto.
+            'read_timeout' => 30,
+            'options' => ['prefix' => ''],
+        ],
+
         'cache' => [
             'url' => env('REDIS_URL'),
             'host' => env('REDIS_HOST', '127.0.0.1'),

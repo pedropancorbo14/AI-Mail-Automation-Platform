@@ -17,3 +17,6 @@ Schedule::command('queue:prune-failed --hours=720')->daily();
 
 // Sincroniza los buzones activos (un FetchEmailsJob único por buzón en la cola "mail").
 Schedule::command('mail:sync')->everyMinute()->withoutOverlapping();
+
+// Motor de IA remoto (ai-service): emails sin respuesta → republicar o failed.
+Schedule::command('ai:reconcile-remote')->everyFiveMinutes()->withoutOverlapping();

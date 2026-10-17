@@ -12,6 +12,10 @@
     "trace_id": { "$ref": "common.schema.json#/$defs/trace_id" },
     "tenant_id": { "$ref": "common.schema.json#/$defs/tenant_id" },
     "email_id": { "$ref": "common.schema.json#/$defs/email_id" },
+    "causation_id": {
+      "description": "event_id del email.received.v1 que provocó este resultado (trazabilidad; Laravel lo compara con el último que publicó).",
+      "anyOf": [{ "$ref": "common.schema.json#/$defs/event_id" }, { "type": "null" }]
+    },
     "category": { "$ref": "common.schema.json#/$defs/category" },
     "draft": {
       "description": "Respuesta propuesta en texto plano. Vacía si no hace falta responder (spam, respuesta automática) o si se escala sin propuesta (sospecha de manipulación).",

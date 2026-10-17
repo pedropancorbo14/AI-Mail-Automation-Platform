@@ -9,6 +9,9 @@ use App\AI\Classification\EmailClassifier;
 use App\AI\Classification\EmailIntent;
 use App\AI\Exceptions\LLMConfigurationException;
 use App\AI\Exceptions\LLMException;
+use App\AI\Remote\AIEngine;
+use App\AI\Remote\EmailEventPublisher;
+use App\AI\Remote\Exceptions\InvalidEventException;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
 use App\Models\EmailReply;
@@ -26,6 +29,10 @@ use Throwable;
  *                         → agente → ai_review → reglas → approved → (SendReplyJob) → sent
  *                                                       ↘ human_review
  *
+ * Con AI_ENGINE=python, tras los filtros baratos (automático, modo off,
+ * freno del gasto) el email se publica para ai-service (email.received.v1)
+ * y se queda en processing; el resultado lo aplica RemoteResultHandler.
+ *
  * Cada paso queda en el historial de estados con su motivo. Solo se gasta
  * IA cuando sirve: los correos automáticos, las empresas sin IA o que han
  * agotado su presupuesto diario, los remitentes que inundan el buzón
@@ -42,6 +49,7 @@ class EmailProcessor
         private readonly ReplySender $sender,
         private readonly TenantService $tenants,
         private readonly AiSpendGuard $spendGuard,
+        private readonly EmailEventPublisher $publisher,
     ) {
     }
 
@@ -85,7 +93,10 @@ class EmailProcessor
             throw $e;
         }
 
-        Log::info('Email procesado', ['email_id' => $email->id, 'status' => $email->status->value]);
+        Log::info($email->status === EmailStatus::Processing ? 'Email esperando al servicio de IA' : 'Email procesado', [
+            'email_id' => $email->id,
+            'status' => $email->status->value,
+        ]);
 
         return $email->status;
     }
@@ -128,7 +139,10 @@ class EmailProcessor
             return;
         }
 
-        if (! AIService::enabled()) {
+        $remote = AIEngine::current()->isRemote();
+
+        // Con el motor remoto la clave de Anthropic la tiene ai-service, no Laravel.
+        if (! $remote && ! AIService::enabled()) {
             $email->transitionTo(EmailStatus::HumanReview, 'La IA no está configurada (falta ANTHROPIC_API_KEY): lo atiende una persona.');
 
             return;
@@ -140,11 +154,17 @@ class EmailProcessor
             return;
         }
 
+        if ($remote) {
+            $this->publishForRemote($email, $reprocess);
+
+            return;
+        }
+
         if ($email->classified_at === null) {
             $email->recordClassification($this->classifier->classify($email));
         }
 
-        if ($reason = $this->ignoreReason($email)) {
+        if ($reason = self::ignoreReason($email)) {
             $email->transitionTo(EmailStatus::Ignored, $reason);
 
             return;
@@ -185,8 +205,32 @@ class EmailProcessor
         $email->refresh();
     }
 
-    /** Spam o respuesta automática con confianza alta: no necesita respuesta. */
-    private function ignoreReason(Email $email): ?string
+    /**
+     * Se publica para ai-service y el email se queda en processing. Un
+     * reintento del job no lo vuelve a publicar mientras la petición anterior
+     * siga dentro de plazo (el reconciliador se ocupa de las perdidas).
+     */
+    private function publishForRemote(Email $email, bool $reprocess): void
+    {
+        $window = now()->subMinutes((int) config('ai.remote.reconcile_after_minutes'));
+
+        if (! $reprocess && $email->ai_requested_at?->gt($window)) {
+            return;
+        }
+
+        try {
+            $this->publisher->publish($email);
+        } catch (InvalidEventException $e) {
+            // P. ej. sin remitente válido: la IA no puede procesarlo.
+            $email->transitionTo(EmailStatus::HumanReview, "No se pudo enviar al servicio de IA ({$e->getMessage()}): lo atiende una persona.");
+        }
+    }
+
+    /**
+     * Spam o respuesta automática con confianza alta: no necesita respuesta.
+     * Pública: también la aplica RemoteResultHandler a los resultados de ai-service.
+     */
+    public static function ignoreReason(Email $email): ?string
     {
         $confidence = (float) $email->intent_confidence;
 

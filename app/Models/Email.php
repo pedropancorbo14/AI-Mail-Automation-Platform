@@ -45,6 +45,8 @@ class Email extends Model
             'sent_at' => 'datetime',
             'status' => EmailStatus::class,
             'ingested_at' => 'datetime',
+            'ai_requested_at' => 'datetime',
+            'ai_request_attempts' => 'integer',
             'intent' => EmailIntent::class,
             'intent_confidence' => 'decimal:3',
             'needs_human' => 'boolean',
