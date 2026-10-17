@@ -13,6 +13,7 @@ import asyncio
 import random
 import re
 import time
+from typing import Any
 
 from ai_service.application.dto import ClassificationResult, DraftContext, DraftResult, LLMCall
 from ai_service.domain.category import Category
@@ -130,23 +131,28 @@ class SimulatedLLM:
         await self._wait()
         english = classification.language == "en"
         company = email.tenant_name or "la empresa"
-        # Solo "confía" si tiene documentación (como el simulado de Laravel con datos).
+        # Solo "confía" si tiene datos: documentación o pedidos consultados.
         best = context.knowledge[0] if context.knowledge else None
+        orders = _orders(context)
+        facts = [best.content] if best else []
+        facts += [_order_fact(order, english=english) for order in orders]
+        fact = "".join(f"\n\n{f}" for f in facts)
         if english:
-            fact = f"\n\n{best.content}" if best else ""
             body = f"Hello,\n\nThank you for your message. [Simulated AI reply]{fact}\n\nBest regards,\nThe {company} customer service team"
         else:
-            fact = f"\n\n{best.content}" if best else ""
             body = f"Hola:\n\nGracias por escribirnos. [Respuesta de la IA simulada]{fact}\n\nUn saludo,\nEl equipo de atención al cliente de {company}"
+        sources = [Source(SourceType.DOCUMENT, best.source)] if best else []
+        sources += [Source(SourceType.ORDER, str(order["order_number"])) for order in orders]
+        confident = bool(facts)
         draft = Draft(
             body=body,
             language=classification.language,
-            confidence=Confidence(0.9 if best else 0.5),
-            needs_human=best is None,
+            confidence=Confidence(0.9 if confident else 0.5),
+            needs_human=not confident,
             needs_human_reason=None
-            if best
+            if confident
             else "[IA simulada] No hay datos suficientes para responder.",
-            sources=(Source(SourceType.DOCUMENT, best.source),) if best else (),
+            sources=tuple(sources),
         )
         call = self._call(
             "ai_service.draft", prompts.DRAFT.ref, email.body, len(body) // 4, started
@@ -172,3 +178,31 @@ class SimulatedLLM:
             provider_request_id=f"sim_{int(time.time() * 1000)}",
             prompt=prompt,
         )
+
+
+def _orders(context: DraftContext) -> list[dict[str, Any]]:
+    """Pedidos devueltos con éxito por get_order / get_customer_orders."""
+    found: list[dict[str, Any]] = []
+    for record in context.tool_results:
+        if record.status != "success" or not record.result:
+            continue
+        if record.tool == "get_order" and record.result.get("order_number"):
+            found.append(record.result)
+        elif record.tool == "get_customer_orders":
+            found += [o for o in record.result.get("orders", []) if isinstance(o, dict)][:1]
+    return [o for o in found if o.get("order_number")]
+
+
+def _order_fact(order: dict[str, Any], *, english: bool) -> str:
+    number = order["order_number"]
+    status = order.get("status") if english else order.get("status_label") or order.get("status")
+    shipment = order.get("shipment") or {}
+    if english:
+        text = f"Order #{number}: {status}."
+        if shipment.get("carrier"):
+            text += f" Carrier {shipment['carrier']}, tracking {shipment.get('tracking_number')}."
+    else:
+        text = f"Pedido #{number}: {status}."
+        if shipment.get("carrier"):
+            text += f" Transportista {shipment['carrier']}, seguimiento {shipment.get('tracking_number')}."
+    return text

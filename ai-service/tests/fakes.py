@@ -1,7 +1,8 @@
 """Dobles de prueba de los puertos (implementan los Protocol sin heredar)."""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from ai_service.application.dto import (
     AgentOutcome,
@@ -10,6 +11,8 @@ from ai_service.application.dto import (
     DraftResult,
     EmbeddingResult,
     LLMCall,
+    ToolCallRecord,
+    ToolContext,
 )
 from ai_service.application.errors import AgentError, KnowledgeBaseError, LLMError
 from ai_service.application.ports import OutgoingEvent
@@ -135,3 +138,27 @@ class FakeVectorStore:
         if self.error:
             raise self.error
         return self.by_tenant.get(tenant_id.value, [])[:limit]
+
+
+@dataclass
+class FakeToolPort:
+    """Sistemas de la empresa simulados: respuestas por herramienta, guarda cada llamada."""
+
+    results: dict[str, dict[str, Any] | str] = field(default_factory=dict)
+    calls: list[tuple[str, dict[str, Any], ToolContext]] = field(default_factory=list)
+
+    @property
+    def available(self) -> frozenset[str]:
+        return frozenset(
+            {"get_order", "get_customer_orders", "get_customer", "get_customer_tickets"}
+        )
+
+    async def call(
+        self, tool: str, arguments: Mapping[str, Any], context: ToolContext
+    ) -> ToolCallRecord:
+        arguments = dict(arguments)
+        self.calls.append((tool, arguments, context))
+        result = self.results.get(tool, {})
+        if isinstance(result, str):  # texto = error de la herramienta
+            return ToolCallRecord(tool, arguments, None, "error", result, 3)
+        return ToolCallRecord(tool, arguments, result, "success", None, 3)

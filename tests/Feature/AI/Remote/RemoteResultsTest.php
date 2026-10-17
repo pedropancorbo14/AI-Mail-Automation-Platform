@@ -269,6 +269,40 @@ it('records what ai-service did as an agent run with its tool calls (also for th
         ->and($call->aiRequest->cost_usd)->toBe('0.000000'); // bge-m3 local: coste 0
 });
 
+it('lets a reply quote the order data ai-service consulted through MCP', function () {
+    $order = ['order_number' => '45821', 'status' => 'shipped', 'status_label' => 'Enviado', 'total' => 89.9, 'currency' => 'EUR',
+        'shipment' => ['carrier' => 'SEUR', 'tracking_number' => 'SEU123456789ES']];
+    $event = processedEvent($this->email, [
+        'category' => 'order_status',
+        'draft' => "Hola:\n\nTu pedido nº 45821 (89,90 €) está enviado con SEUR, seguimiento SEU123456789ES.\n\nUn saludo,\nEl equipo de Empresa Demo",
+        'sources' => [['type' => 'order', 'reference' => '45821']],
+        'tool_calls' => [['tool' => 'get_order', 'arguments' => ['order_number' => '45821'], 'result' => $order,
+            'status' => 'success', 'error' => null, 'duration_ms' => 35]],
+    ], ['order_numbers' => ['45821']]);
+
+    deliverResult($event);
+
+    // ReplyContentGuard encuentra el pedido y el importe en el resultado de get_order.
+    expect($this->email->fresh()->status)->toBe(EmailStatus::Sent);
+    $call = inTenant($this->tenant, fn () => App\Models\AiToolCall::sole());
+    expect($call->tool)->toBe('get_order')
+        ->and($call->result['shipment']['carrier'])->toBe('SEUR');
+});
+
+it('does not let a reply quote an order that no tool returned', function () {
+    $event = processedEvent($this->email, [
+        'category' => 'order_status',
+        'draft' => "Hola:\n\nTu pedido nº 99999 está enviado.\n\nUn saludo,\nEl equipo de Empresa Demo",
+        'tool_calls' => [['tool' => 'get_order', 'arguments' => ['order_number' => '45821'], 'result' => ['order_number' => '45821'],
+            'status' => 'success', 'error' => null, 'duration_ms' => 35]],
+    ], ['order_numbers' => ['45821']]);
+
+    deliverResult($event);
+
+    expect($this->email->fresh()->status)->toBe(EmailStatus::HumanReview)
+        ->and(lastStatusReasonOf($this->email))->toContain('99999');
+});
+
 it('does not let a reply quote amounts that are not in what the AI consulted', function () {
     deliverResult(processedEvent($this->email, ['draft' => "Hola:\n\nEl envío a Canarias cuesta 9,99 €.\n\nUn saludo,\nEl equipo de Empresa Demo"]));
 

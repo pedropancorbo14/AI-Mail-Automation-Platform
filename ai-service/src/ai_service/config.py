@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     rag_limit: int = Field(default=5, ge=1, le=20)
     rag_min_similarity: float = Field(default=0.45, ge=0, le=1)
 
+    # --- Herramientas (servidor MCP: CRM, ERP, tickets) ---
+    # Sin URL, el grafo no consulta los sistemas de la empresa.
+    mcp_url: str | None = None
+    mcp_token: SecretStr | None = None
+    mcp_timeout_seconds: float = Field(default=10.0, gt=0)
+    max_tool_calls: int = Field(default=5, ge=0, le=10)
+
     # --- Agente y reglas de decisión ---
     min_confidence: float = Field(default=0.85, ge=0, le=1)
     # Tope del grafo entero (incluye los reintentos del SDK de cada llamada).

@@ -102,6 +102,8 @@ class DraftContext:
     knowledge: tuple[KnowledgeChunk, ...] = ()
     # Hubo documentación que consultar pero no se pudo (Ollama o la BD caídos).
     knowledge_unavailable: bool = False
+    # Datos del cliente de los sistemas de la empresa (MCP), con su estado.
+    tool_results: tuple["ToolCallRecord", ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

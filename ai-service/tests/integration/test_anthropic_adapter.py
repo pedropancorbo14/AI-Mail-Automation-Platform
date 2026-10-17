@@ -11,7 +11,7 @@ import httpx2
 import pytest
 from pydantic import SecretStr
 
-from ai_service.application.dto import DraftContext
+from ai_service.application.dto import DraftContext, ToolCallRecord
 from ai_service.application.errors import (
     LLMConfigurationError,
     LLMInvalidOutputError,
@@ -361,8 +361,30 @@ async def test_draft_uses_its_own_effort_and_the_classification() -> None:
     assert d.confidence.value == 0.6
     assert d.pending_actions == ("Revisar el envío con SEUR",)
     assert [s.reference for s in d.sources] == ["Política de envíos, sección «Coste del envío»"]
-    assert result.calls[0].prompt == "email_draft@2"
+    assert result.calls[0].prompt == "email_draft@3"
     assert result.calls[0].purpose == "ai_service.draft"
+
+
+async def test_draft_sends_the_customer_data_and_parses_order_sources() -> None:
+    fake = FakeAnthropic()
+    fake.responses.append(message(draft_data(sources=[{"type": "order", "reference": "45821"}])))
+    record = ToolCallRecord(
+        "get_order",
+        {"order_number": "45821"},
+        {"order_number": "45821", "status_label": "Enviado"},
+        "success",
+        None,
+        5,
+    )
+
+    result = await adapter(fake).draft(
+        make_email(), make_classification(), DraftContext(tool_results=(record,))
+    )
+
+    content = fake.body()["messages"][0]["content"]
+    assert '<consulta nombre="get_order" estado="success">' in content
+    assert '"status_label": "Enviado"' in content
+    assert [(s.type.value, s.reference) for s in result.draft.sources] == [("order", "45821")]
 
 
 async def test_empty_draft_is_an_invalid_output() -> None:

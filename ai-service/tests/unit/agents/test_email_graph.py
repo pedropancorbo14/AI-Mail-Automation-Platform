@@ -16,9 +16,16 @@ from ai_service.domain.category import Category
 from ai_service.domain.confidence import Confidence
 from ai_service.domain.decision import Decision
 from ai_service.domain.draft import Source, SourceType
-from ai_service.domain.email import Email, TenantId
+from ai_service.domain.email import Email, EmailAddress, TenantId
 from ai_service.domain.policy import DecisionPolicy
-from tests.fakes import FakeEmbeddings, FakeLLM, FakeVectorStore, make_call, make_chunk
+from tests.fakes import (
+    FakeEmbeddings,
+    FakeLLM,
+    FakeToolPort,
+    FakeVectorStore,
+    make_call,
+    make_chunk,
+)
 from tests.unit.domain.factories import make_classification, make_draft, make_email
 
 CANARIAS = "Política de envíos, sección «Coste del envío»"
@@ -33,9 +40,20 @@ def drafted(**overrides: Any) -> DraftResult:
 
 
 def agent(
-    llm: FakeLLM, retriever: KnowledgeRetriever | None = None, timeout: float = 5.0
+    llm: FakeLLM,
+    retriever: KnowledgeRetriever | None = None,
+    timeout: float = 5.0,
+    tools: FakeToolPort | None = None,
+    max_tool_calls: int = 5,
 ) -> LangGraphEmailAgent:
-    return LangGraphEmailAgent(llm, DecisionPolicy(), retriever=retriever, timeout_seconds=timeout)
+    return LangGraphEmailAgent(
+        llm,
+        DecisionPolicy(),
+        retriever=retriever,
+        tools=tools,
+        max_tool_calls=max_tool_calls,
+        timeout_seconds=timeout,
+    )
 
 
 def initial(email: Email | None = None) -> EmailState:
@@ -73,7 +91,14 @@ async def test_low_confidence_goes_through_human_review() -> None:
 
     state = await agent(llm).graph.ainvoke(initial())
 
-    assert state["visited"] == ["classify", "retrieve", "draft", "validate", "human_review"]
+    assert state["visited"] == [
+        "classify",
+        "retrieve",
+        "tools",
+        "draft",
+        "validate",
+        "human_review",
+    ]
     assert state["outcome"].decision is Decision.HUMAN_REVIEW
 
 
@@ -82,7 +107,7 @@ async def test_auto_send_does_not_visit_human_review() -> None:
 
     state = await agent(llm).graph.ainvoke(initial())
 
-    assert state["visited"] == ["classify", "retrieve", "draft", "validate"]
+    assert state["visited"] == ["classify", "retrieve", "tools", "draft", "validate"]
 
 
 async def test_retrieve_gives_the_draft_the_documentation_of_the_email_tenant() -> None:
@@ -211,6 +236,100 @@ async def test_a_slow_model_hits_the_agent_timeout_as_retryable() -> None:
     assert caught.value.code == "timeout"
 
 
+ORDER = {
+    "order_number": "45821",
+    "status": "shipped",
+    "status_label": "Enviado",
+    "shipment": {"carrier": "SEUR", "tracking_number": "SEU123456789ES"},
+}
+
+
+def order_question() -> ClassificationResult:
+    return classified(category=Category.ORDER_STATUS, order_numbers=("45821",))
+
+
+async def test_tools_look_up_the_order_with_tenant_and_customer_from_the_email() -> None:
+    tools = FakeToolPort(results={"get_order": ORDER})
+    cited = (Source(SourceType.ORDER, "45821"),)
+    llm = FakeLLM(classifications=[order_question()], drafts=[drafted(sources=cited)])
+    email = make_email(tenant_id=TenantId(7), sender=EmailAddress("cliente@cliente.test"))
+
+    result = await agent(llm, tools=tools).run(email)
+
+    [(tool, arguments, context)] = tools.calls
+    assert (tool, arguments) == ("get_order", {"order_number": "45821"})
+    # Empresa y cliente los pone el backend a partir del email, nunca el modelo.
+    assert context.tenant_id == TenantId(7)
+    assert context.customer == EmailAddress("cliente@cliente.test")
+    _, _, draft_context = llm.draft_calls[0]
+    assert [r.result for r in draft_context.tool_results] == [ORDER]
+    assert result.tools_used == ("get_order",)
+    # Citar el pedido consultado es correcto: se envía sola.
+    assert result.outcome.decision is Decision.AUTO_SEND
+
+
+async def test_citing_an_order_that_was_not_consulted_goes_to_a_person() -> None:
+    tools = FakeToolPort(results={"get_order": ORDER})
+    cited = (Source(SourceType.ORDER, "99999"),)
+    llm = FakeLLM(classifications=[order_question()], drafts=[drafted(sources=cited)])
+
+    result = await agent(llm, tools=tools).run(make_email())
+
+    assert result.outcome.decision is Decision.HUMAN_REVIEW
+    assert result.outcome.reasons == ("La respuesta cita algo que no consultó: 99999.",)
+
+
+async def test_a_failed_or_not_found_lookup_sends_the_case_to_a_person() -> None:
+    tools = FakeToolPort(results={"get_order": "No hay ningún pedido con ese número."})
+    llm = FakeLLM(classifications=[order_question()], drafts=[drafted()])
+
+    result = await agent(llm, tools=tools).run(make_email())
+
+    assert result.outcome.decision is Decision.HUMAN_REVIEW
+    assert result.outcome.reasons == (
+        "La consulta get_order no fue bien: No hay ningún pedido con ese número.",
+    )
+    assert result.tool_calls[0].status == "error"
+    assert result.tools_used == ()
+
+
+async def test_the_number_of_tool_calls_is_capped() -> None:
+    tools = FakeToolPort(results={"get_order": ORDER})
+    classification = classified(
+        category=Category.ORDER_STATUS, order_numbers=("45821", "44102", "78123")
+    )
+    llm = FakeLLM(classifications=[classification], drafts=[drafted()])
+
+    await agent(llm, tools=tools, max_tool_calls=2).run(make_email())
+
+    assert len(tools.calls) == 2
+
+
+async def test_questions_without_customer_data_do_not_call_tools() -> None:
+    tools = FakeToolPort()
+    llm = FakeLLM(classifications=[classified()], drafts=[drafted()])
+
+    await agent(llm, tools=tools).run(make_email())
+
+    assert tools.calls == []
+
+
+async def test_injection_never_reaches_the_tools() -> None:
+    tools = FakeToolPort(results={"get_order": ORDER})
+    llm = FakeLLM(
+        classifications=[
+            classified(
+                category=Category.ORDER_STATUS, order_numbers=("45821",), injection_suspected=True
+            )
+        ]
+    )
+
+    result = await agent(llm, tools=tools).run(make_email())
+
+    assert tools.calls == []
+    assert result.outcome.decision is not Decision.AUTO_SEND
+
+
 def test_the_graph_has_the_expected_shape() -> None:
     graph = agent(FakeLLM()).graph.get_graph()
 
@@ -218,11 +337,13 @@ def test_the_graph_has_the_expected_shape() -> None:
         "__start__",
         "classify",
         "retrieve",
+        "tools",
         "draft",
         "validate",
         "human_review",
         "__end__",
     }
     edges = {(e.source, e.target) for e in graph.edges}
-    assert {("classify", "retrieve"), ("classify", "validate"), ("retrieve", "draft")} <= edges
+    assert {("classify", "retrieve"), ("classify", "validate"), ("retrieve", "tools")} <= edges
+    assert ("tools", "draft") in edges
     assert {("validate", "human_review"), ("validate", "__end__")} <= edges

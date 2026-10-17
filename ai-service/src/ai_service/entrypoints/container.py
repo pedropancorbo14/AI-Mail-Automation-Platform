@@ -11,6 +11,7 @@ from ai_service.infrastructure.embeddings.ollama import OllamaEmbeddings
 from ai_service.infrastructure.knowledge.pgvector import PgVectorStore
 from ai_service.infrastructure.llm.anthropic import AnthropicLLM
 from ai_service.infrastructure.llm.simulated import SimulatedLLM
+from ai_service.infrastructure.tools.mcp_client import McpToolClient
 
 
 def build_llm(settings: Settings) -> LLMPort:
@@ -38,10 +39,24 @@ def build_retriever(settings: Settings) -> KnowledgeRetriever | None:
     )
 
 
+def build_tools(settings: Settings) -> McpToolClient | None:
+    if not settings.mcp_url:
+        return None
+    if settings.mcp_token is None or not settings.mcp_token.get_secret_value():
+        raise LLMConfigurationError("Falta AI_SERVICE_MCP_TOKEN para usar el servidor MCP.")
+    return McpToolClient(
+        settings.mcp_url,
+        settings.mcp_token.get_secret_value(),
+        timeout_seconds=settings.mcp_timeout_seconds,
+    )
+
+
 def build_agent(settings: Settings, llm: LLMPort | None = None) -> LangGraphEmailAgent:
     return LangGraphEmailAgent(
         llm or build_llm(settings),
         DecisionPolicy(min_confidence=Confidence(settings.min_confidence)),
         retriever=build_retriever(settings),
+        tools=build_tools(settings),
+        max_tool_calls=settings.max_tool_calls,
         timeout_seconds=settings.agent_timeout_seconds,
     )

@@ -1,7 +1,7 @@
 """Grafo de LangGraph que decide qué hacer con un email.
 
-    START → classify ─router─┬─→ retrieve ─→ draft ─→ validate ─┬─→ END        (auto_send)
-                             └─────────────────────────→ validate ┴─→ human_review → END
+    START → classify ─router─┬─→ retrieve ─→ tools ─→ draft ─→ validate ─┬─→ END   (auto_send)
+                             └──────────────────────────────────→ validate ┴─→ human_review → END
 
 - **classify**: clasificación con structured outputs (`LLMPort.classify`).
 - **router**: arista condicional **determinista** (sin IA): sospecha de
@@ -10,6 +10,10 @@
 - **retrieve**: documentación de la empresa (RAG, `KnowledgeRetriever`),
   siempre de la empresa del email. Se registra como la herramienta
   `search_company_documents`. Si falla, el email sigue y va a revisión.
+- **tools**: datos del cliente en los sistemas de la empresa (CRM, ERP,
+  tickets) por MCP, planificados de forma determinista según la intención
+  (`plan_tool_calls`). Empresa y cliente los pone el backend. Cualquier
+  consulta que falle o no encuentre lo pedido manda el caso a una persona.
 - **draft**: borrador (`LLMPort.draft`) con la documentación encontrada.
 - **validate**: reglas puras del dominio (`DecisionPolicy`), con lo que se
   consultó de verdad (`Evidence`: una cita a algo no consultado → persona).
@@ -30,10 +34,17 @@ from typing import Annotated, Any, Literal, NotRequired, Protocol, TypedDict
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from ai_service.application.dto import AgentOutcome, DraftContext, LLMCall, ToolCallRecord
+from ai_service.application.dto import (
+    AgentOutcome,
+    DraftContext,
+    LLMCall,
+    ToolCallRecord,
+    ToolContext,
+)
 from ai_service.application.errors import AgentError, LLMError, LLMUnavailableError
-from ai_service.application.ports import LLMPort
+from ai_service.application.ports import LLMPort, ToolPort
 from ai_service.application.services.knowledge import KnowledgeRetriever
+from ai_service.application.services.tool_planner import plan_tool_calls, references_in
 from ai_service.domain.classification import Classification
 from ai_service.domain.decision import Decision, DecisionOutcome
 from ai_service.domain.draft import Draft
@@ -95,10 +106,14 @@ class LangGraphEmailAgent:
         policy: DecisionPolicy,
         *,
         retriever: KnowledgeRetriever | None = None,
+        tools: ToolPort | None = None,
+        max_tool_calls: int = 5,
         timeout_seconds: float = 240.0,
     ) -> None:
         self._llm = llm
         self._retriever = retriever
+        self._tools = tools
+        self._max_tool_calls = max_tool_calls
         self._policy = policy
         self._timeout = timeout_seconds
         self.graph = self._build()
@@ -107,6 +122,7 @@ class LangGraphEmailAgent:
         graph = StateGraph(EmailState)
         graph.add_node("classify", _billed(self._classify))
         graph.add_node("retrieve", self._retrieve)
+        graph.add_node("tools", self._call_tools)
         graph.add_node("draft", _billed(self._draft))
         graph.add_node("validate", self._validate)
         graph.add_node("human_review", self._human_review)
@@ -115,7 +131,8 @@ class LangGraphEmailAgent:
         graph.add_conditional_edges(
             "classify", router, {"retrieve": "retrieve", "validate": "validate"}
         )
-        graph.add_edge("retrieve", "draft")
+        graph.add_edge("retrieve", "tools")
+        graph.add_edge("tools", "draft")
         graph.add_edge("draft", "validate")
         graph.add_conditional_edges(
             "validate", self._after_validate, {"end": END, "human_review": "human_review"}
@@ -196,19 +213,38 @@ class LangGraphEmailAgent:
             "visited": ["retrieve"],
         }
 
+    async def _call_tools(self, state: EmailState) -> dict[str, Any]:
+        if self._tools is None:  # sin servidor MCP configurado
+            return {"visited": ["tools"]}
+        email = state["email"]
+        plan = plan_tool_calls(state["classification"], self._tools.available)
+        plan = plan[: self._max_tool_calls]
+        context = ToolContext(tenant_id=email.tenant_id, customer=email.sender)
+        records = await asyncio.gather(
+            *(self._tools.call(p.tool, p.arguments, context) for p in plan)
+        )
+        issues = [
+            f"La consulta {r.tool} no fue bien: {r.error or r.status}"
+            for r in records
+            if r.status != "success"
+        ]
+        return {"tool_calls": list(records), "issues": issues, "visited": ["tools"]}
+
     async def _draft(self, state: EmailState) -> dict[str, Any]:
         context = DraftContext(
             knowledge=state.get("knowledge", ()),
             knowledge_unavailable=state.get("knowledge_unavailable", False),
+            tool_results=tuple(r for r in state["tool_calls"] if r.tool != SEARCH_TOOL),
         )
         result = await self._llm.draft(state["email"], state["classification"], context)
         return {"draft": result.draft, "calls": list(result.calls), "visited": ["draft"]}
 
     async def _validate(self, state: EmailState) -> dict[str, Any]:
-        evidence = Evidence(
-            references=frozenset(c.source for c in state.get("knowledge", ())),
-            issues=tuple(state["issues"]),
-        )
+        references = {c.source for c in state.get("knowledge", ())}
+        for record in state["tool_calls"]:
+            if record.status == "success" and record.tool != SEARCH_TOOL:
+                references |= references_in(record.tool, record.result)
+        evidence = Evidence(references=frozenset(references), issues=tuple(state["issues"]))
         outcome = self._policy.decide(
             state["email"], state["classification"], state.get("draft"), evidence
         )

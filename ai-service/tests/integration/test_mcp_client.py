@@ -1,9 +1,14 @@
 """Cliente MCP contra el servidor MCP real (HTTP con token)."""
 
+from ai_service.agents.email_graph import LangGraphEmailAgent
 from ai_service.application.dto import ToolContext
+from ai_service.domain.decision import Decision
 from ai_service.domain.email import EmailAddress, TenantId
+from ai_service.domain.policy import DecisionPolicy
+from ai_service.infrastructure.llm.simulated import SimulatedLLM
 from ai_service.infrastructure.tools.mcp_client import McpToolClient
 from tests.integration.test_mcp_server import TOKEN, running
+from tests.unit.domain.factories import make_email
 
 CLIENTE = ToolContext(TenantId(1), EmailAddress("cliente@cliente.test"))
 GLOBEX = ToolContext(TenantId(2), EmailAddress("cliente@cliente.test"))
@@ -75,3 +80,23 @@ async def test_a_wrong_token_or_a_down_server_is_an_error_not_an_exception() -> 
     assert down.status == "error"
     assert down.error is not None
     assert "no disponible" in down.error or "tiempo agotado" in down.error
+
+
+async def test_the_graph_answers_an_order_question_with_real_mcp_data() -> None:
+    """Grafo + IA simulada + servidor MCP real: el pedido propio se envía solo,
+    el de otro cliente va a una persona sin filtrar sus datos."""
+    async with running(18125) as url:
+        agent = LangGraphEmailAgent(
+            SimulatedLLM(), DecisionPolicy(), tools=McpToolClient(url, TOKEN)
+        )
+        own = await agent.run(make_email(subject="Pedido", body="¿Dónde está mi pedido #45821?"))
+        other = await agent.run(make_email(subject="Pedido", body="¿Dónde está mi pedido #76540?"))
+
+    assert own.outcome.decision is Decision.AUTO_SEND
+    assert own.draft is not None
+    assert "SEU123456789ES" in own.draft.body
+    assert own.tools_used == ("get_order",)
+    assert other.outcome.decision is Decision.HUMAN_REVIEW
+    assert other.draft is not None
+    assert "Pedido #76540:" not in other.draft.body  # ni estado ni datos del pedido ajeno
+    assert any("get_order no fue bien" in r for r in other.outcome.reasons)

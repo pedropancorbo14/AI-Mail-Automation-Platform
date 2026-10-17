@@ -117,7 +117,7 @@ flowchart LR
     human_review --> END
 ```
 
-Grafo **actual** (Fase 2), generado por LangGraph con
+Grafo **actual** (Fase 3), generado por LangGraph con
 `agent.graph.get_graph().draw_mermaid()` (las líneas discontinuas son
 aristas condicionales):
 
@@ -126,6 +126,7 @@ graph TD;
 	__start__([inicio]):::first
 	classify(classify)
 	retrieve(retrieve)
+	tools(tools)
 	draft(draft)
 	validate(validate)
 	human_review(human_review)
@@ -133,7 +134,8 @@ graph TD;
 	__start__ --> classify;
 	classify -. router .-> retrieve;
 	classify -. router .-> validate;
-	retrieve --> draft;
+	retrieve --> tools;
+	tools --> draft;
 	draft --> validate;
 	validate -. auto_send .-> __end__;
 	validate -. human_review / escalate .-> human_review;
@@ -145,8 +147,9 @@ graph TD;
 | `classify` | `LLMPort.classify` (structured outputs) |
 | `router` (arista condicional) | **Determinista, sin IA**: sospecha de manipulación o categoría que no se contesta (spam, respuesta automática) → directo a `validate` sin buscar ni redactar; el resto → `retrieve` |
 | `retrieve` | Documentación de **la empresa del email** (RAG). Se registra como la herramienta `search_company_documents`. Si Ollama o la BD fallan, el email sigue y va a revisión |
-| `draft` | `LLMPort.draft` con la clasificación y la documentación (`<documentacion>` con fuentes citables); el borrador devuelve `sources` |
-| `validate` | `DecisionPolicy` con `Evidence` (lo consultado de verdad): **una cita a algo que no se consultó → revisión humana**, y cualquier problema al consultar también |
+| `tools` | Datos del cliente en CRM, ERP y tickets por **MCP**, con un plan **determinista** según la intención (`plan_tool_calls`: pedido mencionado → `get_order`, hasta 3; sin número → `get_customer_orders`; factura o cobro → también sus pedidos; soporte o queja → `get_customer_tickets`; cambio de cuenta → `get_customer`). Empresa y cliente salen del email, nunca del modelo. Máximo `AI_SERVICE_MAX_TOOL_CALLS` (5), en paralelo. Una consulta que falla o no encuentra lo pedido → revisión humana |
+| `draft` | `LLMPort.draft` con la clasificación, la documentación (`<documentacion>` con fuentes citables) y los datos del cliente (`<datos>`, prompt `email_draft@3`); el borrador devuelve `sources` (`document`, `order`, `ticket`, `customer`) |
+| `validate` | `DecisionPolicy` con `Evidence` (lo consultado de verdad: fuentes de la documentación + pedidos, tickets y cuenta devueltos por las herramientas, `references_in`): **una cita a algo que no se consultó → revisión humana**, y cualquier problema al consultar también |
 | `human_review` | Nodo final: la revisión la hace una persona en el panel de Laravel (Fase 13). `interrupt` + checkpointing en la Fase 4 |
 
 Detalles (`agents/email_graph.py`):
@@ -294,10 +297,10 @@ la versión: un test compara el hash de cada versión, y cada llamada lleva
 `<email>` como dato no fiable, y el propio texto no puede cerrar el bloque
 (`</email>` → `[/email]`).
 
-> En la Fase 1, sin herramientas, la mayoría de emails que preguntan por
-> datos concretos acabarán en revisión humana. Es intencionado: el motor
-> de Laravel (con RAG y tools) sigue siendo el de por defecto
-> (`AI_ENGINE=laravel`) hasta que el servicio llegue a las Fases 2 y 3.
+> Con la Fase 2 (documentación) y la Fase 3 (datos de pedidos, tickets y
+> cuenta por MCP) el servicio puede responder lo mismo que el motor de
+> Laravel. Sin `AI_SERVICE_DATABASE_URL` o sin `AI_SERVICE_MCP_URL`, el
+> grafo se salta esa consulta y esos casos acaban en revisión humana.
 
 Variables nuevas:
 
@@ -313,6 +316,9 @@ Variables nuevas:
 | `AI_SERVICE_MAX_BODY_CHARS` | `20000` | Recorte del cuerpo (avisando al modelo) |
 | `AI_SERVICE_MIN_CONFIDENCE` | `0.85` | Umbral de `DecisionPolicy` |
 | `AI_SERVICE_AGENT_TIMEOUT_SECONDS` | `240` | Tope del grafo entero |
+| `AI_SERVICE_MCP_URL` / `AI_SERVICE_MCP_TOKEN` | — | Servidor MCP (sin URL, el grafo no consulta los sistemas de la empresa; con URL, el token es obligatorio) |
+| `AI_SERVICE_MCP_TIMEOUT_SECONDS` | `10` | Tope de cada llamada a una herramienta |
+| `AI_SERVICE_MAX_TOOL_CALLS` | `5` | Máximo de herramientas por email |
 | `AI_SERVICE_DEBUG_ENDPOINTS` | `false` | Activa `POST /debug/process` (nunca en producción) |
 
 **Tests:** `tests/integration/test_anthropic_adapter.py` usa langchain y el
@@ -425,6 +431,29 @@ un `httpx2.AsyncClient` que lleva el token):
   de la herramienta → `ToolCallRecord` con `status` error (el caso irá a
   una persona).
 - Resultado recortado a 8000 caracteres, como en Laravel.
+
+### Nodo `tools` y prompt con datos (tarea 3.3)
+
+- **Plan determinista** (`application/services/tool_planner.py`): qué
+  consultar sale de la intención y de los números de pedido que extrajo la
+  clasificación. Un email no puede conseguir que se llame a otra
+  herramienta ni elegir de quién son los datos. El tool calling decidido
+  por el modelo llega con los subagentes (Fase 5).
+- **Prompt `email_draft@3`**: los resultados van en un bloque `<datos>`
+  (una `<consulta nombre="get_order" estado="success">` con el JSON por
+  herramienta; las etiquetas `<datos>`, `<consulta>` y `<email>` del
+  contenido se neutralizan). Estados, fechas, importes, transportistas y
+  seguimientos solo pueden salir de ahí; una consulta con error → no se
+  supone nada y se marca `needs_human`.
+- **Validación**: el borrador puede citar pedidos, tickets y la cuenta
+  solo si una herramienta los devolvió con éxito.
+- **Laravel**: los `tool_calls` del evento se guardan en `ai_tool_calls`
+  (ya era así para la búsqueda), y `ReplyContentGuard` encuentra en ellos
+  los pedidos e importes que menciona la respuesta antes de dejar que se
+  envíe sola; un pedido que ninguna herramienta devolvió → persona.
+- Prueba de integración: grafo + IA simulada + **servidor MCP real**: el
+  pedido propio (#45821) se responde con transportista y seguimiento y se
+  envía solo; el de otro cliente (#76540) va a una persona sin sus datos.
 
 ## Eventos: Redis Streams y el worker
 
@@ -649,6 +678,7 @@ la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root).
 | RLS + rol por columnas + filtro en la consulta | Solo el filtro en la consulta | Un bug en una consulta no puede filtrar datos de otra empresa: la base de datos lo impide |
 | MCP por **streamable HTTP** en su contenedor | stdio dentro del worker | Se escala, se despliega y se vigila por separado; en Kubernetes es un Service; el token impide llamadas de terceros |
 | El contexto (empresa, cliente) lo inyecta el cliente MCP | Que el modelo pase el email del cliente | Un email malicioso no puede pedir datos de otro cliente: el modelo no controla esos argumentos |
+| Plan de herramientas **determinista** por intención | Tool calling de Claude (el modelo elige) | Predecible, una sola llamada de redacción (más barato y rápido), auditable y no manipulable; con Opus 5.5 además no se puede forzar `tool_choice`. El modelo elegirá herramientas cuando haya subagentes (Fase 5) |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |

@@ -3730,7 +3730,31 @@ con eventos `document.uploaded.v1` / `document.indexed.v1`).
   servidor real por HTTP: pedido propio, ajeno sin datos, mismo cliente en
   otra empresa sin nada, contexto en argumentos rechazado, escritura
   rechazada, token malo y servidor caído como error. 222 tests
-- [ ] 3.3 Nodo `tools`, prompt con datos, `tool_calls` en el contrato → `ai_tool_calls`
+- [x] 3.3 **Nodo `tools` y prompt con datos.** `application/services/
+  tool_planner.py`: plan **determinista** por intención
+  (`plan_tool_calls`: pedido mencionado → `get_order`, máx. 3; sin número →
+  `get_customer_orders`; factura/cobro → también sus pedidos; soporte/queja
+  → `get_customer_tickets`; cambio de cuenta → `get_customer`; solo las que
+  ofrece el servidor) y `references_in` (pedidos, tickets y cuenta que una
+  respuesta puede citar). Grafo: retrieve → **tools** → draft;
+  `ToolContext` desde el email (empresa y remitente), llamadas en paralelo,
+  tope `AI_SERVICE_MAX_TOOL_CALLS` (5); consulta con error o sin encontrar
+  → `issues` → revisión humana; `Evidence` incluye lo devuelto por las
+  herramientas. `DraftContext.tool_results`. Prompt **`email_draft@3`**:
+  bloque `<datos>` (`<consulta nombre estado>` + JSON; `<datos>`,
+  `<consulta>` y `<email>` neutralizados), estados/fechas/importes solo de
+  ahí, fuentes `order`/`ticket`/`customer`. IA simulada usa los pedidos
+  (estado, transportista, seguimiento; cita el pedido). Config
+  `AI_SERVICE_MCP_URL/TOKEN/TIMEOUT_SECONDS` (`build_tools`: URL sin token
+  → error de configuración). El contrato y Laravel no cambian: los
+  `tool_calls` ya iban a `ai_tool_calls` y `ReplyContentGuard` encuentra
+  en ellos pedidos e importes (2 tests Pest nuevos: pedido consultado →
+  enviada sola; pedido que nadie devolvió → persona). Tests: planificador,
+  nodo (contexto, cita de pedido consultado/no consultado, error,
+  tope, sin herramientas, injection sin herramientas), bloque `<datos>`,
+  adaptador de Claude con datos, IA simulada, contenedor y **grafo + IA
+  simulada + servidor MCP real** (pedido propio enviado solo con
+  seguimiento; ajeno a persona sin sus datos). 249 tests
 - [ ] 3.4 Compose, CI, README y prueba de punta a punta
 
 ### Pendientes anotados para más adelante

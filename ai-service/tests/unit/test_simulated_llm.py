@@ -1,6 +1,6 @@
 import pytest
 
-from ai_service.application.dto import DraftContext
+from ai_service.application.dto import DraftContext, ToolCallRecord
 from ai_service.application.errors import LLMConfigurationError
 from ai_service.application.services.knowledge import KnowledgeRetriever
 from ai_service.config import Environment, Settings
@@ -57,6 +57,29 @@ async def test_only_drafts_with_documentation_are_confident() -> None:
     assert confident.draft.sources[0].reference == make_chunk().source
     assert unsure.draft.needs_human
     assert unsure.draft.confidence.value == 0.5
+
+
+async def test_drafts_with_order_data_cite_the_order() -> None:
+    llm = SimulatedLLM()
+    question = await llm.classify(make_email(body="¿Dónde está mi pedido #45821?"))
+    order = {
+        "order_number": "45821",
+        "status": "shipped",
+        "status_label": "Enviado",
+        "shipment": {"carrier": "SEUR", "tracking_number": "SEU123456789ES"},
+    }
+    record = ToolCallRecord("get_order", {"order_number": "45821"}, order, "success", None, 2)
+
+    result = await llm.draft(
+        make_email(), question.classification, DraftContext(tool_results=(record,))
+    )
+
+    assert "Pedido #45821: Enviado. Transportista SEUR, seguimiento SEU123456789ES." in (
+        result.draft.body
+    )
+    assert [(s.type.value, s.reference) for s in result.draft.sources] == [("order", "45821")]
+    assert result.draft.confidence.value == 0.9
+    assert result.calls[0].prompt == "email_draft@3"
 
 
 async def test_replies_in_english_to_english_emails() -> None:
