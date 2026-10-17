@@ -2,16 +2,22 @@
 
 namespace App\Http\Resources;
 
+use App\AI\Agent\Enums\EmailReplyStatus;
+use App\Automation\Review\HumanReviewService;
 use App\Mail\Enums\RecipientType;
+use App\Models\Email;
 use App\Models\EmailAttachment;
 use App\Models\EmailRecipient;
+use App\Models\EmailReply;
+use App\Models\EmailReview;
 use App\Models\EmailStatusChange;
 use Illuminate\Http\Request;
 
 /**
  * Detalle de un email en el panel: lo del listado + destinatarios, cuerpo
  * en texto, clasificación completa, adjuntos, historial de estados,
- * respuestas propuestas y traza del agente. El HTML va aparte y saneado
+ * respuestas (propuestas o escritas por personas), decisiones de la
+ * revisión humana y traza del agente. El HTML va aparte y saneado
  * (GET /emails/{id}/html). Sin tokens ni costes de IA: son datos del
  * operador de la plataforma (Grafana), no de los clientes.
  *
@@ -19,6 +25,30 @@ use Illuminate\Http\Request;
  */
 class EmailDetailResource extends EmailListResource
 {
+    /** Carga todo lo que muestra el detalle (en una consulta por relación). */
+    public static function for(Email $email): self
+    {
+        $person = fn (string $relation) => "{$relation}:id,name";
+
+        $email->load([
+            'mailConnection:id,name,email',
+            'recipients',
+            'attachments',
+            'classificationRequest:id,model',
+            $person('assignee'),
+            $person('statusChanges.user'),
+            $person('replies.approvedBy'),
+            $person('replies.author'),
+            $person('replies.editedBy'),
+            $person('replies.rejectedBy'),
+            $person('reviews.user'),
+            'agentRuns.aiRequests' => fn ($q) => $q->orderBy('id'),
+            'agentRuns.aiRequests.toolCalls' => fn ($q) => $q->orderBy('id'),
+        ])->loadCount('attachments');
+
+        return new self($email);
+    }
+
     public function toArray(Request $request): array
     {
         $recipients = fn (RecipientType $type) => $this->recipients
@@ -61,6 +91,22 @@ class EmailDetailResource extends EmailListResource
                 'at' => $change->created_at?->toIso8601String(),
             ])->all(),
             'replies' => EmailReplyResource::collection($this->replies),
+            // Revisión humana: si espera a una persona, a quién está asignado y lo que decidieron.
+            'awaiting_person' => in_array($this->status, HumanReviewService::REVIEWABLE, true),
+            // Ya se intentó enviar una respuesta (puede haber llegado): no se reprocesa con la IA.
+            'send_attempted' => $this->replies->contains(fn (EmailReply $reply) => in_array($reply->status, [EmailReplyStatus::Sending, EmailReplyStatus::Sent, EmailReplyStatus::Failed], true)),
+            'assigned_at' => $this->assigned_at?->toIso8601String(),
+            'reviews' => $this->reviews->map(fn (EmailReview $review) => [
+                'id' => $review->id,
+                'decision' => $review->decision->value,
+                'decision_label' => $review->decision->label(),
+                'edited' => $review->edited,
+                'reason' => $review->reason,
+                'waited_seconds' => $review->waited_seconds,
+                'reply_id' => $review->email_reply_id,
+                'user' => $review->user ? ['id' => $review->user->id, 'name' => $review->user->name] : null,
+                'at' => $review->created_at?->toIso8601String(),
+            ])->all(),
             'agent_runs' => AgentRunResource::collection($this->agentRuns),
         ];
     }

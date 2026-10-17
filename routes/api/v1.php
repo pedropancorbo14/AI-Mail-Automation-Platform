@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\AutomationController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\EmailController;
+use App\Http\Controllers\Api\V1\EmailReviewController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\KnowledgeSearchController;
 use App\Http\Controllers\Api\V1\MailConnectionController;
@@ -64,6 +65,14 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/emails/{email}/html', [EmailController::class, 'html']);
     // El adjunto tiene que ser de ese email (scopeBindings).
     Route::get('/emails/{email}/attachments/{attachment}', [EmailController::class, 'attachment'])->scopeBindings();
+
+    // Revisión humana (Fase 13). La respuesta tiene que ser de ese email (scopeBindings).
+    Route::post('/emails/{email}/replies/{reply}/approve', [EmailReviewController::class, 'approve'])->scopeBindings();
+    Route::post('/emails/{email}/replies/{reply}/reject', [EmailReviewController::class, 'reject'])->scopeBindings();
+    Route::post('/emails/{email}/replies', [EmailReviewController::class, 'reply']);
+    Route::post('/emails/{email}/close', [EmailReviewController::class, 'close']);
+    Route::post('/emails/{email}/reprocess', [EmailReviewController::class, 'reprocess']);
+    Route::put('/emails/{email}/assignee', [EmailReviewController::class, 'assign']);
 
     // Base de conocimiento (RAG): documentación de la empresa y búsqueda.
     Route::apiResource('documents', DocumentController::class)->except(['update']);

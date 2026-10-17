@@ -3032,6 +3032,33 @@ casos, y un **historial** de todas las decisiones humanas.
   de línea no cuentan, otras propuestas descartadas, descartar, responder,
   responder a un envío fallido, cerrar, reprocesar y nunca tras un envío,
   estados no revisables, dos personas a la vez, asignar, fuera del tenant)
+- [x] 3. **API de la revisión** (`EmailReviewController`, auth + tenant):
+  **`POST /emails/{id}/replies/{reply}/approve`** (`body` opcional, máx.
+  20.000: el texto que deja la persona), **`.../replies/{reply}/reject`**
+  (`reason` opcional, máx. 1.000) —ambas con `scopeBindings`: la respuesta
+  tiene que ser de ese email—, **`POST /emails/{id}/replies`** (`body`
+  obligatorio: respuesta propia), **`POST /emails/{id}/close`** (`reason`),
+  **`POST /emails/{id}/reprocess`** y **`PUT /emails/{id}/assignee`**
+  (`user_id` o `null`; solo personas de la empresa con `emails.review`).
+  `EmailPolicy::review` (otra empresa → 404, luego `emails.review`),
+  comprobado en el `authorize()` de los FormRequest (`ReviewEmailRequest` y
+  sus hijas) antes de validar. `ReviewException` → **409** con el motivo.
+  Cada acción devuelve el detalle actualizado
+  (`EmailDetailResource::for()`, que ahora también usa `show`). Detalle
+  ampliado: `awaiting_person`, `send_attempted`, `assignee`/`assigned_at`,
+  `reviews[]` (decisión + etiqueta, editada, motivo, espera, persona,
+  fecha) y en cada respuesta `author`, `original_body`, `edited_by`/
+  `edited_at`, `rejected_by`/`rejected_at`/`rejection_reason`; el listado
+  incluye `assignee`. **Auditoría** `email.reply_approved` (`reply_id`,
+  `edited`), `email.reply_rejected`, `email.replied`, `email.closed`,
+  `email.reprocessed`, `email.assigned` (de quién a quién), **sin el texto
+  de las respuestas ni los motivos**: pueden llevar datos del cliente y la
+  auditoría dura más que el email (`email_reviews` sí guarda el motivo y se
+  borra con él). Tests: `EmailReviewApiTest` (15: cada acción, edición sin
+  datos del cliente en la auditoría, reprocesar tras un envío → 409,
+  asignar/liberar y a quién se puede, 409 si otra persona se adelantó,
+  validación, respuesta de otro email → 404, otra empresa → 404 en todo,
+  sin permiso → 403, 401)
 
 ### Pendientes anotados para más adelante
 
