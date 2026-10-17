@@ -11,19 +11,28 @@ import httpx2
 import pytest
 from pydantic import SecretStr
 
-from ai_service.application.dto import DraftContext, ToolCallRecord
+from ai_service.application.dto import DraftContext, DraftResult, ToolAnswer, ToolCallRecord
 from ai_service.application.errors import (
     LLMConfigurationError,
     LLMInvalidOutputError,
     LLMRefusalError,
     LLMUnavailableError,
 )
+from ai_service.application.services.tool_catalog import SPECS
 from ai_service.config import Settings
 from ai_service.domain.category import Category
+from ai_service.domain.draft import Draft
 from ai_service.infrastructure.llm import prompts
 from ai_service.infrastructure.llm.anthropic import AnthropicLLM, chat_model
 from tests.fakes import make_chunk
 from tests.unit.domain.factories import make_classification, make_email
+
+
+def written(result: DraftResult) -> Draft:
+    """El borrador del paso (en estos tests el modelo no pide consultas)."""
+    assert result.draft is not None
+    return result.draft
+
 
 API_KEY = "sk-ant-test-0123456789"
 
@@ -356,12 +365,12 @@ async def test_draft_uses_its_own_effort_and_the_classification() -> None:
     assert "<email>" in content
     assert '<fuente id="1" origen="Política de envíos, sección «Coste del envío»">' in content
     assert content.count("</documentacion>") == 1  # un documento no cierra el bloque
-    d = result.draft
+    d = written(result)
     assert d.needs_human
     assert d.confidence.value == 0.6
     assert d.pending_actions == ("Revisar el envío con SEUR",)
     assert [s.reference for s in d.sources] == ["Política de envíos, sección «Coste del envío»"]
-    assert result.calls[0].prompt == "email_draft@5"
+    assert result.calls[0].prompt == "email_draft@6"
     assert result.calls[0].purpose == "ai_service.draft"
 
 
@@ -384,7 +393,7 @@ async def test_draft_sends_the_customer_data_and_parses_order_sources() -> None:
     content = fake.body()["messages"][0]["content"]
     assert '<consulta nombre="get_order" estado="success">' in content
     assert '"status_label": "Enviado"' in content
-    assert [(s.type.value, s.reference) for s in result.draft.sources] == [("order", "45821")]
+    assert [(s.type.value, s.reference) for s in written(result).sources] == [("order", "45821")]
 
 
 async def test_empty_draft_is_an_invalid_output() -> None:
@@ -398,3 +407,109 @@ async def test_empty_draft_is_an_invalid_output() -> None:
 def test_without_api_key_the_adapter_refuses_to_start() -> None:
     with pytest.raises(LLMConfigurationError, match="AI_SERVICE_ANTHROPIC_API_KEY"):
         AnthropicLLM.from_settings(Settings(_env_file=None))
+
+
+def tool_use(name: str, arguments: dict[str, Any], *, call_id: str = "toolu_01") -> httpx2.Response:
+    """Respuesta del modelo que pide una herramienta (con su bloque de razonamiento)."""
+    body = {
+        "id": "msg_01TOOL",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-opus-5-5",
+        "content": [
+            {"type": "thinking", "thinking": "", "signature": "firma-intacta"},
+            {"type": "tool_use", "id": call_id, "name": name, "input": arguments},
+        ],
+        "stop_reason": "tool_use",
+        "stop_sequence": None,
+        "usage": {"input_tokens": 2100, "output_tokens": 40},
+    }
+    return httpx2.Response(200, json=body, headers={"request-id": "req_02"})
+
+
+async def test_drafting_with_tools_asks_and_continues_appending_to_the_history() -> None:
+    fake = FakeAnthropic()
+    fake.responses = [
+        tool_use("get_order", {"order_number": "45821"}),
+        message(draft_data(sources=[{"type": "order", "reference": "45821"}])),
+    ]
+    llm = adapter(fake)
+    spec = SPECS["get_order"]
+    classification = make_classification(category=Category.ORDER_STATUS)
+
+    first = await llm.draft(make_email(), classification, DraftContext(), tools=(spec,))
+
+    assert first.draft is None
+    [request] = first.tool_requests
+    assert (request.call_id, request.tool, request.arguments) == (
+        "toolu_01",
+        "get_order",
+        {"order_number": "45821"},
+    )
+    assert first.calls[0].input_tokens == 2100
+    body = fake.body(0)
+    # Herramienta estricta, sin forzar tool_choice, y el mismo formato de salida y effort.
+    assert body["tools"] == [
+        {
+            "name": "get_order",
+            "description": spec.description,
+            "input_schema": spec.input_schema,
+            "strict": True,
+        }
+    ]
+    assert "tool_choice" not in body
+    assert body["output_config"]["format"]["type"] == "json_schema"
+    assert body["output_config"]["effort"] == "medium"
+
+    record = ToolCallRecord(
+        "get_order", {"order_number": "45821"}, {"status": "shipped"}, "success"
+    )
+    assert first.conversation is not None
+    second = await llm.draft(
+        make_email(),
+        classification,
+        DraftContext(),
+        tools=(spec,),
+        conversation=first.conversation,
+        answers=(ToolAnswer(request, record),),
+    )
+
+    assert written(second).sources[0].reference == "45821"
+    resumed = fake.body(1)
+    # Solo se añade: el primer mensaje y las herramientas son los mismos...
+    assert resumed["messages"][0] == body["messages"][0]
+    assert resumed["tools"] == body["tools"]
+    # ...el turno del modelo vuelve tal cual (con su razonamiento firmado)...
+    assistant = resumed["messages"][1]
+    assert assistant["role"] == "assistant"
+    assert {"type": "thinking", "thinking": "", "signature": "firma-intacta"} in assistant[
+        "content"
+    ]
+    # ...y los resultados como tool_result de la herramienta pedida.
+    [result] = resumed["messages"][2]["content"]
+    assert result["type"] == "tool_result"
+    assert result["tool_use_id"] == "toolu_01"
+    assert json.loads(result["content"]) == {"status": "shipped"}
+
+
+async def test_a_failed_lookup_goes_back_to_the_model_as_an_error() -> None:
+    fake = FakeAnthropic()
+    fake.responses = [tool_use("get_order", {"order_number": "1"}), message(draft_data())]
+    llm = adapter(fake)
+    tools = (SPECS["get_order"],)
+    classification = make_classification(category=Category.ORDER_STATUS)
+    first = await llm.draft(make_email(), classification, DraftContext(), tools=tools)
+    failed = ToolCallRecord("get_order", {}, None, "error", "No hay ningún pedido con ese número.")
+
+    await llm.draft(
+        make_email(),
+        classification,
+        DraftContext(),
+        tools=tools,
+        conversation=first.conversation,
+        answers=(ToolAnswer(first.tool_requests[0], failed),),
+    )
+
+    [result] = fake.body(1)["messages"][2]["content"]
+    assert result["is_error"] is True
+    assert json.loads(result["content"]) == {"error": "No hay ningún pedido con ese número."}

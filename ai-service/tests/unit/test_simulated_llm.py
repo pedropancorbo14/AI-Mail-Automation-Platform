@@ -1,14 +1,22 @@
 import pytest
 
-from ai_service.application.dto import DraftContext, ToolCallRecord
+from ai_service.application.dto import DraftContext, DraftResult, ToolAnswer, ToolCallRecord
 from ai_service.application.errors import LLMConfigurationError
 from ai_service.application.services.knowledge import KnowledgeRetriever
+from ai_service.application.services.tool_catalog import SPECS
 from ai_service.config import Environment, Settings
 from ai_service.domain.category import Category
+from ai_service.domain.draft import Draft
 from ai_service.entrypoints.container import build_agent, build_llm
 from ai_service.infrastructure.llm.simulated import SimulatedLLM
 from tests.fakes import FakeEmbeddings, FakeVectorStore, make_chunk
 from tests.unit.domain.factories import make_email
+
+
+def written(result: DraftResult) -> Draft:
+    """El borrador del paso (en estos tests el modelo no pide consultas)."""
+    assert result.draft is not None
+    return result.draft
 
 
 @pytest.mark.parametrize(
@@ -51,12 +59,12 @@ async def test_only_drafts_with_documentation_are_confident() -> None:
     )
     unsure = await llm.draft(make_email(), question.classification, DraftContext())
 
-    assert confident.draft.confidence.value == 0.9
-    assert not confident.draft.needs_human
-    assert "14,95 €" in confident.draft.body  # usa el dato de la documentación
-    assert confident.draft.sources[0].reference == make_chunk().source
-    assert unsure.draft.needs_human
-    assert unsure.draft.confidence.value == 0.5
+    assert written(confident).confidence.value == 0.9
+    assert not written(confident).needs_human
+    assert "14,95 €" in written(confident).body  # usa el dato de la documentación
+    assert written(confident).sources[0].reference == make_chunk().source
+    assert written(unsure).needs_human
+    assert written(unsure).confidence.value == 0.5
 
 
 async def test_drafts_with_order_data_cite_the_order() -> None:
@@ -75,11 +83,11 @@ async def test_drafts_with_order_data_cite_the_order() -> None:
     )
 
     assert "Pedido #45821: Enviado. Transportista SEUR, seguimiento SEU123456789ES." in (
-        result.draft.body
+        written(result).body
     )
-    assert [(s.type.value, s.reference) for s in result.draft.sources] == [("order", "45821")]
-    assert result.draft.confidence.value == 0.9
-    assert result.calls[0].prompt == "email_draft@5"
+    assert [(s.type.value, s.reference) for s in written(result).sources] == [("order", "45821")]
+    assert written(result).confidence.value == 0.9
+    assert result.calls[0].prompt == "email_draft@6"
 
 
 async def test_replies_in_english_to_english_emails() -> None:
@@ -89,7 +97,7 @@ async def test_replies_in_english_to_english_emails() -> None:
     result = await llm.draft(make_email(), c.classification, DraftContext())
 
     assert c.classification.language == "en"
-    assert result.draft.body.startswith("Hello")
+    assert written(result).body.startswith("Hello")
 
 
 def test_the_container_builds_it_only_outside_production() -> None:
@@ -136,5 +144,53 @@ async def test_invoices_are_extracted_apart_from_orders_and_cited() -> None:
 
     assert question.classification.invoice_numbers == ("FAC-44102",)
     assert question.classification.order_numbers == ("44102",)
-    assert "Factura FAC-44102: 120.5 EUR, Pagada." in result.draft.body
-    assert ("invoice", "FAC-44102") in [(s.type.value, s.reference) for s in result.draft.sources]
+    assert "Factura FAC-44102: 120.5 EUR, Pagada." in written(result).body
+    assert ("invoice", "FAC-44102") in [
+        (s.type.value, s.reference) for s in written(result).sources
+    ]
+
+
+async def test_with_the_order_list_but_no_detail_it_asks_for_the_newest_order() -> None:
+    llm = SimulatedLLM()
+    email = make_email(subject="Mi pedido", body="¿Cuándo llega mi pedido?")
+    question = await llm.classify(email)
+    listed = ToolCallRecord(
+        "get_customer_orders", {"limit": 5}, {"orders": [{"order_number": "45821"}]}, "success"
+    )
+    tools = (SPECS["get_order"], SPECS["get_customer_orders"])
+
+    first = await llm.draft(
+        email, question.classification, DraftContext(tool_results=(listed,)), tools=tools
+    )
+
+    assert first.draft is None
+    [request] = first.tool_requests
+    assert (request.tool, request.arguments) == ("get_order", {"order_number": "45821"})
+    detail = {"order_number": "45821", "status_label": "Enviado", "shipment": {"carrier": "SEUR"}}
+    answer = ToolAnswer(request, ToolCallRecord("get_order", request.arguments, detail, "success"))
+    second = await llm.draft(
+        email,
+        question.classification,
+        DraftContext(tool_results=(listed,)),
+        tools=tools,
+        conversation=first.conversation,
+        answers=(answer,),
+    )
+
+    assert "Pedido #45821: Enviado. Transportista SEUR" in written(second).body
+    assert written(second).body.count("Pedido #45821") == 1  # detalle y resumen, una vez
+    assert second.tool_requests == ()
+
+
+async def test_without_tools_it_never_asks() -> None:
+    llm = SimulatedLLM()
+    email = make_email(subject="Mi pedido", body="¿Cuándo llega mi pedido?")
+    question = await llm.classify(email)
+    listed = ToolCallRecord(
+        "get_customer_orders", {"limit": 5}, {"orders": [{"order_number": "45821"}]}, "success"
+    )
+
+    result = await llm.draft(email, question.classification, DraftContext(tool_results=(listed,)))
+
+    assert result.tool_requests == ()
+    assert written(result)

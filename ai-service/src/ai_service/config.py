@@ -72,7 +72,13 @@ class Settings(BaseSettings):
     mcp_url: str | None = None
     mcp_token: SecretStr | None = None
     mcp_timeout_seconds: float = Field(default=10.0, gt=0)
+    # Consultas del plan determinista, por especialista.
     max_tool_calls: int = Field(default=5, ge=0, le=10)
+    # Consultas que el modelo puede pedir al redactar (Fase 5): rondas de
+    # redactar ⇄ consultar y consultas en total por email. 0 rondas = no se le
+    # ofrecen herramientas.
+    max_model_tool_rounds: int = Field(default=2, ge=0, le=5)
+    max_model_tool_calls: int = Field(default=3, ge=0, le=10)
 
     # --- Acciones con aprobación humana (checkpoints de LangGraph) ---
     # Rol ai_service_checkpoints (solo su esquema ai_service). Sin URL, el

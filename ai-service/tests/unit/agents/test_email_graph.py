@@ -398,6 +398,7 @@ def test_the_graph_has_the_expected_shape() -> None:
         "gather",
         "await_approval",
         "draft",
+        "lookup",
         "validate",
         "human_review",
         "__end__",
@@ -406,4 +407,5 @@ def test_the_graph_has_the_expected_shape() -> None:
     assert {("classify", "retrieve"), ("classify", "validate"), ("retrieve", "supervisor")} <= edges
     assert {("supervisor", "specialist"), ("specialist", "gather")} <= edges
     assert {("gather", "await_approval"), ("gather", "draft"), ("await_approval", "draft")} <= edges
+    assert {("draft", "lookup"), ("lookup", "draft"), ("draft", "validate")} <= edges
     assert {("validate", "human_review"), ("validate", "__end__")} <= edges

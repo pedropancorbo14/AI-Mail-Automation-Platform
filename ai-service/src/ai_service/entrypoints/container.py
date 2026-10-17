@@ -71,6 +71,8 @@ def build_agent(
         actions=tools,
         checkpointer=checkpointer,
         max_tool_calls=settings.max_tool_calls,
+        max_model_rounds=settings.max_model_tool_rounds,
+        max_model_lookups=settings.max_model_tool_calls,
         max_tokens=settings.max_tokens_per_email,
         max_steps=settings.max_graph_steps,
         timeout_seconds=settings.agent_timeout_seconds,

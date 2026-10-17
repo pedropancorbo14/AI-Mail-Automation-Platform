@@ -56,9 +56,53 @@ class ClassificationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolSpec:
+    """Herramienta que se le ofrece al modelo al redactar: nombre, para qué sirve y
+    sus argumentos (JSON Schema). Nunca incluye la empresa ni el cliente."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ToolRequest:
+    """Consulta que pide el modelo (`call_id` = el id que le dio su proveedor)."""
+
+    call_id: str
+    tool: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ToolAnswer:
+    """Resultado de una consulta pedida por el modelo, para devolvérselo."""
+
+    request: ToolRequest
+    record: "ToolCallRecord"
+
+
+@dataclass(frozen=True, slots=True)
+class DraftConversation:
+    """Conversación de redacción en curso (cuando el modelo pide consultas).
+
+    `turns` es opaco para el grafo: lo construye y lo interpreta el adaptador
+    del modelo (p. ej. los mensajes de langchain, con los bloques de
+    razonamiento intactos: el historial solo se puede ampliar, nunca editar).
+    """
+
+    turns: tuple[Any, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DraftResult:
-    draft: Draft
+    """Un paso de redacción: el borrador, o las consultas que pide el modelo
+    antes de redactarlo (con la conversación para continuar)."""
+
+    draft: Draft | None
     calls: tuple[LLMCall, ...]
+    tool_requests: tuple[ToolRequest, ...] = ()
+    conversation: DraftConversation | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,12 +8,15 @@ from ai_service.application.dto import (
     AgentOutcome,
     ClassificationResult,
     DraftContext,
+    DraftConversation,
     DraftResult,
     EmbeddingResult,
     LLMCall,
     PendingAction,
+    ToolAnswer,
     ToolCallRecord,
     ToolContext,
+    ToolSpec,
 )
 from ai_service.application.errors import AgentError, KnowledgeBaseError, LLMError
 from ai_service.application.ports import OutgoingEvent
@@ -93,6 +96,9 @@ class FakeLLM:
     drafts: list[DraftStep] = field(default_factory=list)
     classify_calls: list[Email] = field(default_factory=list)
     draft_calls: list[tuple[Email, Classification, DraftContext]] = field(default_factory=list)
+    # Herramientas ofrecidas y respuestas recibidas en cada paso de redacción.
+    draft_tools: list[tuple[str, ...]] = field(default_factory=list)
+    draft_answers: list[tuple[ToolAnswer, ...]] = field(default_factory=list)
 
     async def classify(self, email: Email) -> ClassificationResult:
         self.classify_calls.append(email)
@@ -102,9 +108,18 @@ class FakeLLM:
         return step if isinstance(step, ClassificationResult) else step(email)
 
     async def draft(
-        self, email: Email, classification: Classification, context: DraftContext
+        self,
+        email: Email,
+        classification: Classification,
+        context: DraftContext,
+        *,
+        tools: Sequence[ToolSpec] = (),
+        conversation: DraftConversation | None = None,
+        answers: Sequence[ToolAnswer] = (),
     ) -> DraftResult:
         self.draft_calls.append((email, classification, context))
+        self.draft_tools.append(tuple(t.name for t in tools))
+        self.draft_answers.append(tuple(answers))
         step = self.drafts.pop(0)
         if isinstance(step, LLMError):
             raise step

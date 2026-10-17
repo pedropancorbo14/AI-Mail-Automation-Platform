@@ -13,9 +13,20 @@ import asyncio
 import random
 import re
 import time
+from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
-from ai_service.application.dto import ClassificationResult, DraftContext, DraftResult, LLMCall
+from ai_service.application.dto import (
+    ClassificationResult,
+    DraftContext,
+    DraftConversation,
+    DraftResult,
+    LLMCall,
+    ToolAnswer,
+    ToolRequest,
+    ToolSpec,
+)
 from ai_service.domain.category import Category
 from ai_service.domain.classification import Classification, Sentiment, Urgency
 from ai_service.domain.confidence import Confidence
@@ -132,10 +143,30 @@ class SimulatedLLM:
         return ClassificationResult(classification, (call,))
 
     async def draft(
-        self, email: Email, classification: Classification, context: DraftContext
+        self,
+        email: Email,
+        classification: Classification,
+        context: DraftContext,
+        *,
+        tools: Sequence[ToolSpec] = (),
+        conversation: DraftConversation | None = None,
+        answers: Sequence[ToolAnswer] = (),
     ) -> DraftResult:
         started = time.perf_counter()
         await self._wait()
+        # Lo que devolvieron las consultas que pidió en rondas anteriores, como datos.
+        consulted = (*conversation.turns, *answers) if conversation else tuple(answers)
+        records = tuple(a.record for a in consulted if isinstance(a, ToolAnswer))
+        context = replace(context, tool_results=(*context.tool_results, *records))
+        request = _wanted_lookup(email, classification, context, {t.name for t in tools}, records)
+        if request is not None:
+            call = self._call("ai_service.draft", prompts.DRAFT.ref, email.body, 30, started)
+            return DraftResult(
+                draft=None,
+                calls=(call,),
+                tool_requests=(request,),
+                conversation=DraftConversation(turns=consulted),
+            )
         english = classification.language == "en"
         company = email.tenant_name or "la empresa"
         # Solo "confía" si tiene datos: documentación, pedidos o un ticket abierto.
@@ -144,6 +175,9 @@ class SimulatedLLM:
         invoices = _invoices(context)
         tickets = _created_tickets(context)
         facts = [best.content] if best else []
+        # Documentación que buscó en una ronda anterior (search_company_documents).
+        searched = [] if best else _searched_docs(context)
+        facts += [content for _, content in searched]
         facts += [_order_fact(order, english=english) for order in orders]
         facts += [_invoice_fact(invoice, english=english) for invoice in invoices]
         facts += [
@@ -158,6 +192,7 @@ class SimulatedLLM:
         else:
             body = f"Hola:\n\nGracias por escribirnos. [Respuesta de la IA simulada]{fact}\n\nUn saludo,\nEl equipo de atención al cliente de {company}"
         sources = [Source(SourceType.DOCUMENT, best.source)] if best else []
+        sources += [Source(SourceType.DOCUMENT, source) for source, _ in searched]
         sources += [Source(SourceType.ORDER, str(order["order_number"])) for order in orders]
         sources += [Source(SourceType.INVOICE, str(i["invoice_number"])) for i in invoices]
         sources += [Source(SourceType.TICKET, str(t["id"])) for t in tickets]
@@ -198,17 +233,70 @@ class SimulatedLLM:
         )
 
 
+def _wanted_lookup(
+    email: Email,
+    classification: Classification,
+    context: DraftContext,
+    offered: set[str],
+    already: tuple[Any, ...],
+) -> ToolRequest | None:
+    """Reglas de la IA simulada para pedir una consulta antes de redactar (una vez):
+
+    - Tiene la lista de pedidos pero no el detalle → `get_order` del más reciente.
+    - Soporte técnico sin documentación → `search_company_documents` con el asunto.
+    """
+    if already:
+        return None
+    listed: list[dict[str, Any]] = next(
+        (
+            r.result.get("orders", [])
+            for r in context.tool_results
+            if r.tool == "get_customer_orders" and r.status == "success" and r.result
+        ),
+        [],
+    )
+    has_detail = any(r.tool == "get_order" and r.status == "success" for r in context.tool_results)
+    if "get_order" in offered and listed and not has_detail:
+        number = str(listed[0].get("order_number", ""))
+        return ToolRequest("sim-1", "get_order", {"order_number": number})
+    if (
+        "search_company_documents" in offered
+        and not context.knowledge
+        and classification.category is Category.TECHNICAL_SUPPORT
+    ):
+        return ToolRequest("sim-1", "search_company_documents", {"query": email.subject})
+    return None
+
+
 def _orders(context: DraftContext) -> list[dict[str, Any]]:
     """Pedidos devueltos con éxito por get_order / get_customer_orders."""
-    found: list[dict[str, Any]] = []
+    details: list[dict[str, Any]] = []
+    summaries: list[dict[str, Any]] = []
     for record in context.tool_results:
         if record.status != "success" or not record.result:
             continue
         if record.tool == "get_order" and record.result.get("order_number"):
-            found.append(record.result)
+            details.append(record.result)
         elif record.tool == "get_customer_orders":
-            found += [o for o in record.result.get("orders", []) if isinstance(o, dict)][:1]
-    return [o for o in found if o.get("order_number")]
+            summaries += [o for o in record.result.get("orders", []) if isinstance(o, dict)][:1]
+    # Si el detalle y el resumen son del mismo pedido, gana el detalle.
+    unique: dict[str, dict[str, Any]] = {}
+    for order in (*details, *summaries):
+        if order.get("order_number"):
+            unique.setdefault(str(order["order_number"]), order)
+    return list(unique.values())
+
+
+def _searched_docs(context: DraftContext) -> list[tuple[str, str]]:
+    """(fuente, texto) del primer fragmento de cada búsqueda en la documentación."""
+    docs: list[tuple[str, str]] = []
+    for record in context.tool_results:
+        if record.tool != "search_company_documents" or record.status != "success":
+            continue
+        rows = (record.result or {}).get("results") or []
+        if rows and isinstance(rows[0], dict) and rows[0].get("source"):
+            docs.append((str(rows[0]["source"]), str(rows[0].get("content", ""))))
+    return docs
 
 
 def _order_fact(order: dict[str, Any], *, english: bool) -> str:

@@ -4130,7 +4130,44 @@ el de Python afecte a nada.
   especialistas, solo soporte propone, injection sin supervisor), origen
   en aprobada/rechazada y en el evento, y **grafo + IA simulada + MCP real**
   (factura; soporte + pedido de Marcos). 355 tests de Python
-- [ ] 5.3 Redactor agéntico (bucle de tool calling con límites)
+- [x] 5.3 **Redactor agéntico.** DTO `ToolSpec`, `ToolRequest`,
+  `ToolAnswer`, `DraftConversation` (turnos opacos del adaptador) y
+  `DraftResult` con `draft` opcional + `tool_requests` + `conversation`.
+  `LLMPort.draft(..., tools, conversation, answers)`. `tool_catalog.py`:
+  herramientas para el modelo **descritas en el código** (sin
+  `tenant_id`/`customer_email`, todo `required`, `additionalProperties:
+  false`) y `tools_for_model` = las de los especialistas del email + la
+  búsqueda si hay RAG, en orden estable. Grafo: **`draft` ⇄ `lookup`**
+  (arista condicional): lookup ejecuta solo lo ofrecido, con la empresa y
+  el cliente del email, hasta `max_model_lookups` (3) por email (el resto
+  `rejected` "redacta con lo que tienes"), `origin="model"`, búsqueda con
+  la pregunta del modelo en la documentación de la empresa
+  (`KnowledgeRetriever.search(tenant, query)`; `references_in` reconoce sus
+  fuentes como consultadas); fallos → motivos → persona;
+  `max_model_rounds` (2): si sigue pidiendo, sin borrador → persona. El
+  primer mensaje del modelo no cambia en las rondas siguientes (el contexto
+  inicial no incluye lo que pidió el modelo; va en los `tool_result`).
+  Adaptador de Claude: `bind_tools` (dicts en formato Anthropic con
+  `strict: true`, sin `tool_choice`) + `output_config.format` con
+  `anthropic.transform_schema` (langchain lo fusiona con `effort`),
+  `_check_stop_reason` común, turno del modelo reenviado tal cual,
+  `ToolMessage` con `status="error"` → `is_error`; sin herramientas sigue
+  el camino de `with_structured_output`. IA simulada: pide `get_order` del
+  más reciente si tiene la lista sin detalle, o busca en la documentación
+  en soporte técnico sin documentación; continúa con las respuestas (el
+  detalle gana al resumen). Prompt **`email_draft@6`** (cuándo usar las
+  herramientas). Config `AI_SERVICE_MAX_MODEL_TOOL_ROUNDS` (2) y
+  `AI_SERVICE_MAX_MODEL_TOOL_CALLS` (3). Tests: grafo (pide el detalle y
+  redacta con él —contexto del email, solo herramientas del dominio, mismas
+  en cada ronda, respuesta con su `call_id`—, herramienta de otro dominio
+  rechazada sin llamarla, tope de consultas, tope de rondas, 0 rondas = sin
+  herramientas, búsqueda en la documentación de su empresa citada),
+  adaptador con la API simulada (herramienta estricta, sin `tool_choice`,
+  formato y effort; segunda petición solo-añade: mismo primer mensaje y
+  herramientas, razonamiento firmado intacto, `tool_result` con su id y
+  `is_error`), IA simulada y **grafo + IA simulada + MCP real** ("¿cuándo
+  llega mi pedido?" → lista por el plan → detalle pedido por el modelo →
+  seguimiento en la respuesta). 366 tests de Python
 - [ ] 5.4 Laravel: especialistas y origen de las herramientas en la traza
 - [ ] 5.5 Modo sombra en ai-service
 - [ ] 5.6 Laravel: publicar en sombra y guardar el resultado

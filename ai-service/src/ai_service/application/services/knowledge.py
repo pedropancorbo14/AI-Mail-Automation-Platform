@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from ai_service.application.dto import RetrievalResult
 from ai_service.application.errors import KnowledgeBaseError, LLMError
 from ai_service.application.ports import EmbeddingPort, VectorStorePort
-from ai_service.domain.email import Email
+from ai_service.domain.email import Email, TenantId
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +39,12 @@ class KnowledgeRetriever:
         return f"{email.subject}\n\n{email.body}".strip()[:max_chars]
 
     async def retrieve(self, email: Email) -> RetrievalResult:
-        query = self.query_for(email, self._options.max_query_chars)
+        return await self.search(email.tenant_id, self.query_for(email))
+
+    async def search(self, tenant_id: TenantId, query: str) -> RetrievalResult:
+        """Búsqueda con una pregunta propia (la del modelo al redactar, Fase 5),
+        siempre en la documentación de `tenant_id`."""
+        query = query.strip()[: self._options.max_query_chars]
         if not query:
             return RetrievalResult(chunks=())
         try:
@@ -48,7 +53,7 @@ class KnowledgeRetriever:
             return RetrievalResult(chunks=(), calls=error.calls, failed=error.message)
         try:
             chunks = await self._store.search(
-                email.tenant_id,
+                tenant_id,
                 embedding.vector,
                 embedding_model=self._embeddings.model,
                 limit=self._options.limit,

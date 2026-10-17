@@ -4,8 +4,10 @@
                              │                                ╠═ specialist(billing) ═╣→ gather
                              │                                ╚═ specialist(support) ═╝
                              └────────────────────────────────────────────────────────→ validate
-    gather ─┬────────────────┬→ draft → validate ─┬─→ END            (auto_send)
-            └→ await_approval ┘                    └─→ human_review → END
+    gather ─┬────────────────┬→ draft ⇄ lookup
+            └→ await_approval ┘    ↓
+                                validate ─┬─→ END            (auto_send)
+                                          └─→ human_review → END
 
 - **classify**: clasificación con structured outputs (`LLMPort.classify`).
 - **router**: arista condicional **determinista** (sin IA): sospecha de
@@ -35,9 +37,13 @@
   vuelve a planificar (tendría otro `action_id`). Está en el grafo principal,
   no dentro de un especialista: un `interrupt` dentro de una rama en paralelo
   complicaría reanudar.
-- **draft**: borrador (`LLMPort.draft`) con la documentación encontrada, los
-  datos consultados y las reglas de los especialistas que intervinieron. Si
-  el email ya gastó su presupuesto de tokens, no se redacta (a una persona).
+- **draft** ⇄ **lookup**: borrador (`LLMPort.draft`) con la documentación
+  encontrada, los datos consultados y las reglas de los especialistas que
+  intervinieron. El modelo puede pedir antes consultas de **solo lectura**
+  de esos especialistas (o buscar en la documentación): lookup las ejecuta
+  (empresa y cliente del email, nunca del modelo) y se las devuelve; con
+  límite de rondas y de consultas. Si el email ya gastó su presupuesto de
+  tokens, no se redacta (a una persona).
 - **validate**: reglas puras del dominio (`DecisionPolicy`), con lo que se
   consultó de verdad (`Evidence`: una cita a algo no consultado → persona).
 - **human_review**: nodo final que deja constancia de que lo revisará una
@@ -67,10 +73,14 @@ from langgraph.types import Command, Send, interrupt
 from ai_service.application.dto import (
     AgentOutcome,
     DraftContext,
+    DraftConversation,
     LLMCall,
     PendingAction,
+    ToolAnswer,
     ToolCallRecord,
     ToolContext,
+    ToolRequest,
+    ToolSpec,
 )
 from ai_service.application.errors import (
     AgentError,
@@ -83,6 +93,7 @@ from ai_service.application.errors import (
 from ai_service.application.ports import ActionPort, LLMPort, ToolPort
 from ai_service.application.services.action_planner import plan_action
 from ai_service.application.services.knowledge import KnowledgeRetriever
+from ai_service.application.services.tool_catalog import SEARCH_TOOL, tools_for_model
 from ai_service.application.services.tool_planner import plan_for, references_in
 from ai_service.domain.classification import Classification
 from ai_service.domain.decision import Decision, DecisionOutcome
@@ -93,7 +104,6 @@ from ai_service.domain.policy import DecisionPolicy, Evidence
 from ai_service.domain.specialist import Specialist, route
 
 Route = Literal["retrieve", "validate"]
-SEARCH_TOOL = "search_company_documents"
 # Las búsquedas de embeddings son locales (Ollama): no cuentan para el presupuesto.
 FREE_PURPOSES = frozenset({"ai_service.knowledge_search"})
 
@@ -122,6 +132,12 @@ class EmailState(TypedDict):
     specialists: NotRequired[tuple[Specialist, ...]]
     # Acciones que propusieron los especialistas (gather se queda con la primera).
     proposals: Annotated[list[PendingAction], operator.add]
+    # Redacción con consultas pedidas por el modelo (draft ⇄ lookup).
+    conversation: NotRequired[DraftConversation | None]
+    tool_requests: NotRequired[tuple[ToolRequest, ...]]
+    answers: NotRequired[tuple[ToolAnswer, ...]]
+    model_rounds: NotRequired[int]
+    model_lookups: NotRequired[int]
 
 
 class SpecialistInput(TypedDict):
@@ -173,6 +189,40 @@ def router(state: EmailState) -> Route:
     return "retrieve"
 
 
+def _chunks(chunks: tuple[KnowledgeChunk, ...]) -> list[dict[str, Any]]:
+    """Fragmentos de documentación como resultado de search_company_documents."""
+    return [
+        {
+            "source": c.source,
+            "document_id": c.document_id,
+            "chunk_id": c.chunk_id,
+            "similarity": c.similarity,
+            "content": c.content[:1500],
+        }
+        for c in chunks
+    ]
+
+
+async def _search(
+    retriever: KnowledgeRetriever, email: Email, request: ToolRequest
+) -> tuple[ToolCallRecord, tuple[LLMCall, ...]]:
+    """search_company_documents con la pregunta del modelo, en la documentación de la
+    empresa del email."""
+    query = str(request.arguments.get("query", ""))[:500]
+    started = time.perf_counter()
+    result = await retriever.search(email.tenant_id, query)
+    record = ToolCallRecord(
+        tool=SEARCH_TOOL,
+        arguments={"query": query},
+        result=None if result.failed else {"results": _chunks(result.chunks)},
+        status="error" if result.failed else "success",
+        error=result.failed,
+        duration_ms=int((time.perf_counter() - started) * 1000),
+        origin="model",
+    )
+    return record, result.calls
+
+
 class LangGraphEmailAgent:
     """Implementa `EmailAgentPort` con un grafo de LangGraph."""
 
@@ -186,6 +236,8 @@ class LangGraphEmailAgent:
         actions: ActionPort | None = None,
         checkpointer: BaseCheckpointSaver[Any] | None = None,
         max_tool_calls: int = 5,
+        max_model_rounds: int = 2,
+        max_model_lookups: int = 3,
         max_tokens: int | None = None,
         max_steps: int = 15,
         timeout_seconds: float = 240.0,
@@ -196,6 +248,8 @@ class LangGraphEmailAgent:
         self._actions = actions
         self._checkpointer = checkpointer
         self._max_tool_calls = max_tool_calls
+        self._max_model_rounds = max_model_rounds
+        self._max_model_lookups = max_model_lookups
         self._max_tokens = max_tokens
         self._max_steps = max_steps
         self._policy = policy
@@ -231,6 +285,7 @@ class LangGraphEmailAgent:
         graph.add_node("gather", self._gather)
         graph.add_node("await_approval", self._await_approval)
         graph.add_node("draft", _billed(self._draft))
+        graph.add_node("lookup", self._lookup)
         graph.add_node("validate", self._validate)
         graph.add_node("human_review", self._human_review)
 
@@ -247,7 +302,10 @@ class LangGraphEmailAgent:
             {"await_approval": "await_approval", "draft": "draft"},
         )
         graph.add_edge("await_approval", "draft")
-        graph.add_edge("draft", "validate")
+        graph.add_conditional_edges(
+            "draft", self._after_draft, {"lookup": "lookup", "validate": "validate"}
+        )
+        graph.add_edge("lookup", "draft")
         graph.add_conditional_edges(
             "validate", self._after_validate, {"end": END, "human_review": "human_review"}
         )
@@ -374,20 +432,7 @@ class LangGraphEmailAgent:
         record = ToolCallRecord(
             tool=SEARCH_TOOL,
             arguments={"query": KnowledgeRetriever.query_for(email)[:500]},
-            result=None
-            if result.failed
-            else {
-                "results": [
-                    {
-                        "source": c.source,
-                        "document_id": c.document_id,
-                        "chunk_id": c.chunk_id,
-                        "similarity": c.similarity,
-                        "content": c.content[:1500],
-                    }
-                    for c in result.chunks
-                ]
-            },
+            result=None if result.failed else {"results": _chunks(result.chunks)},
             status="error" if result.failed else "success",
             error=result.failed,
             duration_ms=int((time.perf_counter() - started) * 1000),
@@ -502,6 +547,17 @@ class LangGraphEmailAgent:
         )
         return {"tool_calls": [record], "issues": issues, "visited": ["await_approval"]}
 
+    def _model_tools(self, state: EmailState) -> tuple[ToolSpec, ...]:
+        """Lo que el modelo puede consultar al redactar: herramientas de lectura de
+        los especialistas del email (y la búsqueda en la documentación). Siempre
+        las mismas durante la conversación."""
+        if self._max_model_rounds <= 0:
+            return ()
+        available = self._tools.available if self._tools is not None else frozenset()
+        return tools_for_model(
+            state.get("specialists", ()), available, search=self._retriever is not None
+        )
+
     async def _draft(self, state: EmailState) -> dict[str, Any]:
         used = tokens_used(state["calls"])
         if self._max_tokens is not None and used >= self._max_tokens:
@@ -510,20 +566,111 @@ class LangGraphEmailAgent:
                 f"El email alcanzó su límite de tokens ({used} de {self._max_tokens}): "
                 "no se redactó la respuesta."
             )
-            return {"draft": None, "issues": [issue], "visited": ["draft"]}
+            return {"draft": None, "tool_requests": (), "issues": [issue], "visited": ["draft"]}
         context = DraftContext(
             knowledge=state.get("knowledge", ()),
             knowledge_unavailable=state.get("knowledge_unavailable", False),
-            tool_results=tuple(r for r in state["tool_calls"] if r.tool != SEARCH_TOOL),
+            tool_results=tuple(
+                r for r in state["tool_calls"] if r.tool != SEARCH_TOOL and r.origin != "model"
+            ),
             specialists=state.get("specialists", ()),
         )
-        result = await self._llm.draft(state["email"], state["classification"], context)
-        return {"draft": result.draft, "calls": list(result.calls), "visited": ["draft"]}
+        result = await self._llm.draft(
+            state["email"],
+            state["classification"],
+            context,
+            tools=self._model_tools(state),
+            conversation=state.get("conversation"),
+            answers=state.get("answers", ()),
+        )
+        calls = list(result.calls)
+        if not result.tool_requests:
+            return {
+                "draft": result.draft,
+                "tool_requests": (),
+                "calls": calls,
+                "visited": ["draft"],
+            }
+        rounds = state.get("model_rounds", 0)
+        if rounds >= self._max_model_rounds:
+            log.warning("agent_limit_reached", extra={"limit": "model_rounds"})
+            issue = (
+                f"El modelo siguió pidiendo consultas después de {rounds} rondas: "
+                "no se redactó la respuesta."
+            )
+            return {
+                "draft": None,
+                "tool_requests": (),
+                "calls": calls,
+                "issues": [issue],
+                "visited": ["draft"],
+            }
+        return {
+            "tool_requests": result.tool_requests,
+            "conversation": result.conversation,
+            "answers": (),
+            "model_rounds": rounds + 1,
+            "calls": calls,
+            "visited": ["draft"],
+        }
+
+    @staticmethod
+    def _after_draft(state: EmailState) -> Literal["lookup", "validate"]:
+        return "lookup" if state.get("tool_requests") else "validate"
+
+    async def _lookup(self, state: EmailState) -> dict[str, Any]:
+        """Consultas que pidió el modelo. Solo las ofrecidas (lectura, de los
+        especialistas del email) y hasta el límite por email; empresa y cliente
+        salen del email. Todas quedan registradas con origin="model"."""
+        email = state["email"]
+        offered = {spec.name for spec in self._model_tools(state)}
+        done = state.get("model_lookups", 0)
+        context = ToolContext(tenant_id=email.tenant_id, customer=email.sender)
+        calls: list[LLMCall] = []
+
+        async def answer(request: ToolRequest, index: int) -> ToolCallRecord:
+            refused = None
+            if request.tool not in offered:
+                refused = f"La herramienta {request.tool} no está disponible para este email."
+            elif done + index >= self._max_model_lookups:
+                refused = (
+                    f"Límite de {self._max_model_lookups} consultas por email alcanzado: "
+                    "redacta con lo que tienes."
+                )
+            if refused is not None:
+                return ToolCallRecord(
+                    request.tool, dict(request.arguments), None, "rejected", refused, origin="model"
+                )
+            if request.tool == SEARCH_TOOL and self._retriever is not None:
+                record, searched = await _search(self._retriever, email, request)
+                calls.extend(searched)
+                return record
+            if self._tools is None:  # no ocurre: sin servidor MCP no se ofrecen
+                return ToolCallRecord(request.tool, {}, None, "rejected", "Sin servidor MCP.")
+            record = await self._tools.call(request.tool, request.arguments, context)
+            return replace(record, origin="model")
+
+        requests = state.get("tool_requests", ())
+        records = await asyncio.gather(*(answer(r, i) for i, r in enumerate(requests)))
+        issues = [
+            f"La consulta {r.tool} (pedida por la IA) no fue bien: {r.error or r.status}"
+            for r in records
+            if r.status != "success"
+        ]
+        return {
+            "tool_calls": list(records),
+            "answers": tuple(ToolAnswer(q, a) for q, a in zip(requests, records, strict=True)),
+            "tool_requests": (),
+            "model_lookups": done + len(requests),
+            "issues": issues,
+            "calls": calls,
+            "visited": ["lookup"],
+        }
 
     async def _validate(self, state: EmailState) -> dict[str, Any]:
         references = {c.source for c in state.get("knowledge", ())}
         for record in state["tool_calls"]:
-            if record.status == "success" and record.tool != SEARCH_TOOL:
+            if record.status == "success":
                 references |= references_in(record.tool, record.result)
         evidence = Evidence(references=frozenset(references), issues=tuple(state["issues"]))
         outcome = self._policy.decide(

@@ -77,6 +77,11 @@ def references_in(tool: str, result: dict[str, Any] | None) -> set[str]:
         for row in rows if isinstance(rows, list) else []:
             if isinstance(row, dict) and row.get(field_name):
                 found.add(str(row[field_name]))
+    if tool == "search_company_documents":  # fuentes de la documentación encontrada
+        rows = result.get("results")
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict) and row.get("source"):
+                found.add(str(row["source"]))
     tickets = result.get("tickets")
     for ticket in tickets if isinstance(tickets, list) else []:
         if isinstance(ticket, dict) and ticket.get("id"):

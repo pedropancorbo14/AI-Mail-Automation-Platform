@@ -16,11 +16,14 @@ from ai_service.application.dto import (
     AgentOutcome,
     ClassificationResult,
     DraftContext,
+    DraftConversation,
     DraftResult,
     EmbeddingResult,
     PendingAction,
+    ToolAnswer,
     ToolCallRecord,
     ToolContext,
+    ToolSpec,
 )
 from ai_service.domain.classification import Classification
 from ai_service.domain.email import Email, TenantId
@@ -39,8 +42,20 @@ class LLMPort(Protocol):
     async def classify(self, email: Email) -> ClassificationResult: ...
 
     async def draft(
-        self, email: Email, classification: Classification, context: DraftContext
-    ) -> DraftResult: ...
+        self,
+        email: Email,
+        classification: Classification,
+        context: DraftContext,
+        *,
+        tools: Sequence[ToolSpec] = (),
+        conversation: DraftConversation | None = None,
+        answers: Sequence[ToolAnswer] = (),
+    ) -> DraftResult:
+        """Redacta el borrador. Con `tools`, el modelo puede pedir antes consultas
+        (`DraftResult.tool_requests`); se le devuelven en la siguiente llamada con
+        la misma `conversation` y sus `answers`. Las herramientas ofrecidas no
+        cambian durante la conversación."""
+        ...
 
 
 class EmailAgentPort(Protocol):

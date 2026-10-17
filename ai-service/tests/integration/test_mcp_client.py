@@ -133,6 +133,24 @@ async def test_specialists_consult_their_own_domains_through_real_mcp() -> None:
     assert support.outcome.decision is Decision.AUTO_SEND
 
 
+async def test_the_model_asks_real_mcp_for_the_order_detail_it_was_missing() -> None:
+    """Pedido sin número: el plan trae la lista de pedidos y el modelo (simulado) pide
+    el detalle del más reciente por su cuenta; la respuesta lleva el seguimiento."""
+    async with running(18131) as url:
+        agent = LangGraphEmailAgent(
+            SimulatedLLM(), DecisionPolicy(), tools=McpToolClient(url, TOKEN)
+        )
+        result = await agent.run(make_email(subject="Mi pedido", body="¿Cuándo llega mi pedido?"))
+
+    assert [(r.tool, r.origin, r.status) for r in result.tool_calls] == [
+        ("get_customer_orders", "plan", "success"),
+        ("get_order", "model", "success"),
+    ]
+    assert result.draft is not None
+    assert "SEU123456789ES" in result.draft.body
+    assert result.outcome.decision is Decision.AUTO_SEND
+
+
 async def test_approved_actions_run_once_with_tenant_customer_and_idempotency_key() -> None:
     action = PendingAction(
         action_id="0f6a3f7c-3a43-4f3e-9c55-1a2b3c4d5e6f",

@@ -171,7 +171,8 @@ graph TD;
 | `specialist` (subgrafo) | `consult`: datos de **su** dominio por **MCP** con un plan determinista (`plan_for`): `orders` → `get_order` por pedido mencionado (hasta 3) o, como principal, `get_customer_orders`; `billing` → `get_invoice` por factura mencionada (hasta 3) o, como principal, `get_customer_invoices`; `support` → `get_customer_tickets`; `general` → `get_customer` si es un cambio de cuenta. Cada herramienta es de un solo especialista: no se repiten consultas. Máximo `AI_SERVICE_MAX_TOOL_CALLS` (5) por especialista. `propose`: solo soporte propone acciones (`plan_action`: soporte técnico sin ticket abierto → `create_support_ticket`), y solo con checkpoints y acciones configurados. Empresa y cliente salen del email, nunca del modelo; una consulta que falla o no encuentra lo pedido → revisión humana |
 | `gather` | Junta lo de los especialistas (LangGraph espera a todas las ramas) y se queda con la acción propuesta, si la hay |
 | `await_approval` | **`interrupt()`**: el grafo se para y su estado queda en PostgreSQL hasta que una persona decide en el panel (`email.review_resumed.v1`). Aprobada → la ejecuta (MCP, idempotente); rechazada → sigue sin ella |
-| `draft` | `LLMPort.draft` con la clasificación, la documentación (`<documentacion>` con fuentes citables), los datos del cliente (`<datos>`) y la indicación de la persona si la hay (`<indicacion_del_equipo>`) y las **reglas de los especialistas** que intervinieron (prompt `email_draft@5`: pedidos, facturación, soporte, general; el principal primero); el borrador devuelve `sources` (`document`, `order`, `invoice`, `ticket`, `customer`). No se llama si el email superó su presupuesto de tokens |
+| `draft` ⇄ `lookup` | **Redactor agéntico** (Fase 5): el modelo puede pedir consultas de **solo lectura** de los especialistas del email (o buscar en la documentación con su propia pregunta) antes de redactar; `lookup` las ejecuta con la empresa y el cliente del email (las herramientas se describen en el código, `tool_catalog.py`, sin esos parámetros) y se las devuelve. Herramientas fijas durante la conversación (historial solo-añadir), límites de rondas y de consultas, cada una con `origin: model`; una herramienta no ofrecida o una consulta que falla → revisión humana. |
+| `draft` (contenido) | `LLMPort.draft` con la clasificación, la documentación (`<documentacion>` con fuentes citables), los datos del cliente (`<datos>`) y la indicación de la persona si la hay (`<indicacion_del_equipo>`) y las **reglas de los especialistas** que intervinieron (prompt `email_draft@6`: pedidos, facturación, soporte, general; el principal primero); el borrador devuelve `sources` (`document`, `order`, `invoice`, `ticket`, `customer`). No se llama si el email superó su presupuesto de tokens |
 | `validate` | `DecisionPolicy` con `Evidence` (lo consultado de verdad: fuentes de la documentación + pedidos, tickets y cuenta devueltos por las herramientas, `references_in`): **una cita a algo que no se consultó → revisión humana**, y cualquier problema al consultar también |
 | `human_review` | Nodo final: la revisión de la respuesta la hace una persona en el panel de Laravel (Fase 13). Reprocesar con una indicación empieza un grafo nuevo (no reanuda) |
 
@@ -342,7 +343,9 @@ Variables nuevas:
 | `AI_SERVICE_AGENT_TIMEOUT_SECONDS` | `240` | Tope del grafo entero |
 | `AI_SERVICE_MCP_URL` / `AI_SERVICE_MCP_TOKEN` | — | Servidor MCP (sin URL, el grafo no consulta los sistemas de la empresa; con URL, el token es obligatorio) |
 | `AI_SERVICE_MCP_TIMEOUT_SECONDS` | `10` | Tope de cada llamada a una herramienta |
-| `AI_SERVICE_MAX_TOOL_CALLS` | `5` | Máximo de herramientas por email |
+| `AI_SERVICE_MAX_TOOL_CALLS` | `5` | Máximo de consultas del plan determinista, por especialista |
+| `AI_SERVICE_MAX_MODEL_TOOL_ROUNDS` | `2` | Rondas de redactar ⇄ consultar en las que el modelo puede pedir consultas (`0` = no se le ofrecen herramientas) |
+| `AI_SERVICE_MAX_MODEL_TOOL_CALLS` | `3` | Consultas que el modelo puede pedir en total por email; las siguientes se rechazan (y el caso va a una persona) |
 | `AI_SERVICE_MAX_TOKENS_PER_EMAIL` | `60000` | Presupuesto de tokens del modelo por email (entrada + salida, también de llamadas fallidas; las búsquedas locales de embeddings no cuentan). Superado, no se redacta: a una persona |
 | `AI_SERVICE_MAX_GRAPH_STEPS` | `15` | Pasos máximos del grafo (protección ante un ciclo por error); superado → fallo definitivo, a una persona |
 | `AI_SERVICE_CHECKPOINT_DATABASE_URL` | — | Rol `ai_service_checkpoints` (solo el esquema `ai_service`). Sin URL, el agente no propone acciones que modifican datos |
@@ -637,7 +640,9 @@ Del lado de Laravel (`app/AI/Remote/`, `app/Automation/Review/`):
 | Tiempo del grafo (`AI_SERVICE_AGENT_TIMEOUT_SECONDS`, 240 s) | Error temporal: se reintenta y, tras N entregas, `processing_failed` |
 | **Tokens por email** (`AI_SERVICE_MAX_TOKENS_PER_EMAIL`, 60.000) | No se redacta (no se paga la llamada) y el email va a **revisión humana** con el motivo. Python limita tokens, no dólares: los precios están en Laravel, que además tiene su presupuesto diario por empresa (`AiSpendGuard`) |
 | **Pasos del grafo** (`AI_SERVICE_MAX_GRAPH_STEPS`, 15) | El grafo no tiene ciclos; si un error futuro creara uno, se corta (`AgentLimitError`, no reintentable) → `processing_failed` → una persona |
-| Herramientas por email (`AI_SERVICE_MAX_TOOL_CALLS`, 5) | Solo se ejecutan las primeras |
+| Consultas del plan (`AI_SERVICE_MAX_TOOL_CALLS`, 5 por especialista) | Solo se ejecutan las primeras |
+| **Rondas del redactor** (`AI_SERVICE_MAX_MODEL_TOOL_ROUNDS`, 2) | Si el modelo sigue pidiendo consultas, no se redacta: a una persona con el motivo |
+| **Consultas del redactor** (`AI_SERVICE_MAX_MODEL_TOOL_CALLS`, 3 por email) | Las siguientes se rechazan (se le dice "redacta con lo que tienes") y el caso va a una persona |
 
 No hace falta un límite de reanudaciones: cada pausa espera **una** acción
 y una reanudación repetida (Redis entrega al menos una vez) encuentra el
@@ -656,7 +661,7 @@ hilo ya terminado (`expired`).
 - **Especialistas** como subgrafos de LangGraph, en paralelo (`Send`):
   cada uno consulta los datos de su dominio con un plan determinista y
   propone sus acciones. Aportan también sus reglas para redactar.
-- **Redactor agéntico:** el modelo redacta con todo lo consultado y puede
+- **Redactor agéntico** (hecho): el modelo redacta con todo lo consultado y puede
   pedir consultas extra de **solo lectura** de los especialistas del email
   (bucle de tool calling con límites). La empresa y el cliente siguen
   saliendo del email, nunca del modelo. Cada consulta lleva su `origin`
@@ -665,6 +670,16 @@ hilo ya terminado (`expired`).
   emails se procesa también aquí **sin efectos** (sin acciones, sin pausa,
   sin tocar el email) para comparar los dos motores (intención, decisión,
   coste, tiempo).
+
+**Redactor agéntico (tarea 5.3):** hecho (`draft` ⇄ `lookup`, ver la tabla
+de nodos). Lo normal es que el plan ya traiga los datos y el modelo no pida
+nada: una sola llamada, como antes. Con Claude, `bind_tools` (herramientas
+estrictas, sin `tool_choice` forzado) + el mismo `output_config.format`; el
+turno del modelo se reenvía tal cual (bloques de razonamiento firmados) y
+los resultados como `tool_result` (`is_error` si fallaron). Ejemplo con la
+IA simulada y el servidor MCP real: "¿cuándo llega mi pedido?" sin número →
+el plan trae la lista → el modelo pide `get_order` del más reciente → la
+respuesta lleva el seguimiento.
 
 **Supervisor y especialistas (tarea 5.2):** hechos (ver el grafo y la tabla
 de nodos de "Arquitectura"). Sin llamadas extra al modelo: el coste por

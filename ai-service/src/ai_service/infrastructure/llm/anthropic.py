@@ -12,8 +12,14 @@
   `max_tokens`).
 - Los errores del SDK se traducen a `LLMError` y subclases: fuera de aquí no
   aparece ninguna excepción de Anthropic. Nunca la clave en un mensaje.
+- **Redactar con herramientas** (Fase 5): `bind_tools` (estrictas, sin forzar
+  `tool_choice`: en Opus 5.5 daría 400) + el mismo `output_config.format`. Si el
+  modelo pide consultas, se devuelven con la conversación para continuar; el
+  historial solo se amplía (el turno del modelo se reenvía tal cual, con sus
+  bloques de razonamiento, y los resultados van como `tool_result`).
 """
 
+import json
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -21,15 +27,19 @@ from typing import Any
 
 import anthropic
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from pydantic import SecretStr
 
 from ai_service.application.dto import (
     CallStatus,
     ClassificationResult,
     DraftContext,
+    DraftConversation,
     DraftResult,
     LLMCall,
+    ToolAnswer,
+    ToolRequest,
+    ToolSpec,
 )
 from ai_service.application.errors import (
     LLMConfigurationError,
@@ -68,6 +78,8 @@ class AnthropicLLM:
         self._drafter = drafter.with_structured_output(
             prompts.DRAFT.output_schema, method="json_schema", include_raw=True
         )
+        # Para redactar con herramientas (structured outputs + tools en la misma petición).
+        self._drafter_chat = drafter
         self._model = model
         self._max_body_chars = max_body_chars
 
@@ -96,13 +108,82 @@ class AnthropicLLM:
         return ClassificationResult(classification, calls)
 
     async def draft(
-        self, email: Email, classification: Classification, context: DraftContext
+        self,
+        email: Email,
+        classification: Classification,
+        context: DraftContext,
+        *,
+        tools: Sequence[ToolSpec] = (),
+        conversation: DraftConversation | None = None,
+        answers: Sequence[ToolAnswer] = (),
     ) -> DraftResult:
+        if tools or conversation is not None:
+            return await self._draft_with_tools(
+                email, classification, context, tools, conversation, answers
+            )
         content = prompts.draft_context(email, classification, context, self._max_body_chars)
         data, calls = await self._invoke(self._drafter, prompts.DRAFT, content)
         try:
             draft = _draft(data)
         except (KeyError, ValueError, TypeError) as error:
+            raise LLMInvalidOutputError(
+                f"El borrador no tiene el formato esperado: {error}", calls
+            ) from error
+        return DraftResult(draft, calls)
+
+    async def _draft_with_tools(
+        self,
+        email: Email,
+        classification: Classification,
+        context: DraftContext,
+        tools: Sequence[ToolSpec],
+        conversation: DraftConversation | None,
+        answers: Sequence[ToolAnswer],
+    ) -> DraftResult:
+        """Un paso del bucle redactar ⇄ consultar."""
+        prompt = prompts.DRAFT
+        purpose = "ai_service.draft"
+        if conversation is None:
+            content = prompts.draft_context(email, classification, context, self._max_body_chars)
+            messages: list[BaseMessage] = [
+                SystemMessage(prompt.system),
+                HumanMessage(content),
+            ]
+        else:
+            messages = [*conversation.turns, *(_tool_message(a) for a in answers)]
+        runnable = self._drafter_chat.bind_tools(
+            [_anthropic_tool(t) for t in tools],
+            output_config={
+                "format": {
+                    "type": "json_schema",
+                    "schema": anthropic.transform_schema(prompt.output_schema),
+                }
+            },
+        )
+        started = time.perf_counter()
+        try:
+            raw: AIMessage = await runnable.ainvoke(messages)
+        except anthropic.APIError as error:
+            failed = (self._failed_call(purpose, prompt, _ms(started), _error_text(error)),)
+            raise _translate(error, failed) from error
+
+        calls = _calls(raw, purpose, prompt, self._model, _ms(started))
+        _check_stop_reason(raw, calls)
+        if raw.tool_calls:
+            requests = tuple(
+                ToolRequest(str(c.get("id")), c["name"], dict(c.get("args") or {}))
+                for c in raw.tool_calls
+            )
+            # El turno del modelo, tal cual (con sus bloques de razonamiento).
+            return DraftResult(
+                draft=None,
+                calls=calls,
+                tool_requests=requests,
+                conversation=DraftConversation(turns=(*messages, raw)),
+            )
+        try:
+            draft = _draft(json.loads(_text(raw)))
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as error:
             raise LLMInvalidOutputError(
                 f"El borrador no tiene el formato esperado: {error}", calls
             ) from error
@@ -123,18 +204,7 @@ class AnthropicLLM:
         latency = _ms(started)
         raw: AIMessage = result["raw"]
         calls = _calls(raw, purpose, prompt, self._model, latency)
-        stop_reason = raw.response_metadata.get("stop_reason")
-
-        if stop_reason == "refusal":
-            details = raw.response_metadata.get("stop_details") or {}
-            category = details.get("category") if isinstance(details, Mapping) else None
-            suffix = f" (categoría: {category})" if category else ""
-            refused = tuple(_with_status(c, "refused") for c in calls)
-            raise LLMRefusalError(f"El modelo se negó a procesar el email{suffix}.", refused)
-        if stop_reason == "max_tokens":
-            raise LLMInvalidOutputError(
-                "La respuesta se cortó por max_tokens: súbelo en la configuración.", calls
-            )
+        _check_stop_reason(raw, calls)
         parsed = result.get("parsed")
         if result.get("parsing_error") is not None or not isinstance(parsed, Mapping):
             raise LLMInvalidOutputError("La respuesta del modelo no es el JSON esperado.", calls)
@@ -212,6 +282,52 @@ def _calls(
             )
         )
     return tuple(calls)
+
+
+def _check_stop_reason(raw: AIMessage, calls: tuple[LLMCall, ...]) -> None:
+    """Antes de usar una respuesta: rechazo de seguridad o respuesta cortada."""
+    stop_reason = raw.response_metadata.get("stop_reason")
+    if stop_reason == "refusal":
+        details = raw.response_metadata.get("stop_details") or {}
+        category = details.get("category") if isinstance(details, Mapping) else None
+        suffix = f" (categoría: {category})" if category else ""
+        refused = tuple(_with_status(c, "refused") for c in calls)
+        raise LLMRefusalError(f"El modelo se negó a procesar el email{suffix}.", refused)
+    if stop_reason == "max_tokens":
+        raise LLMInvalidOutputError(
+            "La respuesta se cortó por max_tokens: súbelo en la configuración.", calls
+        )
+
+
+def _anthropic_tool(spec: ToolSpec) -> dict[str, Any]:
+    return {
+        "name": spec.name,
+        "description": spec.description,
+        "input_schema": spec.input_schema,
+        "strict": True,
+    }
+
+
+def _tool_message(answer: ToolAnswer) -> ToolMessage:
+    record = answer.record
+    ok = record.status == "success"
+    payload = record.result if ok else {"error": record.error or record.status}
+    return ToolMessage(
+        content=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+        tool_call_id=answer.request.call_id,
+        status="success" if ok else "error",
+    )
+
+
+def _text(raw: AIMessage) -> str:
+    """Texto de la respuesta (los bloques de razonamiento no cuentan)."""
+    if isinstance(raw.content, str):
+        return raw.content
+    return "".join(
+        str(block.get("text", ""))
+        for block in raw.content
+        if isinstance(block, dict) and block.get("type") == "text"
+    )
 
 
 def _with_status(call: LLMCall, status: CallStatus) -> LLMCall:
