@@ -155,6 +155,9 @@ services:
       AI_SERVICE_DATABASE_URL: postgresql+psycopg://ai_service_reader:${AI_SERVICE_DB_PASSWORD:-reader-secret}@postgres:5432/${DB_DATABASE:-app}
       AI_SERVICE_OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       AI_SERVICE_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-bge-m3}
+      # Acciones con aprobación humana (Fase 4): grafo en pausa guardado en el
+      # esquema ai_service con su propio rol (no ve las tablas de Laravel).
+      AI_SERVICE_CHECKPOINT_DATABASE_URL: postgresql+psycopg://ai_service_checkpoints:${AI_SERVICE_CHECKPOINTS_DB_PASSWORD:-checkpoints-secret}@postgres:5432/${DB_DATABASE:-app}
       # Herramientas (Fase 3): CRM, ERP y tickets en el servidor MCP.
       AI_SERVICE_MCP_URL: http://ai-mcp:8100
       AI_SERVICE_MCP_TOKEN: ${AI_SERVICE_MCP_TOKEN:-local-mcp-token}

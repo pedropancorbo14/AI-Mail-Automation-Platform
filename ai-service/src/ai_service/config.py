@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     mcp_timeout_seconds: float = Field(default=10.0, gt=0)
     max_tool_calls: int = Field(default=5, ge=0, le=10)
 
+    # --- Acciones con aprobación humana (checkpoints de LangGraph) ---
+    # Rol ai_service_checkpoints (solo su esquema ai_service). Sin URL, el
+    # agente no propone acciones que modifican datos (no podría esperar la
+    # aprobación).
+    checkpoint_database_url: SecretStr | None = None
+    # Una acción que nadie aprueba ni rechaza en este tiempo caduca.
+    checkpoint_ttl_hours: int = Field(default=336, ge=1)
+
     # --- Agente y reglas de decisión ---
     min_confidence: float = Field(default=0.85, ge=0, le=1)
     # Tope del grafo entero (incluye los reintentos del SDK de cada llamada).

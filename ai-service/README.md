@@ -321,6 +321,8 @@ Variables nuevas:
 | `AI_SERVICE_MCP_URL` / `AI_SERVICE_MCP_TOKEN` | — | Servidor MCP (sin URL, el grafo no consulta los sistemas de la empresa; con URL, el token es obligatorio) |
 | `AI_SERVICE_MCP_TIMEOUT_SECONDS` | `10` | Tope de cada llamada a una herramienta |
 | `AI_SERVICE_MAX_TOOL_CALLS` | `5` | Máximo de herramientas por email |
+| `AI_SERVICE_CHECKPOINT_DATABASE_URL` | — | Rol `ai_service_checkpoints` (solo el esquema `ai_service`). Sin URL, el agente no propone acciones que modifican datos |
+| `AI_SERVICE_CHECKPOINT_TTL_HOURS` | `336` | Una acción pendiente que nadie decide en este tiempo caduca (se borra su estado) |
 | `AI_SERVICE_DEBUG_ENDPOINTS` | `false` | Activa `POST /debug/process` (nunca en producción) |
 
 **Tests:** `tests/integration/test_anthropic_adapter.py` usa langchain y el
@@ -456,6 +458,30 @@ un `httpx2.AsyncClient` que lleva el token):
 - Prueba de integración: grafo + IA simulada + **servidor MCP real**: el
   pedido propio (#45821) se responde con transportista y seguimiento y se
   envía solo; el de otro cliente (#76540) va a una persona sin sus datos.
+
+## Acciones con aprobación humana (Fase 4)
+
+> En curso. El contrato y el flujo completo están en
+> [`contracts/README.md`](../contracts/README.md#acciones-con-aprobación-humana-fase-4-de-ai-service).
+
+### Checkpoints en PostgreSQL (tarea 4.2)
+
+Cuando el agente propone una acción que modifica datos (crear un ticket),
+el grafo queda **en pausa** hasta que una persona decide en el panel; su
+estado se guarda con **`langgraph-checkpoint-postgres`**
+(`infrastructure/checkpoints/postgres.py`, `PostgresCheckpoints`):
+
+- **Esquema propio `ai_service` y rol propio `ai_service_checkpoints`**
+  ([`contracts/database/ai_service_checkpoints.sql`](../contracts/database/ai_service_checkpoints.sql),
+  lo aplica una migración de Laravel): ese rol no puede leer ni escribir
+  ninguna tabla de Laravel, y el rol de solo lectura del RAG no cambia.
+  Las tablas las crea `AsyncPostgresSaver.setup()` al arrancar el worker
+  (idempotente). `search_path` se fija al conectar.
+- **Datos personales:** el estado incluye el email. Los hilos se borran
+  al terminar y la purga del worker (cada minuto, con el mantenimiento de
+  los streams) borra los que nadie decidió en
+  `AI_SERVICE_CHECKPOINT_TTL_HOURS` (14 días).
+- `/ready` incluye `checkpoints` cuando está configurado.
 
 ## Eventos: Redis Streams y el worker
 
@@ -686,6 +712,8 @@ la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root).
 | RLS + rol por columnas + filtro en la consulta | Solo el filtro en la consulta | Un bug en una consulta no puede filtrar datos de otra empresa: la base de datos lo impide |
 | MCP por **streamable HTTP** en su contenedor | stdio dentro del worker | Se escala, se despliega y se vigila por separado; en Kubernetes es un Service; el token impide llamadas de terceros |
 | El contexto (empresa, cliente) lo inyecta el cliente MCP | Que el modelo pase el email del cliente | Un email malicioso no puede pedir datos de otro cliente: el modelo no controla esos argumentos |
+| Checkpoints en **PostgreSQL** (esquema y rol propios) | Redis (`langgraph-checkpoint-redis`); SQLite | El Redis del stack no tiene los módulos que exige (RedisJSON/RediSearch) y su política `maxmemory` podría expulsar estado; PostgreSQL ya está, es durable y con backups. Rol aparte: el estado de la IA no se mezcla con las tablas de Laravel |
+| `interrupt` solo para **acciones que modifican datos** | Pausar en cada revisión humana | Una revisión puede tardar días: reanudar respondería con datos viejos y quedarían miles de hilos en pausa con datos personales. Reprocesar con una indicación vuelve a empezar el grafo con datos frescos |
 | Plan de herramientas **determinista** por intención | Tool calling de Claude (el modelo elige) | Predecible, una sola llamada de redacción (más barato y rápido), auditable y no manipulable; con Opus 5.5 además no se puede forzar `tool_choice`. El modelo elegirá herramientas cuando haya subagentes (Fase 5) |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |

@@ -3842,8 +3842,31 @@ pasos) que mandan el caso a una persona en vez de fallar.
   en `EmailProcessed`. Laravel: `EventContract` y sus tests recogen el
   esquema y los ejemplos nuevos solos. `contracts/README.md`: flujo de
   aprobación. 43 tests de contrato (Python) y 89 de `tests/Feature/AI/Remote`
-- [ ] 4.2 Checkpoints en PostgreSQL (rol y esquema `ai_service`, migración
-  de Laravel, `AsyncPostgresSaver`, purga)
+- [x] 4.2 **Checkpoints en PostgreSQL.** `langgraph-checkpoint-postgres`
+  3.1.2 (la 3.2 tenía 3 días; regla de versiones con al menos dos
+  semanas) + `psycopg-pool`. `contracts/database/ai_service_checkpoints.sql`:
+  esquema `ai_service` propiedad del rol `ai_service_checkpoints`, `REVOKE
+  ALL ... FROM PUBLIC`. Migración `add_ai_service_checkpoints` (crea el rol
+  como la del lector, contraseña `ai.remote.checkpoints_db_password` =
+  `AI_SERVICE_CHECKPOINTS_DB_PASSWORD`; `down` borra el esquema).
+  **Bug encontrado con los tests en paralelo:** `ALTER ROLE ... SET
+  search_path` desde varias migraciones a la vez → "tuple concurrently
+  updated" (el rol es del clúster) → quitado; ai-service fija
+  `search_path` al conectar. Python: `infrastructure/checkpoints/postgres.py`
+  (`PostgresCheckpoints.open()` con `AsyncConnectionPool` —autocommit,
+  `prepare_threshold=0`, `dict_row`, `search_path`— y `setup()`;
+  `delete(thread_id)`, `purge(horas)` por el `ts` del último checkpoint de
+  cada hilo, `ping()`). Config `AI_SERVICE_CHECKPOINT_DATABASE_URL` y
+  `AI_SERVICE_CHECKPOINT_TTL_HOURS` (336). Worker: lo abre si está
+  configurado, `/ready` con `checkpoints`, purga en el mantenimiento del
+  consumidor. Compose: URL del rol en `ai-service`. Tests: Laravel
+  `AiServiceCheckpointsTest` (8: esquema del rol, crea y usa sus tablas,
+  sin acceso a `emails`/`users`/`tenants`/`documents`/`ai_requests`, no
+  crea fuera de su esquema) y Python contra PostgreSQL real (10: tablas en
+  su esquema y ninguna en `public`, **un grafo con `interrupt` en pausa se
+  reanuda tras reiniciar el worker**, borrar, purga solo de lo antiguo, el
+  rol no toca tablas de Laravel, `ping`, worker y mantenimiento). 272
+  tests de Python; Laravel 1209 + los 25 del entorno
 - [ ] 4.3 Límites del agente (tokens, pasos, reanudaciones)
 - [ ] 4.4 Acción con aprobación: planificador, nodo con `interrupt`, MCP
   idempotente y solo por el camino aprobado

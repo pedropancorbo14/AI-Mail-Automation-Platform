@@ -26,6 +26,7 @@ from ai_service.config import Settings, get_settings
 from ai_service.entrypoints.consumer import ConsumerOptions, EventConsumer
 from ai_service.entrypoints.container import build_agent
 from ai_service.entrypoints.http.app import create_app
+from ai_service.infrastructure.checkpoints.postgres import PostgresCheckpoints
 from ai_service.infrastructure.events.redis_streams import (
     RECEIVED,
     RedisStreamConsumer,
@@ -58,7 +59,12 @@ def redis_client(settings: Settings) -> Redis:
     )
 
 
-def build_consumer(settings: Settings, redis: Redis, metrics: ServiceMetrics) -> EventConsumer:
+def build_consumer(
+    settings: Settings,
+    redis: Redis,
+    metrics: ServiceMetrics,
+    checkpoints: PostgresCheckpoints | None = None,
+) -> EventConsumer:
     bus = RedisStreamsEventBus(
         redis, prefix=settings.stream_prefix, maxlen=settings.outgoing_maxlen
     )
@@ -80,14 +86,17 @@ def build_consumer(settings: Settings, redis: Redis, metrics: ServiceMetrics) ->
             max_deliveries=settings.max_deliveries,
             retention_hours=settings.stream_retention_hours,
             processed_ttl_seconds=settings.processed_ttl_seconds,
+            checkpoint_ttl_hours=settings.checkpoint_ttl_hours,
         ),
+        checkpoints,
     )
 
 
 async def serve(settings: Settings) -> None:
     metrics = ServiceMetrics(settings.environment.value)
     redis = redis_client(settings)
-    consumer = build_consumer(settings, redis, metrics)
+    checkpoints = await open_checkpoints(settings)
+    consumer = build_consumer(settings, redis, metrics, checkpoints)
     stale_after = max(60.0, settings.read_block_ms / 1000 * 3)
 
     async def readiness() -> dict[str, bool]:
@@ -95,7 +104,11 @@ async def serve(settings: Settings) -> None:
             redis_ok = bool(await redis.ping())
         except Exception:
             redis_ok = False
-        return {"redis": redis_ok, "consumer": time.time() - consumer.last_heartbeat < stale_after}
+        alive = time.time() - consumer.last_heartbeat < stale_after
+        checks = {"redis": redis_ok, "consumer": alive}
+        if checkpoints is not None:
+            checks["checkpoints"] = await checkpoints.ping()
+        return checks
 
     server = _Server(
         uvicorn.Config(
@@ -118,6 +131,15 @@ async def serve(settings: Settings) -> None:
         server.should_exit = True
         await http
         await redis.aclose()
+        if checkpoints is not None:
+            await checkpoints.aclose()
+
+
+async def open_checkpoints(settings: Settings) -> PostgresCheckpoints | None:
+    """Abre (y migra) el almacén de checkpoints si está configurado."""
+    if settings.checkpoint_database_url is None:
+        return None
+    return await PostgresCheckpoints.open(settings.checkpoint_database_url.get_secret_value())
 
 
 def main() -> None:

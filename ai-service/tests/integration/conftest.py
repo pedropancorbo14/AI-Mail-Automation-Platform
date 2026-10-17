@@ -62,3 +62,39 @@ async def knowledge_db() -> AsyncIterator[tuple[AsyncEngine, str]]:
     async with admin.begin() as conn:
         await conn.execute(text("DROP TABLE IF EXISTS document_chunks, documents"))
     await admin.dispose()
+
+
+CHECKPOINTS_PASSWORD = "checkpoints-secret"
+
+
+def role_url(admin_url: str, role: str, password: str) -> str:
+    """Misma base de datos con otro rol."""
+    parts = urlsplit(admin_url)
+    netloc = f"{role}:{password}@{parts.hostname or 'localhost'}:{parts.port or 5432}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
+@pytest.fixture
+async def checkpoint_db() -> AsyncIterator[tuple[AsyncEngine, str]]:
+    """PostgreSQL real con el rol ai_service_checkpoints y su esquema creados con
+    contracts/database/ai_service_checkpoints.sql (lo mismo que la migración de
+    Laravel). Devuelve (motor admin, URL del rol). El esquema se borra al acabar."""
+    if not DATABASE_URL:
+        pytest.skip(
+            "Define AI_SERVICE_TEST_DATABASE_URL "
+            "(p. ej. postgresql+psycopg://app:secret@127.0.0.1:5432/ai_service_test)"
+        )
+    admin = create_async_engine(DATABASE_URL)
+    setup = (ROOT / "contracts" / "database" / "ai_service_checkpoints.sql").read_text()
+    async with admin.begin() as conn:
+        await conn.exec_driver_sql("DROP SCHEMA IF EXISTS ai_service CASCADE")
+        await conn.exec_driver_sql(
+            "DO $$ BEGIN CREATE ROLE ai_service_checkpoints LOGIN PASSWORD "
+            f"'{CHECKPOINTS_PASSWORD}' NOINHERIT; "
+            "EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
+        )
+        await conn.exec_driver_sql(setup)
+    yield admin, role_url(DATABASE_URL, "ai_service_checkpoints", CHECKPOINTS_PASSWORD)
+    async with admin.begin() as conn:
+        await conn.exec_driver_sql("DROP SCHEMA IF EXISTS ai_service CASCADE")
+    await admin.dispose()

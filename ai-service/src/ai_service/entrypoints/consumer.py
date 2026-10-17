@@ -28,6 +28,7 @@ from ai_service.application.errors import AgentError
 from ai_service.application.mappers import failed_event, usage_from_calls
 from ai_service.application.ports import EventBusPort
 from ai_service.application.use_cases.process_email import ProcessEmail, ProcessingResult
+from ai_service.infrastructure.checkpoints.postgres import PostgresCheckpoints
 from ai_service.infrastructure.events.redis_streams import RedisStreamConsumer, StreamMessage
 from ai_service.infrastructure.observability.logging import bind_context, clear_context, get_logger
 from ai_service.infrastructure.observability.metrics import ServiceMetrics
@@ -44,6 +45,7 @@ class ConsumerOptions:
     retention_hours: int = 168
     processed_ttl_seconds: int = 86_400
     maintenance_every_seconds: float = 60.0
+    checkpoint_ttl_hours: int = 336
 
 
 class EventConsumer:
@@ -54,8 +56,10 @@ class EventConsumer:
         bus: EventBusPort,
         metrics: ServiceMetrics,
         options: ConsumerOptions,
+        checkpoints: PostgresCheckpoints | None = None,
     ) -> None:
         self._stream = stream
+        self._checkpoints = checkpoints
         self._use_case = use_case
         self._bus = bus
         self._metrics = metrics
@@ -211,6 +215,9 @@ class EventConsumer:
             pending, lag = await self._stream.lag()
             self._metrics.stream_pending.set(pending)
             self._metrics.stream_lag.set(lag)
+            if self._checkpoints is not None:
+                # Acciones que nadie aprobó ni rechazó a tiempo (datos personales).
+                await self._checkpoints.purge(self._options.checkpoint_ttl_hours)
         except Exception:
             log.exception("consumer_maintenance_failed")
 

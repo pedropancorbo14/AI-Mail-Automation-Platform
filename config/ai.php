@@ -197,6 +197,9 @@ return [
         // Contraseña del rol de PostgreSQL de solo lectura de ai-service
         // (ai_service_reader: base de conocimiento, con RLS por empresa).
         'db_password' => env('AI_SERVICE_DB_PASSWORD', 'reader-secret'),
+        // Contraseña del rol de los checkpoints de LangGraph de ai-service
+        // (ai_service_checkpoints: solo su esquema ai_service).
+        'checkpoints_db_password' => env('AI_SERVICE_CHECKPOINTS_DB_PASSWORD', 'checkpoints-secret'),
     ],
 
     // Freno del gasto (App\Security\AiSpendGuard): superado un límite, el
