@@ -3081,6 +3081,22 @@ casos, y un **historial** de todas las decisiones humanas.
   `ReviewQueueApiTest` (7: orden urgencia + espera, propuesta y asignado,
   filtros y 422, aislamiento, 401, avisos en el detalle, comprobar un texto
   editado y propuesta de otro email → 422)
+- [x] 5. **Historial de la revisión.** **`GET /api/v1/reviews`**
+  (`ReviewHistoryController`, `emails.view`): decisiones de las personas,
+  la más reciente primero, con el email (id, asunto, remitente, intención,
+  estado) para enlazarlo; filtros `decision`, `user`, `from`/`to`,
+  `per_page`. **`GET /api/v1/reviews/summary?days=7|30|90`**
+  (`App\Automation\Review\ReviewStats`): casos pendientes ahora,
+  decisiones por tipo, resueltos (aprobar, responder, cerrar, reprocesar;
+  descartar una propuesta no resuelve el caso), **espera media y mediana**
+  hasta resolver (`percentile_cont` de PostgreSQL), **qué pasa con las
+  propuestas de la IA** que revisa una persona (aprobadas tal cual,
+  corregidas, descartadas y `unchanged_rate`: la mejor medida de la calidad
+  real de la IA) y **por persona** (total, decisiones, cuántas editó, espera
+  media; `count(*) filter (where …)`). Todo con el scope de tenant. Tests:
+  `ReviewHistoryApiTest` (6: orden y email, filtros y 422, resumen con
+  espera/propuestas/personas y periodo, periodo vacío sin dividir por
+  cero, aislamiento, 401)
 
 ### Pendientes anotados para más adelante
 

@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\KnowledgeSearchController;
 use App\Http\Controllers\Api\V1\MailConnectionController;
 use App\Http\Controllers\Api\V1\MailOAuthController;
+use App\Http\Controllers\Api\V1\ReviewHistoryController;
 use App\Http\Controllers\Api\V1\ReviewQueueController;
 use App\Http\Controllers\Api\V1\TenantController;
 use App\Http\Controllers\Api\V1\UserController;
@@ -77,6 +78,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/emails/{email}/review-checks', [EmailReviewController::class, 'check']);
     // Bandeja de revisión: lo que espera a una persona, lo urgente y lo más antiguo primero.
     Route::get('/review-queue', ReviewQueueController::class);
+    // Historial de las decisiones de las personas y su resumen.
+    Route::get('/reviews', [ReviewHistoryController::class, 'index']);
+    Route::get('/reviews/summary', [ReviewHistoryController::class, 'summary']);
 
     // Base de conocimiento (RAG): documentación de la empresa y búsqueda.
     Route::apiResource('documents', DocumentController::class)->except(['update']);
