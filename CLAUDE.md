@@ -3694,7 +3694,28 @@ con eventos `document.uploaded.v1` / `document.indexed.v1`).
   **`ReplyContentGuard`** usa lo consultado: 14,95 € de la documentación →
   enviada sola; 9,99 € inventado → revisión. 198 tests de Python; Laravel
   1186 + los 25 del entorno
-- [ ] 3.1 Servidor MCP (SDK oficial) con CRM, ERP y tickets simulados
+- [x] 3.1 **Servidor MCP** (`mcp_server/`, SDK oficial **`mcp` 2.3**: en
+  2.x `FastMCP` pasó a `mcp.server.mcpserver.MCPServer`, los modelos usan
+  snake_case — `input_schema`, `is_error`, `structured_content` — y los
+  fallos previstos se lanzan con `ToolError`; cualquier otra excepción
+  llega como "Error executing tool"). `backends.py` (`DemoData`: pedidos
+  del **mismo `database/seeders/demo/orders.json` de Laravel**, CRM
+  derivado, tickets en `mcp_server/data/tickets.json`; todo por
+  `tenant_id` + `customer_email`; pedido ajeno = inexistente;
+  `normalize_order_number` como Laravel; sin dirección completa).
+  `server.py`: herramientas `get_customer`, `get_order`,
+  `get_customer_orders`, `get_customer_tickets` (`read_only_hint`) y
+  `create_support_ticket` (`destructive_hint`, no persiste, no se ofrece
+  hasta la Fase 4); `build_app` = `streamable_http_app(stateless_http=True)`
+  + `/health` + middleware ASGI `BearerAuth` (`hmac.compare_digest`; sin
+  token no arranca). `config.py` (`McpSettings`, prefijo `AI_SERVICE_MCP_`:
+  token, puerto 8100, ficheros, `demo_tenants`). Arranque en
+  **`entrypoints/mcp.py`** (`ai-service-mcp`): import-linter rompía el
+  contrato de capas si `mcp_server` importaba los logs de
+  `infrastructure`. Tests: backends (normalización, pedido propio, ajeno/
+  inexistente/otra empresa = mismo error, listados y tickets acotados) y
+  servidor (lista con anotaciones, llamada con contexto, pedido ajeno sin
+  datos, HTTP con y sin token, no arranca sin token). 216 tests
 - [ ] 3.2 `ToolPort` + cliente MCP (contexto inyectado, solo lectura, límites)
 - [ ] 3.3 Nodo `tools`, prompt con datos, `tool_calls` en el contrato → `ai_tool_calls`
 - [ ] 3.4 Compose, CI, README y prueba de punta a punta

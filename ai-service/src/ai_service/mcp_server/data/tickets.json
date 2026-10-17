@@ -1,0 +1,28 @@
+{
+  "empresa-demo": [
+    {
+      "id": "TCK-1042",
+      "customer_email": "cliente@cliente.test",
+      "subject": "La lámpara parpadea",
+      "status": "open",
+      "created_at": "2026-10-02T09:30:00+02:00",
+      "last_update": "Pendiente de que el cliente envíe un vídeo del fallo."
+    },
+    {
+      "id": "TCK-0981",
+      "customer_email": "cliente@cliente.test",
+      "subject": "Cambio de dirección de envío",
+      "status": "closed",
+      "created_at": "2026-08-14T12:05:00+02:00",
+      "last_update": "Dirección actualizada."
+    },
+    {
+      "id": "TCK-1050",
+      "customer_email": "laura@cliente.test",
+      "subject": "Factura con NIF incorrecto",
+      "status": "open",
+      "created_at": "2026-10-10T16:45:00+02:00",
+      "last_update": "Facturación está emitiendo la rectificativa."
+    }
+  ]
+}

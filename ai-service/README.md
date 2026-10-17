@@ -378,6 +378,37 @@ Necesitan `AI_SERVICE_TEST_DATABASE_URL` (el CI levanta
 AI_SERVICE_TEST_DATABASE_URL=postgresql+psycopg://app:secret@127.0.0.1:5432/ai_service_test uv run pytest
 ```
 
+## Servidor MCP: CRM, ERP y tickets (Fase 3)
+
+`mcp_server/` expone los sistemas de la empresa como **herramientas MCP**
+con el **SDK oficial** (`mcp` 2.x, `MCPServer`), por **streamable HTTP**
+en un contenedor propio (`ai-service-mcp`, puerto 8100, ruta `/mcp`),
+protegido con un token (`Authorization: Bearer`, comparación en tiempo
+constante; `/health` sin token). Sin token no arranca.
+
+| Herramienta | Sistema | Tipo | Qué devuelve |
+|---|---|---|---|
+| `get_customer` | CRM | lectura | Nombre, número de pedidos y fechas del cliente |
+| `get_order` | ERP | lectura | Estado, fechas, productos, envío y seguimiento de un pedido |
+| `get_customer_orders` | ERP | lectura | Pedidos del cliente, del más reciente al más antiguo (máx. 10) |
+| `get_customer_tickets` | Tickets | lectura | Tickets de soporte del cliente con su estado |
+| `create_support_ticket` | Tickets | **escritura** (`destructive_hint`) | No se ofrece al agente hasta la Fase 4 (aprobación humana con `interrupt`) |
+
+**Aislamiento:** cada herramienta recibe `tenant_id` y `customer_email`.
+**No los elige el modelo**: los pone el cliente MCP de ai-service con la
+empresa del evento y el remitente del email. Un pedido de otro cliente se
+responde igual que uno que no existe ("No hay ningún pedido con ese número
+asociado a este cliente"): ni siquiera se puede averiguar si un número
+existe. Mismo criterio que las herramientas de Laravel (Fase 7).
+
+**Datos de demostración:** el ERP lee **el mismo fichero** que el
+`DemoOrderProvider` de Laravel (`database/seeders/demo/orders.json`); el
+CRM se deriva de los pedidos y los tickets están en
+`mcp_server/data/tickets.json`. `AI_SERVICE_MCP_DEMO_TENANTS` asocia el
+`tenant_id` con la clave del fichero (`{"1": "empresa-demo"}`). En la Fase
+14 de la plataforma, los backends se sustituyen por los sistemas reales sin
+tocar las herramientas.
+
 ## Eventos: Redis Streams y el worker
 
 **Proceso `ai-service-worker`** (`entrypoints/worker.py`): un solo proceso
@@ -599,6 +630,8 @@ la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root).
 | uv instalado con `pip` en la imagen | `COPY --from=ghcr.io/astral-sh/uv` | Una dependencia de registro menos (y en algunos entornos ghcr está bloqueado) |
 | RAG: Python solo **lee** (opción A) | Mover también la indexación a Python | Un solo escritor de las tablas, sin romper el motor de Laravel ni el panel; la indexación se moverá con eventos cuando se retire el motor de Laravel |
 | RLS + rol por columnas + filtro en la consulta | Solo el filtro en la consulta | Un bug en una consulta no puede filtrar datos de otra empresa: la base de datos lo impide |
+| MCP por **streamable HTTP** en su contenedor | stdio dentro del worker | Se escala, se despliega y se vigila por separado; en Kubernetes es un Service; el token impide llamadas de terceros |
+| El contexto (empresa, cliente) lo inyecta el cliente MCP | Que el modelo pase el email del cliente | Un email malicioso no puede pedir datos de otro cliente: el modelo no controla esos argumentos |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |

@@ -11,6 +11,7 @@ dependencies = [
     "langchain-anthropic>=1.7.6",
     "langchain-core>=1.6.12",
     "langgraph>=1.2.16",
+    "mcp>=2.3",
     "prometheus-client>=0.26",
     "psycopg[binary]>=3.2",
     "pydantic>=2.14",
@@ -24,6 +25,7 @@ dependencies = [
 [project.scripts]
 ai-service-http = "ai_service.entrypoints.http.app:main"
 ai-service-worker = "ai_service.entrypoints.worker:main"
+ai-service-mcp = "ai_service.entrypoints.mcp:main"
 
 [dependency-groups]
 dev = [
