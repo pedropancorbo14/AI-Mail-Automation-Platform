@@ -3190,6 +3190,16 @@ casos, y un **historial** de todas las decisiones humanas.
   (decisiones rejected, replied). **Reprocesar** → la IA simulada prepara
   una propuesta nueva (cola sync) y la anterior queda descartada; nada
   enviado
+- [x] Fix detectado en la prueba en el navegador: la IA simulada propone
+  "A member of our team will review your message shortly" y, al revisarla
+  una persona, la promesa de revisión humana no generaba ningún aviso
+  (enviada por la persona solo es cierta si alguien hace ese seguimiento:
+  la incoherencia anotada en la Fase 8). Ahora, para la persona, es un
+  **recordatorio** ("si la envías así, asegúrate de que alguien hará ese
+  seguimiento") y no impide enviar; para el envío automático sigue
+  bloqueando igual. El menú: el número junto a "Revisión" iba pegado a la
+  etiqueta (NMenu pinta la etiqueta fuera del ámbito de los estilos
+  *scoped*): estilo en línea
 
 ### Pendientes anotados para más adelante
 

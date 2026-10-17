@@ -53,8 +53,8 @@ class ReplyContentGuard
     /**
      * @param  bool  $automatic  true = se enviaría sin persona (todas las
      *                           comprobaciones); false = avisos para la persona que la revisa
-     *                           (sin el límite de longitud ni la promesa de revisión humana,
-     *                           que ya no aplican).
+     *                           (sin el límite de longitud, que ya no aplica, y con la promesa de
+     *                           revisión humana como recordatorio de hacer ese seguimiento).
      * @return list<string> Problemas encontrados (vacío = el texto puede salir solo).
      */
     public function problems(Email $email, EmailReply $reply, bool $automatic = true): array
@@ -72,8 +72,11 @@ class ReplyContentGuard
             $problems[] = "La respuesta es demasiado larga para enviarla sola (más de {$max} caracteres).";
         }
 
-        if ($automatic && collect(self::HUMAN_PROMISES)->contains(fn (string $pattern) => preg_match($pattern, $body))) {
-            $problems[] = 'La respuesta dice que una persona revisará el caso: no puede enviarse sola.';
+        if (collect(self::HUMAN_PROMISES)->contains(fn (string $pattern) => preg_match($pattern, $body))) {
+            $problems[] = $automatic
+                ? 'La respuesta dice que una persona revisará el caso: no puede enviarse sola.'
+                // Enviada por una persona, solo es cierta si alguien hará ese seguimiento.
+                : 'La respuesta dice que una persona revisará el caso: si la envías así, asegúrate de que alguien hará ese seguimiento.';
         }
 
         if ($marker = $this->internalMarker($body)) {

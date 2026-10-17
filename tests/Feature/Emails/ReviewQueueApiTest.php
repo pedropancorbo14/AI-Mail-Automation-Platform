@@ -109,11 +109,11 @@ it('warns the reviewer about problems in the proposal', function () {
     Sanctum::actingAs($this->ana);
     $checks = $this->getJson("/api/v1/emails/{$email->id}")->assertOk()->json('data.replies.0.checks');
 
-    expect($checks)->toHaveCount(2)
-        ->and($checks[0])->toContain('phishing.test')
-        ->and($checks[1])->toContain('99,00')
-        // Una persona la revisa: prometer una revisión humana ya no es un problema.
-        ->and(implode(' ', $checks))->not->toContain('una persona revisará');
+    expect($checks)->toHaveCount(3)
+        // Una persona la revisa: prometer una revisión humana ya no impide enviarla, pero se le recuerda el seguimiento.
+        ->and($checks[0])->toBe('La respuesta dice que una persona revisará el caso: si la envías así, asegúrate de que alguien hará ese seguimiento.')
+        ->and($checks[1])->toContain('phishing.test')
+        ->and($checks[2])->toContain('99,00');
 });
 
 it('checks an edited text before sending it', function () {

@@ -33,7 +33,8 @@ const menuOptions = computed<MenuOption[]>(() =>
     visibleMenu(menuEntries, auth.can).map((entry) => ({
         key: entry.route,
         label: () =>
-            h(RouterLink, { to: { name: entry.route }, class: 'layout__link' }, {
+            // Estilo en línea: NMenu pinta la etiqueta fuera del ámbito de los estilos scoped.
+            h(RouterLink, { to: { name: entry.route }, style: 'display: inline-flex; align-items: center; gap: 8px' }, {
                 default: () => [
                     entry.label,
                     entry.showsReviewCount && reviewQueue.counts?.total
@@ -124,12 +125,6 @@ async function onUserAction(key: string): Promise<void> {
     justify-content: space-between;
     height: 56px;
     padding: 0 24px;
-}
-
-.layout__link {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
 }
 
 .layout__role {
