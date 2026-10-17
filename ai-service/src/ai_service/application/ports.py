@@ -15,6 +15,7 @@ from ai_service.application.contracts.events import (
 from ai_service.application.dto import (
     AgentOutcome,
     ClassificationResult,
+    DraftContext,
     DraftResult,
     EmbeddingResult,
 )
@@ -34,7 +35,9 @@ class LLMPort(Protocol):
 
     async def classify(self, email: Email) -> ClassificationResult: ...
 
-    async def draft(self, email: Email, classification: Classification) -> DraftResult: ...
+    async def draft(
+        self, email: Email, classification: Classification, context: DraftContext
+    ) -> DraftResult: ...
 
 
 class EmailAgentPort(Protocol):

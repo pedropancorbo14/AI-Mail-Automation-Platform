@@ -117,7 +117,7 @@ flowchart LR
     human_review --> END
 ```
 
-Grafo **actual** (Fase 1), generado por LangGraph con
+Grafo **actual** (Fase 2), generado por LangGraph con
 `agent.graph.get_graph().draw_mermaid()` (las líneas discontinuas son
 aristas condicionales):
 
@@ -125,13 +125,15 @@ aristas condicionales):
 graph TD;
 	__start__([inicio]):::first
 	classify(classify)
+	retrieve(retrieve)
 	draft(draft)
 	validate(validate)
 	human_review(human_review)
 	__end__([fin]):::last
 	__start__ --> classify;
-	classify -. router .-> draft;
+	classify -. router .-> retrieve;
 	classify -. router .-> validate;
+	retrieve --> draft;
 	draft --> validate;
 	validate -. auto_send .-> __end__;
 	validate -. human_review / escalate .-> human_review;
@@ -141,9 +143,10 @@ graph TD;
 | Nodo | Qué hace |
 |---|---|
 | `classify` | `LLMPort.classify` (structured outputs) |
-| `router` (arista condicional) | **Determinista, sin IA**: sospecha de manipulación o categoría que no se contesta (spam, respuesta automática) → directo a `validate` sin pagar un borrador; el resto → `draft` |
-| `draft` | `LLMPort.draft` con la clasificación como contexto |
-| `validate` | `DecisionPolicy` (reglas puras del dominio) |
+| `router` (arista condicional) | **Determinista, sin IA**: sospecha de manipulación o categoría que no se contesta (spam, respuesta automática) → directo a `validate` sin buscar ni redactar; el resto → `retrieve` |
+| `retrieve` | Documentación de **la empresa del email** (RAG). Se registra como la herramienta `search_company_documents`. Si Ollama o la BD fallan, el email sigue y va a revisión |
+| `draft` | `LLMPort.draft` con la clasificación y la documentación (`<documentacion>` con fuentes citables); el borrador devuelve `sources` |
+| `validate` | `DecisionPolicy` con `Evidence` (lo consultado de verdad): **una cita a algo que no se consultó → revisión humana**, y cualquier problema al consultar también |
 | `human_review` | Nodo final: la revisión la hace una persona en el panel de Laravel (Fase 13). `interrupt` + checkpointing en la Fase 4 |
 
 Detalles (`agents/email_graph.py`):
@@ -190,7 +193,7 @@ modelos Pydantic (`application/contracts/events.py`).
 | Evento | Lo publica | Campos principales |
 |---|---|---|
 | `email.received.v1` | Laravel | `email_id`, `tenant_id`, `from`, `subject`, `body`, `received_at` (+ opcionales `from_name`, `body_truncated`, `attachment_names`, `tenant_name`) |
-| `email.processed.v1` | ai-service | `category`, `draft`, `confidence`, `decision` (`auto_send` \| `human_review` \| `escalate`), `tools_used`, `language`, `reasons`, `model`, `classification` (lo que muestra el panel), `usage.calls` (tokens de cada llamada) |
+| `email.processed.v1` | ai-service | `category`, `draft`, `confidence`, `decision` (`auto_send` \| `human_review` \| `escalate`), `tools_used`, `language`, `reasons`, `model`, `classification` (lo que muestra el panel), `usage.calls` (tokens de cada llamada), `sources` (lo que cita la respuesta), `tool_calls` (herramientas usadas con su resultado, la búsqueda incluida), `duration_ms` |
 | `email.processing_failed.v1` | ai-service | `error_code` (`llm_config`, `refusal`, `invalid_output`, `timeout`, `internal`), `message`, `retryable`, `usage` |
 
 Todos llevan un sobre común: `event_id` (idempotencia: Redis Streams
@@ -354,6 +357,14 @@ El SQL de permisos y RLS está en
 [`/contracts/database/`](../contracts/database/README.md): lo aplica una
 migración de Laravel y lo ejecutan también los tests de este servicio, así
 que no pueden divergir.
+
+**Cómo lo ve Laravel:** cada resultado se registra como una **ejecución de
+agente** (`ai_agent_runs`) con sus peticiones y sus herramientas
+(`ai_tool_calls`; la búsqueda con los fragmentos encontrados). Así la traza
+"Lo que hizo la IA" del panel funciona igual que con el motor de Laravel, y
+`ReplyContentGuard` compara la respuesta con lo consultado: un precio citado
+de la documentación (14,95 €) deja enviarla sola; uno inventado (9,99 €) la
+manda a revisión. El prompt sube a **`email_draft@2`**.
 
 **Tests** (`tests/integration/test_pgvector_store.py`, PostgreSQL + pgvector
 real con el rol y RLS): resultados ordenados con su fuente, **una empresa

@@ -125,6 +125,24 @@ class ClassificationPayload(BaseModel):
     customer_name: str | None = Field(max_length=255)
 
 
+class SourcePayload(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    type: Literal["document", "order", "ticket", "customer"]
+    reference: str = Field(min_length=1, max_length=255)
+
+
+class ToolCallPayload(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tool: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    arguments: dict[str, Any]
+    result: dict[str, Any] | None
+    status: Literal["success", "error", "rejected"]
+    error: str | None = Field(max_length=500)
+    duration_ms: Annotated[int, Field(ge=0)]
+
+
 class EmailProcessed(_Event):
     """`email.processed.v1`: resultado del grafo. `decision` es una recomendación."""
 
@@ -141,6 +159,9 @@ class EmailProcessed(_Event):
     reasons: list[Annotated[str, Field(max_length=500)]] = Field(max_length=20)
     model: str = Field(min_length=1, max_length=100)
     classification: ClassificationPayload
+    sources: list[SourcePayload] = Field(default_factory=list, max_length=20)
+    tool_calls: list[ToolCallPayload] = Field(default_factory=list, max_length=50)
+    duration_ms: Annotated[int, Field(ge=0)] = 0
     usage: Usage
 
     @model_validator(mode="after")

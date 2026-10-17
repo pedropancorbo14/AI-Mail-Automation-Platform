@@ -2,6 +2,8 @@
 
 namespace App\AI\Remote;
 
+use App\AI\Agent\Enums\AgentRunStatus;
+use App\AI\Agent\Enums\AgentStopReason;
 use App\AI\Classification\EmailClassification;
 use App\AI\Classification\EmailIntent;
 use App\AI\CostCalculator;
@@ -14,10 +16,13 @@ use App\Automation\AutoSendPolicy;
 use App\Automation\EmailProcessor;
 use App\Automation\ReplySender;
 use App\Mail\Enums\EmailStatus;
+use App\Models\AiAgentRun;
 use App\Models\AiRequest;
+use App\Models\AiToolCall;
 use App\Models\Email;
 use App\Tenancy\Scopes\TenantScope;
 use App\Tenancy\TenantService;
+use App\Tools\Enums\ToolCallStatus;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +33,12 @@ use Illuminate\Support\Facades\Log;
  * decide: la respuesta pasa por AutoSendPolicy (modo de la empresa,
  * intenciones permitidas, anti-bucles, revisión del texto) como las del
  * motor de Laravel.
+ *
+ * Lo que hizo ai-service queda igual que lo que hace el agente de Laravel:
+ * una ejecución (ai_agent_runs) con sus peticiones (ai_requests) y sus
+ * herramientas (ai_tool_calls, la búsqueda en la documentación incluida).
+ * Así la traza del panel funciona igual y ReplyContentGuard compara la
+ * respuesta con los datos que la IA consultó de verdad.
  *
  * Seguridad: el email se busca por id y su empresa TIENE que coincidir con
  * el tenant_id del evento; si no, no se toca nada (cola de errores + log
@@ -196,6 +207,8 @@ class RemoteResultHandler
         $reasons = implode(' ', $event['reasons']);
         $prefix = $event['decision'] === 'escalate' ? 'La IA lo escala a una persona' : 'La IA pide revisión humana';
 
+        $run = $this->recordAgentRun($email, $event, $requests);
+
         if (trim($event['draft']) === '') {
             $email->transitionTo(EmailStatus::HumanReview, $reasons !== '' ? "{$prefix}: {$reasons}" : "{$prefix} (sin propuesta de respuesta).");
 
@@ -203,12 +216,13 @@ class RemoteResultHandler
         }
 
         $reply = $email->replies()->create([
+            'agent_run_id' => $run?->id,
             'body' => $event['draft'],
             'language' => $event['language'],
             'confidence' => $event['confidence'],
             'needs_human' => $event['decision'] !== 'auto_send',
             'needs_human_reason' => $event['decision'] !== 'auto_send' ? ($reasons !== '' ? $reasons : $prefix . '.') : null,
-            'sources' => [],
+            'sources' => $event['sources'] ?? [],
             'pending_actions' => [],
             'internal_note' => null,
         ])->refresh();
@@ -229,6 +243,68 @@ class RemoteResultHandler
             $email->intent->value,
             $event['confidence'],
         ));
+    }
+
+    /**
+     * Ejecución del agente (todo menos la clasificación) con sus herramientas.
+     * Sin borrador ni herramientas (spam, manipulación) no hay ejecución.
+     *
+     * @param  array<string, mixed>  $event
+     * @param  list<AiRequest>  $requests
+     */
+    private function recordAgentRun(Email $email, array $event, array $requests): ?AiAgentRun
+    {
+        $steps = array_values(array_filter($requests, fn (AiRequest $r) => ! str_ends_with($r->purpose, 'classification')));
+        $toolCalls = $event['tool_calls'] ?? [];
+
+        if ($steps === [] && $toolCalls === []) {
+            return null;
+        }
+
+        $duration = (int) ($event['duration_ms'] ?? 0);
+        $run = AiAgentRun::create(['email_id' => $email->id, 'started_at' => now()->subMilliseconds($duration)]);
+        $run->forceFill([
+            'status' => AgentRunStatus::Completed,
+            'stop_reason' => AgentStopReason::EndTurn,
+            'iterations' => count(array_filter($steps, fn (AiRequest $r) => str_ends_with($r->purpose, 'draft'))),
+            'tool_calls_count' => count($toolCalls),
+            'input_tokens' => array_sum(array_map(fn (AiRequest $r) => $r->input_tokens, $steps)),
+            'output_tokens' => array_sum(array_map(fn (AiRequest $r) => $r->output_tokens, $steps)),
+            'cost_usd' => sprintf('%.6f', array_sum(array_map(fn (AiRequest $r) => (float) $r->cost_usd, $steps))),
+            'duration_ms' => $duration,
+            'final_output' => [
+                'source' => 'ai-service',
+                'reply_body' => $event['draft'],
+                'confidence' => $event['confidence'],
+                'decision' => $event['decision'],
+                'reasons' => $event['reasons'],
+                'sources' => $event['sources'] ?? [],
+            ],
+            'finished_at' => now(),
+        ])->save();
+
+        foreach ($steps as $step) {
+            $step->forceFill(['agent_run_id' => $run->id])->save();
+        }
+
+        // Las herramientas cuelgan de un paso de la ejecución (la búsqueda, o el borrador).
+        $owner = collect($steps)->first(fn (AiRequest $r) => str_ends_with($r->purpose, 'knowledge_search'))
+            ?? collect($steps)->first();
+
+        foreach ($toolCalls as $call) {
+            AiToolCall::create([
+                'ai_request_id' => $owner?->id,
+                'email_id' => $email->id,
+                'tool' => $call['tool'],
+                'arguments' => $call['arguments'],
+                'result' => $call['result'],
+                'status' => ToolCallStatus::from($call['status']),
+                'error' => $call['error'],
+                'duration_ms' => $call['duration_ms'],
+            ]);
+        }
+
+        return $run;
     }
 
     /** @param  array<string, mixed>  $event */

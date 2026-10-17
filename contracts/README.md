@@ -43,6 +43,10 @@ Definiciones comunes en [`events/common.schema.json`](events/common.schema.json)
   servicio devuelve `draft` vacío y `human_review`; Laravel aplica su regla
   de siempre (spam/auto_reply con confianza de clasificación ≥ 0,8 →
   `ignored`).
+- `sources` (lo que cita la respuesta) y `tool_calls` (herramientas usadas,
+  la búsqueda en la documentación incluida, con su resultado): Laravel los
+  guarda como una ejecución de agente (`ai_agent_runs` + `ai_tool_calls`),
+  que es lo que su revisión del texto acepta como datos.
 - Cada llamada lleva `prompt` (`clave@versión`): cambiar el texto de un
   prompt obliga a subir su versión.
 - Los mensajes de error nunca llevan secretos ni el contenido del email.

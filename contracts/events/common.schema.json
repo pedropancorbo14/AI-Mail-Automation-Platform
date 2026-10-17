@@ -71,6 +71,30 @@
       ],
       "additionalProperties": false
     },
+    "source": {
+      "description": "Dato citado en la respuesta: documento (fuente citable \"Título, sección «X»\"), pedido, ticket o cliente.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["document", "order", "ticket", "customer"] },
+        "reference": { "type": "string", "minLength": 1, "maxLength": 255 }
+      },
+      "required": ["type", "reference"],
+      "additionalProperties": false
+    },
+    "tool_call": {
+      "description": "Herramienta usada al procesar el email (la búsqueda en la documentación incluida). Laravel la guarda en ai_tool_calls: es la base de la revisión del texto antes de enviarlo.",
+      "type": "object",
+      "properties": {
+        "tool": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+        "arguments": { "type": "object" },
+        "result": { "type": ["object", "null"] },
+        "status": { "type": "string", "enum": ["success", "error", "rejected"] },
+        "error": { "type": ["string", "null"], "maxLength": 500 },
+        "duration_ms": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["tool", "arguments", "result", "status", "error", "duration_ms"],
+      "additionalProperties": false
+    },
     "llm_calls": {
       "type": "array",
       "items": { "$ref": "#/$defs/llm_call" },

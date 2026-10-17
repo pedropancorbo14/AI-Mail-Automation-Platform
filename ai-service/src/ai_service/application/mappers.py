@@ -6,6 +6,8 @@ from ai_service.application.contracts.events import (
     EmailProcessingFailed,
     EmailReceived,
     LLMCallUsage,
+    SourcePayload,
+    ToolCallPayload,
     Usage,
 )
 from ai_service.application.dto import AgentOutcome, LLMCall
@@ -80,6 +82,22 @@ def processed_event(received: EmailReceived, result: AgentOutcome) -> EmailProce
             invoice_numbers=[n[:100] for n in c.invoice_numbers[:20]],
             customer_name=c.customer_name[:255] if c.customer_name else None,
         ),
+        sources=[
+            SourcePayload(type=s.type.value, reference=s.reference[:255])
+            for s in (draft.sources if draft else ())
+        ][:20],
+        tool_calls=[
+            ToolCallPayload(
+                tool=t.tool,
+                arguments=t.arguments,
+                result=t.result,
+                status=t.status,
+                error=t.error[:500] if t.error else None,
+                duration_ms=t.duration_ms,
+            )
+            for t in result.tool_calls
+        ][:50],
+        duration_ms=result.duration_ms,
         usage=usage_from_calls(result.calls),
     )
 

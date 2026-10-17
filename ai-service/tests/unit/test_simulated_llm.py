@@ -1,10 +1,13 @@
 import pytest
 
+from ai_service.application.dto import DraftContext
 from ai_service.application.errors import LLMConfigurationError
+from ai_service.application.services.knowledge import KnowledgeRetriever
 from ai_service.config import Environment, Settings
 from ai_service.domain.category import Category
 from ai_service.entrypoints.container import build_agent, build_llm
 from ai_service.infrastructure.llm.simulated import SimulatedLLM
+from tests.fakes import FakeEmbeddings, FakeVectorStore, make_chunk
 from tests.unit.domain.factories import make_email
 
 
@@ -39,26 +42,28 @@ async def test_detects_injection_and_orders() -> None:
     assert result.classification.order_numbers == ("45821",)
 
 
-async def test_only_general_questions_get_a_confident_draft() -> None:
+async def test_only_drafts_with_documentation_are_confident() -> None:
     llm = SimulatedLLM()
     question = await llm.classify(make_email(body="¿Hacéis envíos a Canarias?"))
-    order = await llm.classify(make_email(body="¿Dónde está mi pedido #45821?"))
 
-    confident = await llm.draft(make_email(), question.classification)
-    unsure = await llm.draft(make_email(), order.classification)
+    confident = await llm.draft(
+        make_email(), question.classification, DraftContext(knowledge=(make_chunk(),))
+    )
+    unsure = await llm.draft(make_email(), question.classification, DraftContext())
 
     assert confident.draft.confidence.value == 0.9
     assert not confident.draft.needs_human
+    assert "14,95 €" in confident.draft.body  # usa el dato de la documentación
+    assert confident.draft.sources[0].reference == make_chunk().source
     assert unsure.draft.needs_human
     assert unsure.draft.confidence.value == 0.5
-    assert "Empresa Demo" in confident.draft.body
 
 
 async def test_replies_in_english_to_english_emails() -> None:
     llm = SimulatedLLM()
     c = await llm.classify(make_email(subject="Shipping", body="Do you ship to Lisbon? Thank you"))
 
-    result = await llm.draft(make_email(), c.classification)
+    result = await llm.draft(make_email(), c.classification, DraftContext())
 
     assert c.classification.language == "en"
     assert result.draft.body.startswith("Hello")
@@ -77,8 +82,16 @@ def test_the_container_builds_it_only_outside_production() -> None:
 
 async def test_the_whole_graph_runs_with_it_without_api_key() -> None:
     settings = Settings(_env_file=None, llm_provider="simulated", simulated_delay_ms=0)
+    agent = build_agent(settings)
+    agent._retriever = KnowledgeRetriever(  # sin PostgreSQL ni Ollama en este test
+        FakeEmbeddings(), FakeVectorStore(by_tenant={1: [make_chunk()]})
+    )
 
-    outcome = await build_agent(settings).run(make_email(body="¿Hacéis envíos a Canarias?"))
+    outcome = await agent.run(make_email(body="¿Hacéis envíos a Canarias?"))
 
     assert outcome.outcome.decision.value == "auto_send"
-    assert [c.purpose for c in outcome.calls] == ["ai_service.classification", "ai_service.draft"]
+    assert [c.purpose for c in outcome.calls] == [
+        "ai_service.classification",
+        "ai_service.knowledge_search",
+        "ai_service.draft",
+    ]

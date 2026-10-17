@@ -3669,7 +3669,31 @@ con eventos `document.uploaded.v1` / `document.indexed.v1`).
   empresas, RLS como segunda barrera, sin escritura ni columnas extra,
   `ready` + modelo, umbral/límite, error de BD. CI: servicio
   `pgvector/pgvector:pg16` en el job `ai-service`. 190 tests
-- [ ] 2.3 Nodo `retrieve`, prompt con documentación, `sources` en el contrato
+- [x] 2.3 **Nodo `retrieve` y citas.** Contrato (`email.processed.v1`,
+  opcionales): `sources` ([{type document|order|ticket|customer,
+  reference}]), `tool_calls` ([{tool, arguments, result, status
+  success|error|rejected, error, duration_ms}]) y `duration_ms`; ejemplo
+  `--with-rag` y dos inválidos. Python: `Source`/`SourceType` en `Draft`,
+  `Evidence` (referencias consultadas + problemas) en `DecisionPolicy`
+  (**cita a algo no consultado → human_review**; problemas de consulta →
+  motivos), `ToolCallRecord`, `DraftContext`, `AgentOutcome.tool_calls` /
+  `duration_ms` (`tools_used` = las que fueron bien). `LLMPort.draft(email,
+  classification, context)`. Prompt **`email_draft@2`** (documentación en
+  `<documentacion>` con el formato de `KnowledgeContext::toPrompt()`,
+  `neutralize_docs`, `sources` en el esquema). Grafo: router → `retrieve`
+  (búsqueda registrada como herramienta `search_company_documents` con los
+  fragmentos; fallo → `knowledge_unavailable` + motivo, sin bloquear) →
+  draft → validate. Config RAG (`AI_SERVICE_DATABASE_URL` del lector,
+  `OLLAMA_URL`, `EMBEDDING_*`, `RAG_LIMIT`, `RAG_MIN_SIMILARITY`); sin URL,
+  sin RAG. IA simulada: confía solo si hay documentación (usa su texto y la
+  cita). **Laravel** (`RemoteResultHandler::recordAgentRun`): con borrador o
+  herramientas crea `ai_agent_runs` (completed, end_turn, pasos, tokens,
+  coste, duración, `final_output` con `source: ai-service`), enlaza las
+  peticiones (menos la clasificación) y guarda `ai_tool_calls` colgadas de
+  la búsqueda; la respuesta lleva `agent_run_id` y `sources`. Así
+  **`ReplyContentGuard`** usa lo consultado: 14,95 € de la documentación →
+  enviada sola; 9,99 € inventado → revisión. 198 tests de Python; Laravel
+  1186 + los 25 del entorno
 - [ ] 3.1 Servidor MCP (SDK oficial) con CRM, ERP y tickets simulados
 - [ ] 3.2 `ToolPort` + cliente MCP (contexto inyectado, solo lectura, límites)
 - [ ] 3.3 Nodo `tools`, prompt con datos, `tool_calls` en el contrato → `ai_tool_calls`

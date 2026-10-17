@@ -5,7 +5,7 @@ from ai_service.application.contracts.events import (
     EmailProcessingFailed,
     EmailReceived,
 )
-from ai_service.application.dto import AgentOutcome
+from ai_service.application.dto import AgentOutcome, ToolCallRecord
 from ai_service.application.errors import (
     AgentError,
     LLMConfigurationError,
@@ -15,6 +15,7 @@ from ai_service.application.errors import (
 from ai_service.application.use_cases.process_email import ProcessEmail
 from ai_service.domain.category import Category
 from ai_service.domain.decision import Decision, DecisionOutcome
+from ai_service.domain.draft import Source, SourceType
 from tests.fakes import FakeAgent, InMemoryEventBus, make_call
 from tests.support.contracts import assert_matches_contract, example
 from tests.unit.domain.factories import make_classification, make_draft
@@ -140,4 +141,34 @@ async def test_spam_without_draft_is_published_with_empty_draft() -> None:
     assert isinstance(event, EmailProcessed)
     assert (event.draft, event.confidence, event.decision) == ("", 0.0, "human_review")
     assert event.language == "es"
+    assert_matches_contract("email.processed.v1", event.to_json_dict())
+
+
+async def test_sources_tool_calls_and_duration_reach_the_event() -> None:
+    bus = InMemoryEventBus()
+    source = Source(SourceType.DOCUMENT, "Política de envíos, sección «Coste del envío»")
+    search = ToolCallRecord(
+        tool="search_company_documents",
+        arguments={"query": "envíos a Canarias"},
+        result={"results": [{"source": source.reference, "content": "14,95 €"}]},
+        status="success",
+        duration_ms=180,
+    )
+    result = AgentOutcome(
+        classification=make_classification(),
+        draft=make_draft(sources=(source,)),
+        outcome=DecisionOutcome(Decision.AUTO_SEND),
+        calls=(make_call(),),
+        tool_calls=(search,),
+        duration_ms=4200,
+    )
+
+    await ProcessEmail(FakeAgent(outcome=result), bus).execute(received())
+
+    [event] = bus.published
+    assert isinstance(event, EmailProcessed)
+    assert [(s.type, s.reference) for s in event.sources] == [("document", source.reference)]
+    assert event.tool_calls[0].tool == "search_company_documents"
+    assert event.tools_used == ["search_company_documents"]
+    assert event.duration_ms == 4200
     assert_matches_contract("email.processed.v1", event.to_json_dict())

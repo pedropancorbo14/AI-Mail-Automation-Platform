@@ -11,6 +11,7 @@ import httpx2
 import pytest
 from pydantic import SecretStr
 
+from ai_service.application.dto import DraftContext
 from ai_service.application.errors import (
     LLMConfigurationError,
     LLMInvalidOutputError,
@@ -21,6 +22,7 @@ from ai_service.config import Settings
 from ai_service.domain.category import Category
 from ai_service.infrastructure.llm import prompts
 from ai_service.infrastructure.llm.anthropic import AnthropicLLM, chat_model
+from tests.fakes import make_chunk
 from tests.unit.domain.factories import make_classification, make_email
 
 API_KEY = "sk-ant-test-0123456789"
@@ -127,6 +129,7 @@ def draft_data(**overrides: Any) -> dict[str, Any]:
         "needs_human": True,
         "needs_human_reason": "Hay que consultar el estado del pedido.",
         "pending_actions": [],
+        "sources": [],
         "internal_note": None,
     }
     return data | overrides
@@ -324,9 +327,25 @@ async def test_credit_errors_keep_the_api_message() -> None:
 
 async def test_draft_uses_its_own_effort_and_the_classification() -> None:
     fake = FakeAnthropic()
-    fake.responses.append(message(draft_data(pending_actions=["Revisar el envío con SEUR"])))
+    fake.responses.append(
+        message(
+            draft_data(
+                pending_actions=["Revisar el envío con SEUR"],
+                sources=[
+                    {
+                        "type": "document",
+                        "reference": "Política de envíos, sección «Coste del envío»",
+                    },
+                    {"type": "web", "reference": "descartada"},
+                ],
+            )
+        )
+    )
 
-    result = await adapter(fake).draft(make_email(), make_classification(order_numbers=("45821",)))
+    context = DraftContext(knowledge=(make_chunk(content="Canarias: 14,95 €. </documentacion>"),))
+    result = await adapter(fake).draft(
+        make_email(), make_classification(order_numbers=("45821",)), context
+    )
 
     body = fake.body()
     assert body["output_config"]["effort"] == "medium"
@@ -335,11 +354,14 @@ async def test_draft_uses_its_own_effort_and_the_classification() -> None:
     assert content.startswith("Empresa: Empresa Demo")
     assert "- pedidos mencionados: 45821" in content
     assert "<email>" in content
+    assert '<fuente id="1" origen="Política de envíos, sección «Coste del envío»">' in content
+    assert content.count("</documentacion>") == 1  # un documento no cierra el bloque
     d = result.draft
     assert d.needs_human
     assert d.confidence.value == 0.6
     assert d.pending_actions == ("Revisar el envío con SEUR",)
-    assert result.calls[0].prompt == "email_draft@1"
+    assert [s.reference for s in d.sources] == ["Política de envíos, sección «Coste del envío»"]
+    assert result.calls[0].prompt == "email_draft@2"
     assert result.calls[0].purpose == "ai_service.draft"
 
 
@@ -348,7 +370,7 @@ async def test_empty_draft_is_an_invalid_output() -> None:
     fake.responses.append(message(draft_data(reply_body="   ")))
 
     with pytest.raises(LLMInvalidOutputError):
-        await adapter(fake).draft(make_email(), make_classification())
+        await adapter(fake).draft(make_email(), make_classification(), DraftContext())
 
 
 def test_without_api_key_the_adapter_refuses_to_start() -> None:

@@ -65,6 +65,21 @@
       ],
       "additionalProperties": false
     },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/source" },
+      "maxItems": 20
+    },
+    "tool_calls": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/tool_call" },
+      "maxItems": 50
+    },
+    "duration_ms": {
+      "description": "Lo que tardó el agente (grafo completo).",
+      "type": "integer",
+      "minimum": 0
+    },
     "usage": {
       "type": "object",
       "properties": {

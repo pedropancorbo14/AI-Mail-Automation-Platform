@@ -24,7 +24,13 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage
 from pydantic import SecretStr
 
-from ai_service.application.dto import CallStatus, ClassificationResult, DraftResult, LLMCall
+from ai_service.application.dto import (
+    CallStatus,
+    ClassificationResult,
+    DraftContext,
+    DraftResult,
+    LLMCall,
+)
 from ai_service.application.errors import (
     LLMConfigurationError,
     LLMError,
@@ -36,7 +42,7 @@ from ai_service.config import Effort, Settings
 from ai_service.domain.category import Category
 from ai_service.domain.classification import Classification, Sentiment, Urgency
 from ai_service.domain.confidence import Confidence
-from ai_service.domain.draft import Draft
+from ai_service.domain.draft import Draft, Source, SourceType
 from ai_service.domain.email import Email
 from ai_service.infrastructure.llm import prompts
 from ai_service.infrastructure.llm.prompts import Prompt
@@ -89,8 +95,10 @@ class AnthropicLLM:
             ) from error
         return ClassificationResult(classification, calls)
 
-    async def draft(self, email: Email, classification: Classification) -> DraftResult:
-        content = prompts.draft_context(email, classification, self._max_body_chars)
+    async def draft(
+        self, email: Email, classification: Classification, context: DraftContext
+    ) -> DraftResult:
+        content = prompts.draft_context(email, classification, context, self._max_body_chars)
         data, calls = await self._invoke(self._drafter, prompts.DRAFT, content)
         try:
             draft = _draft(data)
@@ -283,4 +291,17 @@ def _draft(data: Mapping[str, Any]) -> Draft:
         needs_human=bool(data["needs_human"]),
         needs_human_reason=str(reason).strip() if reason else None,
         pending_actions=_strings(data.get("pending_actions")),
+        sources=_sources(data.get("sources")),
     )
+
+
+def _sources(value: Any) -> tuple[Source, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        return ()
+    found: list[Source] = []
+    for item in value:
+        if isinstance(item, Mapping) and item.get("type") in {t.value for t in SourceType}:
+            reference = str(item.get("reference") or "").strip()[:255]
+            if reference:
+                found.append(Source(SourceType(item["type"]), reference))
+    return tuple(dict.fromkeys(found))[:20]

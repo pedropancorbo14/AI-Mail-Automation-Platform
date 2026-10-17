@@ -1,0 +1,113 @@
+{
+  "event_id": "5d0e9a7b-1c2f-4e3d-8b6a-9f0e1d2c3b4a",
+  "event_type": "email.processed",
+  "event_version": 1,
+  "occurred_at": "2026-10-17T10:00:00.123456Z",
+  "trace_id": "9f2c4e6a8b1d4f3e",
+  "tenant_id": 1,
+  "email_id": 42,
+  "causation_id": "0b8f6c1e-3a52-4c1f-9a77-2f1d5e4b9c10",
+  "category": "product_question",
+  "draft": "Hola Juan:\n\nSí, enviamos a Canarias. El envío cuesta 14,95 € y tarda de 5 a 7 días laborables.\n\nUn saludo,\nEl equipo de atención al cliente de Empresa Demo",
+  "confidence": 0.92,
+  "decision": "auto_send",
+  "tools_used": [],
+  "language": "es",
+  "reasons": [],
+  "model": "claude-opus-5-5",
+  "classification": {
+    "confidence": 0.95,
+    "summary": "El cliente pregunta por el estado del pedido #45821, que no ha recibido.",
+    "sentiment": "neutral",
+    "urgency": "normal",
+    "injection_suspected": false,
+    "needs_human": false,
+    "needs_human_reason": null,
+    "order_numbers": [
+      "45821"
+    ],
+    "invoice_numbers": [],
+    "customer_name": "Juan Pérez"
+  },
+  "usage": {
+    "calls": [
+      {
+        "purpose": "ai_service.classify",
+        "provider": "anthropic",
+        "requested_model": "claude-opus-5-5",
+        "model": "claude-opus-5-5",
+        "status": "success",
+        "input_tokens": 1960,
+        "output_tokens": 159,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 0,
+        "latency_ms": 2300,
+        "stop_reason": "end_turn",
+        "provider_request_id": "msg_01ABC",
+        "error": null,
+        "prompt": "email_classification@1"
+      },
+      {
+        "purpose": "ai_service.knowledge_search",
+        "provider": "ollama",
+        "requested_model": "bge-m3",
+        "model": "bge-m3",
+        "status": "success",
+        "input_tokens": 14,
+        "output_tokens": 0,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 0,
+        "latency_ms": 180,
+        "stop_reason": null,
+        "provider_request_id": null,
+        "error": null,
+        "prompt": null
+      },
+      {
+        "purpose": "ai_service.draft",
+        "provider": "anthropic",
+        "requested_model": "claude-opus-5-5",
+        "model": "claude-opus-5-5",
+        "status": "success",
+        "input_tokens": 2400,
+        "output_tokens": 310,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 0,
+        "latency_ms": 2300,
+        "stop_reason": "end_turn",
+        "provider_request_id": "msg_01ABC",
+        "error": null,
+        "prompt": "email_draft@1"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "type": "document",
+      "reference": "Política de envíos, sección «Coste del envío»"
+    }
+  ],
+  "tool_calls": [
+    {
+      "tool": "search_company_documents",
+      "arguments": {
+        "query": "¿Hacéis envíos a Canarias?"
+      },
+      "result": {
+        "results": [
+          {
+            "source": "Política de envíos, sección «Coste del envío»",
+            "document_id": 2,
+            "chunk_id": 7,
+            "similarity": 0.74,
+            "content": "Canarias: 14,95 €, 5–7 días laborables."
+          }
+        ]
+      },
+      "status": "ok",
+      "error": null,
+      "duration_ms": 180
+    }
+  ],
+  "duration_ms": 4200
+}

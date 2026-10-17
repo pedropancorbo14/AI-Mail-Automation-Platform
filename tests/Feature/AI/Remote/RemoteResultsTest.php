@@ -96,7 +96,7 @@ it('applies a safe result: classification, AI requests with cost and automatic s
     $reply = inTenant($this->tenant, fn () => $email->replies()->sole());
     expect($reply->status)->toBe(EmailReplyStatus::Sent)
         ->and($reply->sent_automatically)->toBeTrue()
-        ->and($reply->agent_run_id)->toBeNull()
+        ->and($reply->agent_run_id)->not->toBeNull() // la ejecución de ai-service queda registrada
         ->and(resultMetric('applied'))->toBe(1.0)
         ->and($this->streams->pending['email.processed.v1'] ?? [])->toBe([]); // confirmado
 });
@@ -234,3 +234,44 @@ function lastStatusReasonOf(Email $email): ?string
 {
     return inTenant($email->tenant, fn () => $email->statusChanges()->get()->last()?->reason);
 }
+
+it('records what ai-service did as an agent run with its tool calls (also for the content guard)', function () {
+    $event = json_decode(file_get_contents(base_path('contracts/events/examples/valid/email.processed.v1--with-rag.json')), true);
+    $event = array_merge($event, [
+        'event_id' => (string) Str::uuid(),
+        'tenant_id' => $this->email->tenant_id,
+        'email_id' => $this->email->id,
+        'causation_id' => null,
+    ]);
+
+    deliverResult($event);
+
+    $email = $this->email->fresh();
+    // La respuesta cita 14,95 € de la documentación: ReplyContentGuard lo encuentra en
+    // los resultados de la búsqueda (ai_tool_calls de la ejecución) y deja enviarla sola.
+    expect($email->status)->toBe(EmailStatus::Sent)
+        ->and($this->mail->sent[0]->textBody)->toContain('14,95 €');
+
+    $reply = inTenant($this->tenant, fn () => $email->replies()->sole());
+    $run = inTenant($this->tenant, fn () => App\Models\AiAgentRun::sole());
+    $call = inTenant($this->tenant, fn () => App\Models\AiToolCall::with('aiRequest')->sole());
+
+    expect($reply->agent_run_id)->toBe($run->id)
+        ->and($reply->sources)->toBe([['type' => 'document', 'reference' => 'Política de envíos, sección «Coste del envío»']])
+        ->and($run->status->value)->toBe('completed')
+        ->and($run->tool_calls_count)->toBe(1)
+        ->and($run->duration_ms)->toBe(4200)
+        ->and($run->final_output['source'])->toBe('ai-service')
+        ->and($call->tool)->toBe('search_company_documents')
+        ->and($call->result['results'][0]['content'])->toContain('14,95 €')
+        ->and($call->aiRequest->purpose)->toBe('ai_service.knowledge_search')
+        ->and($call->aiRequest->agent_run_id)->toBe($run->id)
+        ->and($call->aiRequest->cost_usd)->toBe('0.000000'); // bge-m3 local: coste 0
+});
+
+it('does not let a reply quote amounts that are not in what the AI consulted', function () {
+    deliverResult(processedEvent($this->email, ['draft' => "Hola:\n\nEl envío a Canarias cuesta 9,99 €.\n\nUn saludo,\nEl equipo de Empresa Demo"]));
+
+    expect($this->email->fresh()->status)->toBe(EmailStatus::HumanReview)
+        ->and(lastStatusReasonOf($this->email))->toContain('9,99');
+});

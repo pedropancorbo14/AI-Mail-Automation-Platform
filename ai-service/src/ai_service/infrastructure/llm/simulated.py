@@ -14,11 +14,11 @@ import random
 import re
 import time
 
-from ai_service.application.dto import ClassificationResult, DraftResult, LLMCall
+from ai_service.application.dto import ClassificationResult, DraftContext, DraftResult, LLMCall
 from ai_service.domain.category import Category
 from ai_service.domain.classification import Classification, Sentiment, Urgency
 from ai_service.domain.confidence import Confidence
-from ai_service.domain.draft import Draft
+from ai_service.domain.draft import Draft, Source, SourceType
 from ai_service.domain.email import Email
 from ai_service.infrastructure.llm import prompts
 
@@ -123,25 +123,30 @@ class SimulatedLLM:
         )
         return ClassificationResult(classification, (call,))
 
-    async def draft(self, email: Email, classification: Classification) -> DraftResult:
+    async def draft(
+        self, email: Email, classification: Classification, context: DraftContext
+    ) -> DraftResult:
         started = time.perf_counter()
         await self._wait()
         english = classification.language == "en"
         company = email.tenant_name or "la empresa"
-        # Sin herramientas (Fase 1) solo se "confía" en preguntas generales.
-        confident = classification.category is Category.PRODUCT_QUESTION
+        # Solo "confía" si tiene documentación (como el simulado de Laravel con datos).
+        best = context.knowledge[0] if context.knowledge else None
         if english:
-            body = f"Hello,\n\nThank you for your message. [Simulated AI reply]\n\nBest regards,\nThe {company} customer service team"
+            fact = f"\n\n{best.content}" if best else ""
+            body = f"Hello,\n\nThank you for your message. [Simulated AI reply]{fact}\n\nBest regards,\nThe {company} customer service team"
         else:
-            body = f"Hola:\n\nGracias por escribirnos. [Respuesta de la IA simulada]\n\nUn saludo,\nEl equipo de atención al cliente de {company}"
+            fact = f"\n\n{best.content}" if best else ""
+            body = f"Hola:\n\nGracias por escribirnos. [Respuesta de la IA simulada]{fact}\n\nUn saludo,\nEl equipo de atención al cliente de {company}"
         draft = Draft(
             body=body,
             language=classification.language,
-            confidence=Confidence(0.9 if confident else 0.5),
-            needs_human=not confident,
+            confidence=Confidence(0.9 if best else 0.5),
+            needs_human=best is None,
             needs_human_reason=None
-            if confident
+            if best
             else "[IA simulada] No hay datos suficientes para responder.",
+            sources=(Source(SourceType.DOCUMENT, best.source),) if best else (),
         )
         call = self._call(
             "ai_service.draft", prompts.DRAFT.ref, email.body, len(body) // 4, started

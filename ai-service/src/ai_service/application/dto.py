@@ -1,7 +1,7 @@
 """Datos que cruzan los puertos (sin dependencias de ningún proveedor)."""
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from ai_service.domain.classification import Classification
 from ai_service.domain.decision import DecisionOutcome
@@ -32,6 +32,19 @@ class LLMCall:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolCallRecord:
+    """Una herramienta usada (la búsqueda en la documentación incluida). Laravel la
+    guarda en ai_tool_calls; es lo que su revisión del texto acepta como datos."""
+
+    tool: str
+    arguments: dict[str, Any]
+    result: dict[str, Any] | None
+    status: Literal["success", "error", "rejected"]
+    error: str | None = None
+    duration_ms: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class ClassificationResult:
     classification: Classification
     # Normalmente una; con fallback de servidor, una por modelo que intervino.
@@ -52,7 +65,12 @@ class AgentOutcome:
     draft: Draft | None
     outcome: DecisionOutcome
     calls: tuple[LLMCall, ...]
-    tools_used: tuple[str, ...] = field(default_factory=tuple)
+    tool_calls: tuple[ToolCallRecord, ...] = field(default_factory=tuple)
+    duration_ms: int = 0
+
+    @property
+    def tools_used(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(t.tool for t in self.tool_calls if t.status == "success"))
 
     @property
     def model(self) -> str:
@@ -74,3 +92,12 @@ class RetrievalResult:
     chunks: tuple[KnowledgeChunk, ...]
     calls: tuple[LLMCall, ...] = ()
     failed: str | None = None  # motivo si no se pudo consultar (el email sigue, a revisión)
+
+
+@dataclass(frozen=True, slots=True)
+class DraftContext:
+    """Lo que el modelo tiene delante al redactar, además del email."""
+
+    knowledge: tuple[KnowledgeChunk, ...] = ()
+    # Hubo documentación que consultar pero no se pudo (Ollama o la BD caídos).
+    knowledge_unavailable: bool = False

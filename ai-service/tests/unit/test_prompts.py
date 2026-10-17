@@ -7,7 +7,7 @@ from tests.unit.domain.factories import make_email
 # qué texto exacto se envió (mismo criterio que ai_prompt_versions en Laravel).
 KNOWN_VERSIONS = {
     "email_classification@1": "03ecdefea2ee8948dc116d58721e686fd8a2e71aa97fe4d738219377fcbf758c",
-    "email_draft@1": "8b154efd8c5a2a70190b2bd0b4a1374ebc0a4e8ff5e2c98e604e5ebba61764b2",
+    "email_draft@2": "fe6d117b52a4b261ebf0edb229f89a0fee5d1b664b4fe8b1af5cd7d82134c8a6",
 }
 
 

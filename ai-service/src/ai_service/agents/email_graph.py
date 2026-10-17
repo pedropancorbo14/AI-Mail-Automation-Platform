@@ -1,15 +1,18 @@
 """Grafo de LangGraph que decide qué hacer con un email.
 
-    START → classify ─router─┬─→ draft ─→ validate ─┬─→ END            (auto_send)
-                             └────────────→ validate ┴─→ human_review → END
+    START → classify ─router─┬─→ retrieve ─→ draft ─→ validate ─┬─→ END        (auto_send)
+                             └─────────────────────────→ validate ┴─→ human_review → END
 
 - **classify**: clasificación con structured outputs (`LLMPort.classify`).
 - **router**: arista condicional **determinista** (sin IA): sospecha de
   manipulación o categoría que no se contesta (spam, respuesta automática)
-  → directo a validate, sin gastar en redactar. En las Fases 2 y 3 enviará
-  a retrieve (RAG) y tools según la categoría.
-- **draft**: borrador (`LLMPort.draft`).
-- **validate**: reglas puras del dominio (`DecisionPolicy`).
+  → directo a validate, sin gastar en redactar; el resto → retrieve.
+- **retrieve**: documentación de la empresa (RAG, `KnowledgeRetriever`),
+  siempre de la empresa del email. Se registra como la herramienta
+  `search_company_documents`. Si falla, el email sigue y va a revisión.
+- **draft**: borrador (`LLMPort.draft`) con la documentación encontrada.
+- **validate**: reglas puras del dominio (`DecisionPolicy`), con lo que se
+  consultó de verdad (`Evidence`: una cita a algo no consultado → persona).
 - **human_review**: nodo final que deja constancia de que lo revisará una
   persona; la revisión se hace en el panel de Laravel (Fase 13). El
   `interrupt` + checkpointing llega en la Fase 4.
@@ -20,22 +23,26 @@ que importe adaptadores.
 
 import asyncio
 import operator
+import time
 from collections.abc import Awaitable
 from typing import Annotated, Any, Literal, NotRequired, Protocol, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from ai_service.application.dto import AgentOutcome, LLMCall
+from ai_service.application.dto import AgentOutcome, DraftContext, LLMCall, ToolCallRecord
 from ai_service.application.errors import AgentError, LLMError, LLMUnavailableError
 from ai_service.application.ports import LLMPort
+from ai_service.application.services.knowledge import KnowledgeRetriever
 from ai_service.domain.classification import Classification
 from ai_service.domain.decision import Decision, DecisionOutcome
 from ai_service.domain.draft import Draft
 from ai_service.domain.email import Email
-from ai_service.domain.policy import DecisionPolicy
+from ai_service.domain.knowledge import KnowledgeChunk
+from ai_service.domain.policy import DecisionPolicy, Evidence
 
-Route = Literal["draft", "validate"]
+Route = Literal["retrieve", "validate"]
+SEARCH_TOOL = "search_company_documents"
 
 
 class EmailState(TypedDict):
@@ -46,6 +53,10 @@ class EmailState(TypedDict):
     draft: NotRequired[Draft | None]
     outcome: NotRequired[DecisionOutcome]
     route: NotRequired[Route]
+    knowledge: NotRequired[tuple[KnowledgeChunk, ...]]
+    knowledge_unavailable: NotRequired[bool]
+    tool_calls: Annotated[list[ToolCallRecord], operator.add]
+    issues: Annotated[list[str], operator.add]
     visited: Annotated[list[str], operator.add]
 
 
@@ -72,16 +83,22 @@ def router(state: EmailState) -> Route:
     classification = state["classification"]
     if classification.injection_suspected or not classification.category.needs_reply:
         return "validate"
-    return "draft"
+    return "retrieve"
 
 
 class LangGraphEmailAgent:
     """Implementa `EmailAgentPort` con un grafo de LangGraph."""
 
     def __init__(
-        self, llm: LLMPort, policy: DecisionPolicy, *, timeout_seconds: float = 240.0
+        self,
+        llm: LLMPort,
+        policy: DecisionPolicy,
+        *,
+        retriever: KnowledgeRetriever | None = None,
+        timeout_seconds: float = 240.0,
     ) -> None:
         self._llm = llm
+        self._retriever = retriever
         self._policy = policy
         self._timeout = timeout_seconds
         self.graph = self._build()
@@ -89,12 +106,16 @@ class LangGraphEmailAgent:
     def _build(self) -> CompiledStateGraph[EmailState, None, EmailState, EmailState]:
         graph = StateGraph(EmailState)
         graph.add_node("classify", _billed(self._classify))
+        graph.add_node("retrieve", self._retrieve)
         graph.add_node("draft", _billed(self._draft))
         graph.add_node("validate", self._validate)
         graph.add_node("human_review", self._human_review)
 
         graph.add_edge(START, "classify")
-        graph.add_conditional_edges("classify", router, {"draft": "draft", "validate": "validate"})
+        graph.add_conditional_edges(
+            "classify", router, {"retrieve": "retrieve", "validate": "validate"}
+        )
+        graph.add_edge("retrieve", "draft")
         graph.add_edge("draft", "validate")
         graph.add_conditional_edges(
             "validate", self._after_validate, {"end": END, "human_review": "human_review"}
@@ -103,7 +124,14 @@ class LangGraphEmailAgent:
         return graph.compile()
 
     async def run(self, email: Email) -> AgentOutcome:
-        initial: EmailState = {"email": email, "calls": [], "visited": []}
+        initial: EmailState = {
+            "email": email,
+            "calls": [],
+            "tool_calls": [],
+            "issues": [],
+            "visited": [],
+        }
+        started = time.perf_counter()
         try:
             async with asyncio.timeout(self._timeout):
                 # El grafo no tiene ciclos: 10 pasos sobran; protege de errores futuros.
@@ -117,7 +145,8 @@ class LangGraphEmailAgent:
             draft=state.get("draft"),
             outcome=state["outcome"],
             calls=tuple(state["calls"]),
-            tools_used=(),
+            tool_calls=tuple(state["tool_calls"]),
+            duration_ms=int((time.perf_counter() - started) * 1000),
         )
 
     async def _classify(self, state: EmailState) -> dict[str, Any]:
@@ -128,12 +157,61 @@ class LangGraphEmailAgent:
             "visited": ["classify"],
         }
 
+    async def _retrieve(self, state: EmailState) -> dict[str, Any]:
+        if self._retriever is None:  # sin RAG configurado: se redacta sin documentación
+            return {"visited": ["retrieve"]}
+        email = state["email"]
+        started = time.perf_counter()
+        result = await self._retriever.retrieve(email)
+        record = ToolCallRecord(
+            tool=SEARCH_TOOL,
+            arguments={"query": KnowledgeRetriever.query_for(email)[:500]},
+            result=None
+            if result.failed
+            else {
+                "results": [
+                    {
+                        "source": c.source,
+                        "document_id": c.document_id,
+                        "chunk_id": c.chunk_id,
+                        "similarity": c.similarity,
+                        "content": c.content[:1500],
+                    }
+                    for c in result.chunks
+                ]
+            },
+            status="error" if result.failed else "success",
+            error=result.failed,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+        issues = (
+            [f"No se pudo consultar la documentación: {result.failed}"] if result.failed else []
+        )
+        return {
+            "knowledge": result.chunks,
+            "knowledge_unavailable": bool(result.failed),
+            "calls": list(result.calls),
+            "tool_calls": [record],
+            "issues": issues,
+            "visited": ["retrieve"],
+        }
+
     async def _draft(self, state: EmailState) -> dict[str, Any]:
-        result = await self._llm.draft(state["email"], state["classification"])
+        context = DraftContext(
+            knowledge=state.get("knowledge", ()),
+            knowledge_unavailable=state.get("knowledge_unavailable", False),
+        )
+        result = await self._llm.draft(state["email"], state["classification"], context)
         return {"draft": result.draft, "calls": list(result.calls), "visited": ["draft"]}
 
     async def _validate(self, state: EmailState) -> dict[str, Any]:
-        outcome = self._policy.decide(state["email"], state["classification"], state.get("draft"))
+        evidence = Evidence(
+            references=frozenset(c.source for c in state.get("knowledge", ())),
+            issues=tuple(state["issues"]),
+        )
+        outcome = self._policy.decide(
+            state["email"], state["classification"], state.get("draft"), evidence
+        )
         return {"outcome": outcome, "visited": ["validate"]}
 
     @staticmethod

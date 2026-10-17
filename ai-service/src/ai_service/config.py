@@ -55,6 +55,18 @@ class Settings(BaseSettings):
     # Laravel ya recorta el cuerpo; esto es una segunda barrera (avisando al modelo).
     max_body_chars: int = Field(default=20_000, ge=1000)
 
+    # --- RAG (documentación de la empresa) ---
+    # Rol de PostgreSQL de SOLO LECTURA (ai_service_reader, con RLS por empresa).
+    # Sin URL, el grafo redacta sin documentación.
+    database_url: SecretStr | None = None
+    ollama_url: str = "http://ollama:11434"
+    # El MISMO modelo con el que Laravel indexó los documentos.
+    embedding_model: str = "bge-m3"
+    embedding_dimensions: int = Field(default=1024, ge=1)
+    embedding_timeout_seconds: float = Field(default=30.0, gt=0)
+    rag_limit: int = Field(default=5, ge=1, le=20)
+    rag_min_similarity: float = Field(default=0.45, ge=0, le=1)
+
     # --- Agente y reglas de decisión ---
     min_confidence: float = Field(default=0.85, ge=0, le=1)
     # Tope del grafo entero (incluye los reintentos del SDK de cada llamada).

@@ -18,6 +18,21 @@ from ai_service.domain.email import Email
 
 DEFAULT_MIN_CONFIDENCE = Confidence(0.85)
 
+
+@dataclass(frozen=True, slots=True)
+class Evidence:
+    """Lo que la IA consultó de verdad para preparar la respuesta.
+
+    - `references`: fuentes que se le dieron (documentos, pedidos...). Una
+      respuesta que cita algo que no está aquí se lo ha inventado.
+    - `issues`: problemas al consultar (documentación no disponible, pedido no
+      encontrado...). Cualquiera manda el caso a una persona.
+    """
+
+    references: frozenset[str] = frozenset()
+    issues: tuple[str, ...] = ()
+
+
 # Amenazas legales: siempre escalado (una persona con prioridad).
 _LEGAL_THREAT = re.compile(
     r"\b(abogad[oa]s?|denunciar(é|emos)?|poner\s+una\s+(denuncia|demanda)|demandar(é|emos)?|"
@@ -32,10 +47,15 @@ class DecisionPolicy:
     min_confidence: Confidence = field(default=DEFAULT_MIN_CONFIDENCE)
 
     def decide(
-        self, email: Email, classification: Classification, draft: Draft | None
+        self,
+        email: Email,
+        classification: Classification,
+        draft: Draft | None,
+        evidence: Evidence | None = None,
     ) -> DecisionOutcome:
+        evidence = evidence or Evidence()
         escalate: list[str] = []
-        review: list[str] = []
+        review: list[str] = list(evidence.issues)
 
         if classification.injection_suspected:
             escalate.append("Posible intento de manipular a la IA: no se propone respuesta.")
@@ -74,6 +94,10 @@ class DecisionPolicy:
                     + "."
                 )
             review.extend(forbidden_commitments(draft.body))
+            known = {r.casefold() for r in evidence.references}
+            for source in draft.sources:
+                if source.reference.casefold() not in known:
+                    review.append(f"La respuesta cita algo que no consultó: {source.reference}.")
 
         if escalate:
             return DecisionOutcome(Decision.ESCALATE, tuple(escalate + review))
