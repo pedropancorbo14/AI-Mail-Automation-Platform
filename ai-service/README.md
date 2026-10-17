@@ -633,6 +633,33 @@ No hace falta un límite de reanudaciones: cada pausa espera **una** acción
 y una reanudación repetida (Redis entrega al menos una vez) encuentra el
 hilo ya terminado (`expired`).
 
+## Supervisor, especialistas y modo sombra (Fase 5)
+
+> En curso. Diseño:
+
+- **Supervisor determinista** (sin llamada extra al modelo): con la
+  clasificación (que ya es una llamada con structured outputs) decide qué
+  especialistas intervienen. El principal sale de la intención (pedidos,
+  facturación, soporte o general) y se añaden secundarios si el email
+  menciona pedidos o facturas. Un email no puede "pedir" un especialista
+  con más herramientas: solo cuentan la intención y los datos extraídos.
+- **Especialistas** como subgrafos de LangGraph, en paralelo (`Send`):
+  cada uno consulta los datos de su dominio con un plan determinista y
+  propone sus acciones. Aportan también sus reglas para redactar.
+- **Redactor agéntico:** el modelo redacta con todo lo consultado y puede
+  pedir consultas extra de **solo lectura** de los especialistas del email
+  (bucle de tool calling con límites). La empresa y el cliente siguen
+  saliendo del email, nunca del modelo. Cada consulta lleva su `origin`
+  (`plan`, `model`, `approval`) para la auditoría.
+- **Modo sombra:** con el motor de Laravel activo, una muestra de los
+  emails se procesa también aquí **sin efectos** (sin acciones, sin pausa,
+  sin tocar el email) para comparar los dos motores (intención, decisión,
+  coste, tiempo).
+
+Contrato (tarea 5.1): `specialists`, `tool_call.origin` y `mode`
+(`live`/`shadow`), ver [`contracts/README.md`](../contracts/README.md#especialistas-y-modo-sombra-fase-5-de-ai-service).
+Laravel ya descarta cualquier resultado en modo sombra sin tocar el email.
+
 ## Eventos: Redis Streams y el worker
 
 **Proceso `ai-service-worker`** (`entrypoints/worker.py`): un solo proceso

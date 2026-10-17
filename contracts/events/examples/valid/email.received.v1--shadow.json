@@ -1,0 +1,14 @@
+{
+  "event_id": "2c7e4a1b-9d3f-4b6e-8a2c-5f1e0d9b8a7c",
+  "event_type": "email.received",
+  "event_version": 1,
+  "occurred_at": "2026-10-17T10:00:00.123456Z",
+  "trace_id": "9f2c4e6a8b1d4f3e",
+  "tenant_id": 1,
+  "email_id": 42,
+  "from": "cliente@cliente.test",
+  "subject": "",
+  "body": "Hola, hice el pedido #45821 hace una semana y no me ha llegado. ¿Me decís algo?\nGracias, Juan",
+  "received_at": "2026-10-17T09:59:58Z",
+  "mode": "shadow"
+}

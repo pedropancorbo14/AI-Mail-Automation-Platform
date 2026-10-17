@@ -34,6 +34,10 @@ Probability = Annotated[float, Field(ge=0, le=1)]
 TokenCount = Annotated[int, Field(ge=0)]
 ThreadId = Annotated[str, Field(pattern=r"^[A-Za-z0-9._:-]{8,128}$")]
 ToolName = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+# live: el resultado se aplica al email; shadow: solo se compara (sin efectos).
+Mode = Literal["live", "shadow"]
+Specialist = Literal["orders", "billing", "support", "general"]
+ToolOrigin = Literal["plan", "model", "approval"]
 
 
 class InvalidEventError(ValueError):
@@ -86,6 +90,14 @@ class EmailReceived(_Event):
     tenant_name: str | None = Field(default=None, max_length=255)
     # Indicación de una persona del equipo al reprocesar desde el panel.
     review_instruction: str | None = Field(default=None, max_length=2000)
+    # shadow: el motor de Laravel procesa el email; esto es solo para comparar (Fase 5).
+    mode: Mode = "live"
+
+    @model_validator(mode="after")
+    def _shadow_without_instruction(self) -> Self:
+        if self.mode == "shadow" and self.review_instruction is not None:
+            raise ValueError("una copia en modo sombra no lleva indicación de una persona")
+        return self
 
 
 class LLMCallUsage(BaseModel):
@@ -146,6 +158,8 @@ class ToolCallPayload(BaseModel):
     status: Literal["success", "error", "rejected"]
     error: str | None = Field(max_length=500)
     duration_ms: Annotated[int, Field(ge=0)]
+    # Quién decidió la llamada (Fase 5). Eventos anteriores no lo traen: el plan.
+    origin: ToolOrigin = "plan"
 
 
 class PendingActionPayload(BaseModel):
@@ -182,9 +196,16 @@ class EmailProcessed(_Event):
     # Grafo en pausa esperando la aprobación de `pending_action` (Fase 4).
     thread_id: ThreadId | None = None
     pending_action: PendingActionPayload | None = None
+    mode: Mode = "live"
+    # Especialistas que consultaron datos; el primero es el principal (Fase 5).
+    specialists: list[Specialist] = Field(default_factory=list, max_length=4)
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
+        if len(set(self.specialists)) != len(self.specialists):
+            raise ValueError("especialistas repetidos")
+        if self.mode == "shadow" and (self.pending_action is not None or self.thread_id):
+            raise ValueError("en modo sombra no hay acciones pendientes ni pausas")
         if self.decision == "auto_send" and not self.draft:
             raise ValueError("auto_send exige un borrador")
         if self.pending_action is not None:
@@ -207,6 +228,7 @@ class EmailProcessingFailed(_Event):
     message: str = Field(min_length=1, max_length=500)
     retryable: bool
     usage: Usage
+    mode: Mode = "live"
 
 
 class EmailReviewResumed(_Event):

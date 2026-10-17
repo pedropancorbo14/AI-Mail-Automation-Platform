@@ -36,6 +36,11 @@
       },
       "required": ["calls"],
       "additionalProperties": false
+    },
+    "mode": {
+      "description": "El mismo mode del email.received.v1 que lo causó. Ausente = live.",
+      "$ref": "common.schema.json#/$defs/mode",
+      "default": "live"
     }
   },
   "required": [

@@ -193,6 +193,17 @@ it('does not apply the same result twice', function () {
         ->and(resultMetric('stale'))->toBe(1.0);
 });
 
+it('never applies a shadow result to the email', function () {
+    deliverResult(processedEvent($this->email, ['mode' => 'shadow']));
+    deliverResult(failedEvent($this->email, ['mode' => 'shadow']), 'email.processing_failed');
+
+    expect($this->email->fresh()->status)->toBe(EmailStatus::Processing)
+        ->and($this->mail->sent)->toBe([])
+        ->and(inTenant($this->tenant, fn () => AiRequest::count()))->toBe(0)
+        ->and(inTenant($this->tenant, fn () => $this->email->replies()->count()))->toBe(0)
+        ->and(resultMetric('shadow'))->toBe(1.0);
+});
+
 it('acknowledges results of emails deleted in the meantime', function () {
     $event = processedEvent($this->email);
     inTenant($this->tenant, fn () => $this->email->delete());

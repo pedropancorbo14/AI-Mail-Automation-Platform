@@ -4033,6 +4033,78 @@ ai-results` y un correo de soporte técnico de un cliente sin ticket
 abierto (p. ej. marcos@cliente.test). Siguiente: Fase 5 (supervisor con
 subagentes y modo *shadow*) cuando lo apruebe.
 
+### AI-Service, Fase 5 (supervisor con especialistas y modo sombra): EN CURSO (2026-10-17)
+
+Misma rama `fase-ai-service`, misma forma de trabajo (un commit por tarea,
+tests en verde, CI comprobado tras cada push, documentación al día).
+
+**Objetivo:** pasar del grafo único a un **supervisor con especialistas**
+(pedidos, facturación, soporte) y un **redactor agéntico** que puede pedir
+consultas de solo lectura por su cuenta; y un **modo sombra** para
+comparar el motor de Python con el de Laravel con emails reales sin que
+el de Python afecte a nada.
+
+**Decisiones tomadas:**
+- **Supervisor determinista, sin llamada extra al modelo.** Decide con la
+  clasificación (ya es una llamada con structured outputs): especialista
+  principal por intención (`orders`: order_status, return_request,
+  cancellation; `billing`: invoice_request, billing_issue; `support`:
+  technical_support, complaint, product_question; `general`: el resto) y
+  secundarios si el email menciona pedidos (`orders`) o facturas
+  (`billing`). Se descartó un supervisor LLM: una llamada más por email
+  (presupuesto ajustado), menos predecible y un email malicioso podría
+  intentar dirigirse a un especialista con más herramientas.
+- **Especialistas = subgrafos de LangGraph** lanzados en paralelo con
+  `Send`: cada uno consulta su dominio con un plan determinista (el de la
+  Fase 3, repartido por dominio), propone sus acciones (soporte: abrir un
+  ticket) y aporta sus reglas de redacción. Sin llamadas al modelo: el
+  coste por email no sube.
+- **La aprobación de acciones sigue en el grafo principal** (después de
+  juntar lo de los especialistas): un `interrupt` dentro de una rama en
+  paralelo complicaría reanudar.
+- **Redactor agéntico** (cumple lo anunciado en `tool_planner.py`): el
+  modelo redacta con lo consultado y puede pedir **consultas extra de
+  solo lectura** de los especialistas del email (bucle de tool calling de
+  LangGraph: redactar ↔ consultar), con límites de rondas y de llamadas.
+  Lo normal es que no pida nada (el plan ya trajo los datos): una sola
+  llamada, como ahora. Empresa y cliente siguen saliendo del email;
+  herramientas descritas en el código (nunca con `tenant_id`/
+  `customer_email`). Cada consulta lleva `origin` (`plan`, `model`,
+  `approval`) para la auditoría.
+- **Modo sombra:** con `AI_ENGINE=laravel`, una muestra configurable de
+  emails se publica también a ai-service con `mode: shadow`. ai-service la
+  procesa **sin efectos** (sin acciones ni pausa) y Laravel guarda el
+  resultado en una tabla propia, **nunca lo aplica al email**. Se compara
+  cuando los dos motores han terminado (intención, decisión recomendada,
+  confianza, coste, tiempo). Comparación y costes, solo para el operador
+  (Grafana y comandos), no en el panel. El coste de la sombra cuenta para
+  el presupuesto diario de la empresa (`AiSpendGuard`).
+
+**Tareas:**
+- [x] 5.1 **Contrato.** `common`: `mode` (`live`/`shadow`), `specialist`
+  (orders, billing, support, general) y `tool_call.origin` opcional (`plan`,
+  `model`, `approval`). `email.received.v1`: `mode` opcional (en sombra,
+  `review_instruction` debe ser null). `email.processed.v1`: `mode` y
+  `specialists` (sin repetir, máx. 4; en sombra sin `pending_action` ni
+  `thread_id`). `email.processing_failed.v1`: `mode`. Ejemplos válidos
+  (sombra en los tres eventos, especialistas con origen de las
+  herramientas) e inválidos (sombra con indicación, modo desconocido,
+  sombra con acción pendiente, especialista desconocido o repetido, origen
+  desconocido). Python: `Mode`, `Specialist`, `ToolOrigin`, validadores
+  (`origin` por defecto `plan`). **Laravel: `RemoteResultHandler` descarta
+  cualquier resultado en sombra sin tocar el email** (resultado `shadow`
+  en la métrica) aunque la sombra aún no se publique: un resultado en
+  sombra nunca debe aplicarse. 53 tests de contrato (Python), 118 de
+  `tests/Feature/AI/Remote`
+- [ ] 5.2 Especialistas y supervisor (subgrafos, `Send`, prompt de
+  redacción con las reglas de cada especialista)
+- [ ] 5.3 Redactor agéntico (bucle de tool calling con límites)
+- [ ] 5.4 Laravel: especialistas y origen de las herramientas en la traza
+- [ ] 5.5 Modo sombra en ai-service
+- [ ] 5.6 Laravel: publicar en sombra y guardar el resultado
+- [ ] 5.7 Comparación, métricas, Grafana e informe
+- [ ] 5.8 Compose, CI, README y prueba de punta a punta
+
 ### Pendientes anotados para más adelante
 
 - **Herramientas por tipo de negocio (Fase 14, integraciones)** — pedido

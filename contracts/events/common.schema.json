@@ -90,7 +90,12 @@
         "result": { "type": ["object", "null"] },
         "status": { "type": "string", "enum": ["success", "error", "rejected"] },
         "error": { "type": ["string", "null"], "maxLength": 500 },
-        "duration_ms": { "type": "integer", "minimum": 0 }
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "origin": {
+          "description": "Quién decidió la llamada: plan = el backend (determinista, según la intención); model = el modelo al redactar (solo herramientas de lectura de los especialistas del email); approval = una acción aprobada por una persona. Ausente en eventos anteriores a la Fase 5 de ai-service.",
+          "type": "string",
+          "enum": ["plan", "model", "approval"]
+        }
       },
       "required": ["tool", "arguments", "result", "status", "error", "duration_ms"],
       "additionalProperties": false
@@ -99,6 +104,16 @@
       "type": "array",
       "items": { "$ref": "#/$defs/llm_call" },
       "maxItems": 50
+    },
+    "mode": {
+      "description": "live = el resultado se aplica al email (motor de IA activo). shadow = comparación: ai-service procesa una copia sin efectos (sin acciones, sin pausa) y Laravel solo guarda el resultado para compararlo con su propio motor; nunca toca el email.",
+      "type": "string",
+      "enum": ["live", "shadow"]
+    },
+    "specialist": {
+      "description": "Especialista de ai-service que intervino (Fase 5): orders = pedidos, devoluciones y cancelaciones; billing = facturas y cobros; support = soporte técnico y quejas; general = el resto.",
+      "type": "string",
+      "enum": ["orders", "billing", "support", "general"]
     },
     "thread_id": {
       "description": "Ejecución del grafo de ai-service en pausa esperando a una persona (checkpoint de LangGraph). Laravel la devuelve tal cual para reanudarla.",

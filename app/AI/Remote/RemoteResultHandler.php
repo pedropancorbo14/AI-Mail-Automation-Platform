@@ -73,7 +73,7 @@ class RemoteResultHandler
     }
 
     /**
-     * @return string Resultado: applied, stale, missing.
+     * @return string Resultado: applied, stale, missing, shadow.
      *
      * @throws InvalidEventException si no cumple el contrato o la empresa no coincide.
      */
@@ -81,6 +81,11 @@ class RemoteResultHandler
     {
         $type = self::eventType($message->stream);
         $event = $this->contract->validate("{$type}.v1", $message->payload());
+
+        if (($event['mode'] ?? 'live') === 'shadow') {
+            // Una copia en modo sombra nunca toca el email: solo se compara (Fase 5).
+            return 'shadow';
+        }
 
         $email = Email::withoutGlobalScope(TenantScope::class)->with('tenant')->find($event['email_id']);
 

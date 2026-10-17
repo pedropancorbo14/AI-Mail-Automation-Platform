@@ -95,6 +95,18 @@
     "pending_action": {
       "description": "Acción propuesta que espera aprobación. Con ella, decision nunca es auto_send y thread_id es obligatorio.",
       "anyOf": [{ "$ref": "common.schema.json#/$defs/pending_action" }, { "type": "null" }]
+    },
+    "mode": {
+      "description": "El mismo mode del email.received.v1 que lo causó. Ausente = live.",
+      "$ref": "common.schema.json#/$defs/mode",
+      "default": "live"
+    },
+    "specialists": {
+      "description": "Especialistas que consultaron datos para este email; el primero es el principal (el que guía la respuesta).",
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/specialist" },
+      "uniqueItems": true,
+      "maxItems": 4
     }
   },
   "required": [
@@ -115,6 +127,12 @@
           "thread_id": { "$ref": "common.schema.json#/$defs/thread_id" },
           "decision": { "enum": ["human_review", "escalate"] }
         }
+      }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "shadow" } }, "required": ["mode"] },
+      "then": {
+        "properties": { "pending_action": { "type": "null" }, "thread_id": { "type": "null" } }
       }
     }
   ],

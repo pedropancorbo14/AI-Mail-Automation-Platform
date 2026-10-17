@@ -46,11 +46,20 @@
       "description": "Indicación de una persona del equipo al reprocesar el email desde el panel (\"ofrécele el cambio de talla\"). Es de la empresa, no del cliente; las reglas (no prometer reembolsos, citar solo lo consultado) siguen aplicando.",
       "type": ["string", "null"],
       "maxLength": 2000
+    },
+    "mode": {
+      "description": "shadow: el email lo procesa el motor de Laravel y esta copia solo sirve para comparar (ver common.mode). Ausente = live.",
+      "$ref": "common.schema.json#/$defs/mode",
+      "default": "live"
     }
   },
   "required": [
     "event_id", "event_type", "event_version", "occurred_at", "trace_id",
     "tenant_id", "email_id", "from", "subject", "body", "received_at"
   ],
+  "if": { "properties": { "mode": { "const": "shadow" } }, "required": ["mode"] },
+  "then": {
+    "properties": { "review_instruction": { "type": "null" } }
+  },
   "additionalProperties": true
 }

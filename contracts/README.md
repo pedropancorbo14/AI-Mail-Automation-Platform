@@ -78,6 +78,26 @@ nunca se ejecutan solas:
 `expired` es un valor nuevo de un enum (no un campo opcional): se acepta
 porque los dos lados se actualizan en el mismo cambio.
 
+## Especialistas y modo sombra (Fase 5 de ai-service)
+
+Campos opcionales (la v1 no se rompe):
+
+- `email.processed.v1` → **`specialists`**: los especialistas que
+  consultaron datos (`orders`, `billing`, `support`, `general`); el primero
+  es el principal. Sin repetir.
+- `tool_call.origin` (en `email.processed.v1` → `tool_calls`): quién
+  decidió la llamada. `plan` = el backend, según la intención; `model` = el
+  modelo al redactar (solo herramientas de lectura de los especialistas del
+  email); `approval` = una acción aprobada por una persona. Sin el campo
+  (eventos anteriores) se entiende `plan`.
+- **`mode`** (`live` por defecto, o `shadow`) en `email.received.v1`,
+  `email.processed.v1` y `email.processing_failed.v1`. En **modo sombra**
+  el email lo procesa el motor de Laravel y ai-service procesa una copia
+  solo para comparar los dos motores. Una copia en sombra no lleva
+  `review_instruction`, nunca deja acciones pendientes ni pausas
+  (`pending_action` y `thread_id` a null) y **Laravel nunca la aplica al
+  email**: solo guarda el resultado para la comparación.
+
 ## Añadir un ejemplo
 
 Un fichero por caso, con el nombre `<evento>.v<N>--<caso>.json` (sin
