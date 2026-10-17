@@ -9,6 +9,7 @@ use App\Mail\Enums\EmailStatus;
 use App\Mail\Enums\MailConnectionStatus;
 use App\Mail\Enums\MailProviderType;
 use App\Mail\MailProviderFactory;
+use App\Models\AiToolCall;
 use App\Models\AuditLog;
 use App\Models\Email;
 use App\Models\MailConnection;
@@ -53,7 +54,17 @@ function pendingActionEvent(Email $email): array
         'email_id' => $email->id,
         'causation_id' => $email->fresh()->ai_event_id,
         'thread_id' => "t{$email->tenant_id}-e{$email->id}-" . Str::uuid(),
+        'tool_calls' => pauseToolCalls(),
     ]);
+}
+
+/** Lo que consultó ai-service antes de la pausa. */
+function pauseToolCalls(): array
+{
+    return [
+        ['tool' => 'get_order', 'arguments' => ['order_number' => '45821'], 'result' => ['order' => ['number' => '45821', 'status' => 'delivered']], 'status' => 'success', 'error' => null, 'duration_ms' => 30],
+        ['tool' => 'get_customer_tickets', 'arguments' => ['limit' => 5], 'result' => ['tickets' => []], 'status' => 'success', 'error' => null, 'duration_ms' => 20],
+    ];
 }
 
 /** Resultado tras reanudar: redacta con el ticket creado y no vuelve a clasificar. */
@@ -68,7 +79,8 @@ function resumedEvent(Email $email, array $overrides = []): array
     $event['sources'] = [['type' => 'ticket', 'reference' => 'TCK-2001']];
     $event['usage']['calls'][0]['purpose'] = 'ai_service.draft';
     $event['usage']['calls'][0]['prompt'] = 'email_draft@4';
-    $event['tool_calls'] = [[
+    // Tras reanudar llegan TODAS las herramientas: las de antes de la pausa y la acción.
+    $event['tool_calls'] = [...pauseToolCalls(), [
         'tool' => 'create_support_ticket',
         'arguments' => ['subject' => 'La lámpara no enciende', 'priority' => 'normal'],
         'result' => ['ticket' => ['id' => 'TCK-2001', 'status' => 'open']],
@@ -175,6 +187,16 @@ it('applies the result after resuming: keeps the original classification and the
         // technical_support no se envía solo por defecto: lo decide Laravel, no ai-service.
         ->and($email->status)->toBe(EmailStatus::HumanReview)
         ->and($reply->status)->toBe(EmailReplyStatus::Draft);
+
+    // Una sola ejecución con las 3 herramientas (sin repetir las de la pausa), todas en la traza.
+    $runs = inTenant($this->tenant, fn () => $email->agentRuns()->with('aiRequests.toolCalls')->get());
+    $tools = inTenant($this->tenant, fn () => AiToolCall::where('email_id', $email->id)->orderBy('id')->get());
+    expect($runs)->toHaveCount(1)
+        ->and($runs[0]->tool_calls_count)->toBe(3)
+        ->and($runs[0]->iterations)->toBe(1)
+        ->and($tools->pluck('tool')->all())->toBe(['get_order', 'get_customer_tickets', 'create_support_ticket'])
+        ->and($tools->pluck('ai_request_id')->unique()->all())->toBe([$reply->agentRun->aiRequests()->value('id')])
+        ->and($reply->agent_run_id)->toBe($runs[0]->id);
 });
 
 it('refuses a second decision, a missing action and the laravel engine with a 409', function () {

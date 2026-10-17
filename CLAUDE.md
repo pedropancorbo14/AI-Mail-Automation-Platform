@@ -3983,6 +3983,19 @@ pasos) que mandan el caso a una persona en vez de fallar.
   reconciliador republica la decisión, `expired` → persona, otra empresa →
   404) y Vitest (2 nuevos en `ReviewPanel.test.ts`, 87 en total). Laravel
   1219 + los 25 del entorno
+- [x] Fix (CI en rojo en la 4.7): dos líneas de tests de ai-service pasaron
+  del máximo de ruff al renombrar el propósito. **Lección:** pasar `ruff
+  format` + `ruff check` siempre que se toque `ai-service/`, también si solo
+  son tests o un renombrado
+- [x] Fix detectado en la prueba de punta a punta: tras reanudar, ai-service
+  manda **todas** las herramientas (las de antes de la pausa y la acción) y
+  Laravel creaba otra ejecución con todas → `ai_tool_calls` duplicadas
+  (auditoría y métricas de Grafana contadas dos veces) y las de la pausa
+  sin paso (`ai_request_id` null: no salían en la traza). Ahora un resultado
+  tras reanudar **continúa la ejecución de la pausa**: suma pasos, tokens,
+  coste y duración, añade solo las herramientas nuevas (las de la pausa van
+  primero, en orden) y las de la pausa pasan a colgar del primer paso.
+  Test en `RemoteApprovalTest`
 - [ ] 4.8 Compose, CI, README y prueba de punta a punta
 
 ### Pendientes anotados para más adelante

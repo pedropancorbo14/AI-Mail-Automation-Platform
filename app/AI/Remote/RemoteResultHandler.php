@@ -123,11 +123,14 @@ class RemoteResultHandler
 
             $requests = $this->recordRequests($email, $event['usage']['calls'] ?? []);
 
+            // Resultado tras reanudar una pausa: continúa la ejecución de la pausa.
+            $resumed = is_array($email->ai_pending_action) && array_key_exists('approved', $email->ai_pending_action);
+
             // La indicación ya se usó y una acción anterior ya no está pendiente.
             $email->forceFill(['ai_review_instruction' => null, 'ai_pending_action' => null])->save();
 
             $type === self::PROCESSED
-                ? $this->applyProcessed($email, $event, $requests)
+                ? $this->applyProcessed($email, $event, $requests, $resumed)
                 : $this->applyFailed($email, $event);
 
             return 'applied';
@@ -183,7 +186,7 @@ class RemoteResultHandler
      * @param  array<string, mixed>  $event
      * @param  list<AiRequest>  $requests
      */
-    private function applyProcessed(Email $email, array $event, array $requests): void
+    private function applyProcessed(Email $email, array $event, array $requests, bool $resumed = false): void
     {
         $c = $event['classification'];
         $classifyRequest = collect($requests)->first(fn (AiRequest $r) => str_ends_with($r->purpose, 'classification') && $r->status === AiRequestStatus::Success);
@@ -215,7 +218,7 @@ class RemoteResultHandler
         $reasons = implode(' ', $event['reasons']);
         $prefix = $event['decision'] === 'escalate' ? 'La IA lo escala a una persona' : 'La IA pide revisión humana';
 
-        $run = $this->recordAgentRun($email, $event, $requests);
+        $run = $this->recordAgentRun($email, $event, $requests, $resumed);
 
         if ($action = $event['pending_action'] ?? null) {
             // El grafo de ai-service queda en pausa hasta que una persona decida en el panel.
@@ -272,29 +275,39 @@ class RemoteResultHandler
      * Ejecución del agente (todo menos la clasificación) con sus herramientas.
      * Sin borrador ni herramientas (spam, manipulación) no hay ejecución.
      *
+     * Tras reanudar una pausa, ai-service manda otra vez TODAS las
+     * herramientas (las de antes de la pausa primero, en orden: son la
+     * evidencia de la respuesta), pero solo las llamadas nuevas al modelo. Se
+     * continúa la ejecución de la pausa y se añaden solo las herramientas
+     * nuevas: así no se cuentan dos veces (auditoría y métricas) y
+     * ReplyContentGuard ve todo lo consultado.
+     *
      * @param  array<string, mixed>  $event
      * @param  list<AiRequest>  $requests
      */
-    private function recordAgentRun(Email $email, array $event, array $requests): ?AiAgentRun
+    private function recordAgentRun(Email $email, array $event, array $requests, bool $resumed = false): ?AiAgentRun
     {
         $steps = array_values(array_filter($requests, fn (AiRequest $r) => ! str_ends_with($r->purpose, 'classification')));
         $toolCalls = $event['tool_calls'] ?? [];
+        $run = $resumed ? $email->agentRuns()->reorder('id', 'desc')->first() : null;
 
-        if ($steps === [] && $toolCalls === []) {
+        if ($run !== null) {
+            $toolCalls = array_slice($toolCalls, $run->tool_calls_count);
+        } elseif ($steps === [] && $toolCalls === []) {
             return null;
         }
 
         $duration = (int) ($event['duration_ms'] ?? 0);
-        $run = AiAgentRun::create(['email_id' => $email->id, 'started_at' => now()->subMilliseconds($duration)]);
+        $run ??= AiAgentRun::create(['email_id' => $email->id, 'started_at' => now()->subMilliseconds($duration)]);
         $run->forceFill([
             'status' => AgentRunStatus::Completed,
             'stop_reason' => AgentStopReason::EndTurn,
-            'iterations' => count(array_filter($steps, fn (AiRequest $r) => str_ends_with($r->purpose, 'draft'))),
-            'tool_calls_count' => count($toolCalls),
-            'input_tokens' => array_sum(array_map(fn (AiRequest $r) => $r->input_tokens, $steps)),
-            'output_tokens' => array_sum(array_map(fn (AiRequest $r) => $r->output_tokens, $steps)),
-            'cost_usd' => sprintf('%.6f', array_sum(array_map(fn (AiRequest $r) => (float) $r->cost_usd, $steps))),
-            'duration_ms' => $duration,
+            'iterations' => $run->iterations + count(array_filter($steps, fn (AiRequest $r) => str_ends_with($r->purpose, 'draft'))),
+            'tool_calls_count' => $run->tool_calls_count + count($toolCalls),
+            'input_tokens' => $run->input_tokens + array_sum(array_map(fn (AiRequest $r) => $r->input_tokens, $steps)),
+            'output_tokens' => $run->output_tokens + array_sum(array_map(fn (AiRequest $r) => $r->output_tokens, $steps)),
+            'cost_usd' => sprintf('%.6f', (float) $run->cost_usd + array_sum(array_map(fn (AiRequest $r) => (float) $r->cost_usd, $steps))),
+            'duration_ms' => $run->duration_ms + $duration,
             'final_output' => [
                 'source' => 'ai-service',
                 'reply_body' => $event['draft'],
@@ -312,7 +325,18 @@ class RemoteResultHandler
 
         // Las herramientas cuelgan de un paso de la ejecución (la búsqueda, o el borrador).
         $owner = collect($steps)->first(fn (AiRequest $r) => str_ends_with($r->purpose, 'knowledge_search'))
-            ?? collect($steps)->first();
+            ?? collect($steps)->first()
+            ?? $run->aiRequests()->first();
+
+        if ($resumed && $owner !== null) {
+            // La pausa no tenía pasos propios (solo la clasificación): sus herramientas
+            // pasan a colgar del primer paso de la ejecución, para que se vean en la traza.
+            AiToolCall::query()
+                ->where('email_id', $email->id)
+                ->whereNull('ai_request_id')
+                ->where('created_at', '>=', $run->created_at)
+                ->update(['ai_request_id' => $owner->id]);
+        }
 
         foreach ($toolCalls as $call) {
             AiToolCall::create([
