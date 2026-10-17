@@ -271,3 +271,20 @@ async def test_a_temporary_failure_after_approval_can_be_retried() -> None:
 
     assert result.draft is not None
     assert {a.action_id for a, _ in actions.executed} == {first.pending_action.action_id}
+
+
+async def test_a_shadow_copy_never_proposes_actions_nor_pauses() -> None:
+    saver = InMemorySaver()
+    llm = FakeLLM(classifications=[support()], drafts=[drafted()])
+    actions = FakeActionPort()
+    graph = agent(llm, actions=actions, checkpointer=saver)
+
+    result = await graph.run(
+        make_email(subject="La lámpara no enciende"), thread_id=THREAD, shadow=True
+    )
+
+    assert result.pending_action is None
+    assert result.thread_id is None
+    assert actions.executed == []
+    assert len(llm.draft_calls) == 1  # redacta como siempre
+    assert await saver.aget_tuple({"configurable": {"thread_id": THREAD}}) is None

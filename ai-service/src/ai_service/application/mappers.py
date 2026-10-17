@@ -9,6 +9,7 @@ from ai_service.application.contracts.events import (
     EmailReceived,
     EmailReviewResumed,
     LLMCallUsage,
+    Mode,
     PendingActionPayload,
     SourcePayload,
     ToolCallPayload,
@@ -65,6 +66,11 @@ Cause = EmailReceived | EmailReviewResumed
 def thread_id_for(received: EmailReceived) -> str:
     """Hilo del grafo por si queda en pausa: único por petición de Laravel."""
     return f"t{received.tenant_id}-e{received.email_id}-{received.event_id}"
+
+
+def mode_of(cause: Cause) -> Mode:
+    """El modo del email recibido (una reanudación siempre es de un email real)."""
+    return cause.mode if isinstance(cause, EmailReceived) else "live"
 
 
 def processed_event(cause: Cause, result: AgentOutcome) -> EmailProcessed:
@@ -125,6 +131,7 @@ def processed_event(cause: Cause, result: AgentOutcome) -> EmailProcessed:
         if pending
         else None,
         specialists=[s.value for s in result.specialists][:4],
+        mode=mode_of(cause),
     )
 
 
@@ -140,4 +147,5 @@ def failed_event(
         message=(message or (error.cause.message if error else "Error interno."))[:500],
         retryable=False,
         usage=usage_from_calls(error.calls if error else ()),
+        mode=mode_of(cause),
     )

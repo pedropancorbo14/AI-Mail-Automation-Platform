@@ -671,6 +671,13 @@ hilo ya terminado (`expired`).
   sin tocar el email) para comparar los dos motores (intención, decisión,
   coste, tiempo).
 
+**Modo sombra en ai-service (tarea 5.5):** un `email.received.v1` con
+`mode: shadow` se procesa igual (clasificar, especialistas, redactar,
+validar) pero **sin proponer acciones ni quedar en pausa**, y el resultado
+(o el fallo) sale con `mode: shadow`. La métrica
+`aiservice_decisions_total` lleva la etiqueta `mode`, y el dashboard
+"AI Mail · ai-service" excluye las copias en sombra de sus cifras.
+
 **En Laravel y el panel (tarea 5.4):** cada consulta se guarda con su
 `origin` (`ai_tool_calls.origin`) y la ejecución con sus especialistas
 (`final_output.specialists`). En "Lo que hizo la IA" del detalle del email se

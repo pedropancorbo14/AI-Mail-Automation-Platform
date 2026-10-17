@@ -255,7 +255,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(aiservice_decisions_total{decision=\"auto_send\"}[$__range])) / sum(increase(aiservice_decisions_total[$__range]))",
+          "expr": "sum(increase(aiservice_decisions_total{decision=\"auto_send\",mode!=\"shadow\"}[$__range])) / sum(increase(aiservice_decisions_total{mode!=\"shadow\"}[$__range]))",
           "legendFormat": "__auto",
           "range": false,
           "instant": true
@@ -562,7 +562,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "label_replace(label_replace(label_replace(round(sum by (decision) (increase(aiservice_decisions_total[$__interval]))), \"d\", \"Enviar sola\", \"decision\", \"auto_send\"), \"d\", \"Revisión humana\", \"decision\", \"human_review\"), \"d\", \"Escalar\", \"decision\", \"escalate\")",
+          "expr": "label_replace(label_replace(label_replace(round(sum by (decision) (increase(aiservice_decisions_total{mode!=\"shadow\"}[$__interval]))), \"d\", \"Enviar sola\", \"decision\", \"auto_send\"), \"d\", \"Revisión humana\", \"decision\", \"human_review\"), \"d\", \"Escalar\", \"decision\", \"escalate\")",
           "legendFormat": "{{d}}",
           "range": true,
           "instant": false
@@ -936,7 +936,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sort_desc(sum by (category) (increase(aiservice_decisions_total[$__range])))",
+          "expr": "sort_desc(sum by (category) (increase(aiservice_decisions_total{mode!=\"shadow\"}[$__range])))",
           "legendFormat": "{{category}}",
           "range": false,
           "instant": true

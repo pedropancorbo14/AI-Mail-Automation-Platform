@@ -103,6 +103,29 @@ async def test_a_received_email_produces_a_processed_event_and_is_removed(redis:
     assert tokens == 300
 
 
+async def test_a_shadow_copy_comes_back_as_shadow_and_counts_apart(redis: Redis) -> None:
+    agent = FakeAgent(outcome=outcome())
+    consumer, stream, metrics = build(redis, agent)
+    await stream.ensure_group()
+    await publish_received(redis, example("email.received.v1--shadow"))
+
+    assert await drain(consumer) == 1
+
+    [processed] = await entries(redis, PROCESSED)
+    payload = json.loads(processed["payload"])
+    assert payload["mode"] == "shadow"
+    assert agent.shadow_runs == [True]
+    labels = {"decision": "auto_send", "category": "product_question"}
+    assert (
+        metrics.registry.get_sample_value("aiservice_decisions_total", labels | {"mode": "shadow"})
+        == 1
+    )
+    assert (
+        metrics.registry.get_sample_value("aiservice_decisions_total", labels | {"mode": "live"})
+        is None
+    )
+
+
 async def test_the_group_processes_messages_published_before_it_existed(redis: Redis) -> None:
     await publish_received(redis)  # Laravel publicó antes de arrancar el servicio
     consumer, stream, _ = build(redis, FakeAgent(outcome=outcome()))
@@ -186,7 +209,9 @@ async def test_temporary_errors_are_retried_and_finally_reported(redis: Redis) -
 
 async def test_unexpected_errors_end_in_the_dead_letter_stream(redis: Redis) -> None:
     class BrokenAgent(FakeAgent):
-        async def run(self, email: Email, *, thread_id: str | None = None) -> AgentOutcome:
+        async def run(
+            self, email: Email, *, thread_id: str | None = None, shadow: bool = False
+        ) -> AgentOutcome:
             self.seen.append(email)
             raise RuntimeError("bug")
 

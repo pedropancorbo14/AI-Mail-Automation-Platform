@@ -217,9 +217,11 @@ async def test_each_request_runs_in_its_own_thread() -> None:
     seen: list[str | None] = []
 
     class RecordingAgent(FakeAgent):
-        async def run(self, email: Email, *, thread_id: str | None = None) -> AgentOutcome:
+        async def run(
+            self, email: Email, *, thread_id: str | None = None, shadow: bool = False
+        ) -> AgentOutcome:
             seen.append(thread_id)
-            return await super().run(email, thread_id=thread_id)
+            return await super().run(email, thread_id=thread_id, shadow=shadow)
 
     await ProcessEmail(RecordingAgent(outcome=outcome()), InMemoryEventBus()).execute(received())
 
@@ -236,3 +238,42 @@ async def test_the_team_instruction_reaches_the_agent() -> None:
     assert agent.seen[0].review_instruction == (
         "Ofrécele el cambio por otra talla; no hables de reembolso."
     )
+
+
+async def test_a_shadow_copy_runs_without_actions_and_is_published_as_shadow() -> None:
+    bus = InMemoryEventBus()
+    agent = FakeAgent(outcome=outcome())
+    shadow = EmailReceived.parse(example("email.received.v1--shadow"))
+
+    await ProcessEmail(agent, bus).execute(shadow)
+
+    assert agent.shadow_runs == [True]
+    [event] = bus.published
+    assert isinstance(event, EmailProcessed)
+    assert event.mode == "shadow"
+    assert event.thread_id is None
+    assert event.pending_action is None
+    assert_matches_contract("email.processed.v1", event.to_json_dict())
+
+
+async def test_a_failed_shadow_copy_is_published_as_shadow() -> None:
+    bus = InMemoryEventBus()
+    error = AgentError(LLMRefusalError("No.", (make_call(status="refused"),)), ())
+    shadow = EmailReceived.parse(example("email.received.v1--shadow"))
+
+    await ProcessEmail(FakeAgent(error=error), bus).execute(shadow)
+
+    [event] = bus.published
+    assert isinstance(event, EmailProcessingFailed)
+    assert event.mode == "shadow"
+    assert_matches_contract("email.processing_failed.v1", event.to_json_dict())
+
+
+async def test_live_emails_are_not_shadow() -> None:
+    bus = InMemoryEventBus()
+    agent = FakeAgent(outcome=outcome())
+
+    await ProcessEmail(agent, bus).execute(received())
+
+    assert agent.shadow_runs == [False]
+    assert bus.published[0].mode == "live"

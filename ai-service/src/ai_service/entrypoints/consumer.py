@@ -202,7 +202,7 @@ class EventConsumer:
         event = result.event
         self._record_llm_calls(event.usage.calls)
         if event.event_type == "email.processed":
-            self._metrics.decisions.labels(event.decision, event.category.value).inc()
+            self._metrics.decisions.labels(event.decision, event.category.value, event.mode).inc()
             log.info(
                 "email_processed",
                 decision=event.decision,

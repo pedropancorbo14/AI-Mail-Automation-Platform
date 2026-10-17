@@ -138,6 +138,8 @@ class EmailState(TypedDict):
     answers: NotRequired[tuple[ToolAnswer, ...]]
     model_rounds: NotRequired[int]
     model_lookups: NotRequired[int]
+    # Modo sombra: solo para comparar con el motor de Laravel; sin efectos.
+    shadow: NotRequired[bool]
 
 
 class SpecialistInput(TypedDict):
@@ -316,8 +318,11 @@ class LangGraphEmailAgent:
     def can_wait_for_approval(self) -> bool:
         return self._checkpointer is not None and self._actions is not None
 
-    async def run(self, email: Email, *, thread_id: str | None = None) -> AgentOutcome:
+    async def run(
+        self, email: Email, *, thread_id: str | None = None, shadow: bool = False
+    ) -> AgentOutcome:
         initial: EmailState = {
+            "shadow": shadow,
             "email": email,
             "calls": [],
             "tool_calls": [],
@@ -463,7 +468,8 @@ class LangGraphEmailAgent:
                     classification=state["classification"],
                     specialist=specialist,
                     primary=index == 0,
-                    can_propose=self.can_wait_for_approval,
+                    # En modo sombra nunca se propone nada: no puede quedar en pausa.
+                    can_propose=self.can_wait_for_approval and not state.get("shadow", False),
                 ),
             )
             for index, specialist in enumerate(specialists)

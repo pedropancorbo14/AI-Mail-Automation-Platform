@@ -33,6 +33,9 @@ class ProcessEmail:
       deja el mensaje sin confirmar y se reintenta; tras N entregas publica
       él el fallo definitivo.
     - Dato imposible de procesar (`DomainError`) → fallo definitivo.
+
+    En modo sombra (`mode: shadow`) es igual, pero el agente no propone acciones
+    y el resultado sale marcado: Laravel solo lo compara, nunca lo aplica.
     """
 
     def __init__(self, agent: EmailAgentPort, bus: EventBusPort) -> None:
@@ -43,7 +46,9 @@ class ProcessEmail:
         result: ProcessingResult
         try:
             email = email_from_event(received)
-            outcome = await self._agent.run(email, thread_id=thread_id_for(received))
+            outcome = await self._agent.run(
+                email, thread_id=thread_id_for(received), shadow=received.mode == "shadow"
+            )
         except AgentError as error:
             if error.retryable:
                 raise

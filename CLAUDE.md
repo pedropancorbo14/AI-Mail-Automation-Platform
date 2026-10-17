@@ -4183,7 +4183,18 @@ el de Python afecte a nada.
   ejemplo de especialistas guarda los orígenes y la API del detalle los
   devuelve con los especialistas) y Vitest (especialistas, origen marcado
   solo para el modelo, tipos de fuente; 89 en total)
-- [ ] 5.5 Modo sombra en ai-service
+- [x] 5.5 **Modo sombra en ai-service.** `EmailAgentPort.run(...,
+  shadow)`; en el grafo `shadow` en el estado y `can_propose` falso (no hay
+  acción ni pausa aunque haya checkpoints; el hilo no queda guardado).
+  `ProcessEmail` lo activa con `mode: shadow`; `mappers.mode_of(causa)`
+  (una reanudación siempre es `live`) en `email.processed.v1` y
+  `email.processing_failed.v1`. Métrica `aiservice_decisions_total` con
+  etiqueta `mode`; dashboard de ai-service con `mode!="shadow"` en sus tres
+  consultas de decisiones (también casa con series antiguas sin la
+  etiqueta). Tests: grafo (soporte sin ticket en sombra: sin acción, sin
+  hilo, redacta), caso de uso (procesado y fallo en sombra cumplen el
+  contrato; los normales salen `live`), consumidor con Redis real (sale en
+  sombra y la métrica la separa). 371 tests de Python
 - [ ] 5.6 Laravel: publicar en sombra y guardar el resultado
 - [ ] 5.7 Comparación, métricas, Grafana e informe
 - [ ] 5.8 Compose, CI, README y prueba de punta a punta

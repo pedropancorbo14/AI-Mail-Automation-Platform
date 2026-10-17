@@ -61,8 +61,9 @@ class ServiceMetrics:
         )
         self.decisions = Counter(
             "aiservice_decisions_total",
-            "Decisiones recomendadas por el grafo.",
-            ["decision", "category"],
+            "Decisiones recomendadas por el grafo; mode = live (se aplican) o shadow "
+            "(copia para comparar con el motor de Laravel).",
+            ["decision", "category", "mode"],
             registry=self.registry,
         )
         self.llm_calls = Counter(

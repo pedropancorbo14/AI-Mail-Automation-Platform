@@ -56,11 +56,14 @@ class FakeAgent:
     outcome: AgentOutcome | None = None
     error: AgentError | None = None
     seen: list[Email] = field(default_factory=list)
-
+    shadow_runs: list[bool] = field(default_factory=list)
     resumes: list[dict[str, Any]] = field(default_factory=list)
 
-    async def run(self, email: Email, *, thread_id: str | None = None) -> AgentOutcome:
+    async def run(
+        self, email: Email, *, thread_id: str | None = None, shadow: bool = False
+    ) -> AgentOutcome:
         self.seen.append(email)
+        self.shadow_runs.append(shadow)
         if self.error:
             raise self.error
         assert self.outcome is not None

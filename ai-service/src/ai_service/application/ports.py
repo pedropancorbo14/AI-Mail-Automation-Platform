@@ -64,9 +64,12 @@ class EmailAgentPort(Protocol):
     Errores: `AgentError` con todas las llamadas facturadas.
     """
 
-    async def run(self, email: Email, *, thread_id: str | None = None) -> AgentOutcome:
+    async def run(
+        self, email: Email, *, thread_id: str | None = None, shadow: bool = False
+    ) -> AgentOutcome:
         """`thread_id` identifica la ejecución por si queda en pausa (acción
-        pendiente de aprobación)."""
+        pendiente de aprobación). `shadow`: copia en modo sombra (solo para
+        comparar): nunca propone acciones ni queda en pausa."""
         ...
 
     async def resume(
