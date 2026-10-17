@@ -7,7 +7,7 @@ envía sola, la revisa una persona o se escala. **Laravel** sigue siendo el
 dueño de todo lo demás: ingesta IMAP, empresas, usuarios, panel, estados
 del email, reglas finales y envío.
 
-> **Estado:** Fase 1, tareas 1.1–1.5 (esqueleto, contrato, dominio, puertos, caso de uso y adaptador de Claude). Hasta que termine la Fase 1,
+> **Estado:** Fase 1, tareas 1.1–1.6 (esqueleto, contrato, dominio, puertos, caso de uso, adaptador de Claude y grafo de LangGraph). Hasta que termine la Fase 1,
 > Laravel sigue procesando los emails con su propio motor
 > (`AI_ENGINE=laravel`, el único que existe todavía).
 
@@ -72,6 +72,8 @@ flowchart LR
 
 ### Grafo de LangGraph
 
+Objetivo (las Fases 2 y 3 añaden `retrieve` y `tools`):
+
 ```mermaid
 flowchart LR
     START((inicio)) --> classify
@@ -81,14 +83,48 @@ flowchart LR
     tools --> draft
     router --> draft
     draft --> validate[validate<br/>reglas puras]
-    validate -->|segura| END((fin))
-    validate -->|dudosa| human_review[human_review<br/>nodo final en Fase 1]
+    validate -->|auto_send| END((fin))
+    validate -->|dudosa| human_review[human_review]
     human_review --> END
 ```
 
-En la Fase 1 el camino es `classify → draft → validate`. `human_review` es
-un **nodo final** que publica la decisión: la revisión la hace una persona
-en el panel de Laravel (ver [decisiones](#decisiones-tomadas)).
+Grafo **actual** (Fase 1), generado por LangGraph con
+`agent.graph.get_graph().draw_mermaid()` (las líneas discontinuas son
+aristas condicionales):
+
+```mermaid
+graph TD;
+	__start__([inicio]):::first
+	classify(classify)
+	draft(draft)
+	validate(validate)
+	human_review(human_review)
+	__end__([fin]):::last
+	__start__ --> classify;
+	classify -. router .-> draft;
+	classify -. router .-> validate;
+	draft --> validate;
+	validate -. auto_send .-> __end__;
+	validate -. human_review / escalate .-> human_review;
+	human_review --> __end__;
+```
+
+| Nodo | Qué hace |
+|---|---|
+| `classify` | `LLMPort.classify` (structured outputs) |
+| `router` (arista condicional) | **Determinista, sin IA**: sospecha de manipulación o categoría que no se contesta (spam, respuesta automática) → directo a `validate` sin pagar un borrador; el resto → `draft` |
+| `draft` | `LLMPort.draft` con la clasificación como contexto |
+| `validate` | `DecisionPolicy` (reglas puras del dominio) |
+| `human_review` | Nodo final: la revisión la hace una persona en el panel de Laravel (Fase 13). `interrupt` + checkpointing en la Fase 4 |
+
+Detalles (`agents/email_graph.py`):
+
+- El estado acumula **todas las llamadas al modelo** (reductor `operator.add`):
+  si falla un nodo, `AgentError` lleva también las de los anteriores (se
+  facturaron).
+- Tope de tiempo del grafo entero (`AI_SERVICE_AGENT_TIMEOUT_SECONDS`, 240 s)
+  → error reintentable; `recursion_limit` 10 (el grafo no tiene ciclos).
+- El grafo solo importa puertos y dominio (import-linter lo comprueba).
 
 ### Capas (arquitectura hexagonal + DDD)
 
@@ -243,6 +279,8 @@ Variables nuevas:
 | `AI_SERVICE_LLM_TIMEOUT_SECONDS` / `AI_SERVICE_LLM_MAX_RETRIES` | `60` / `2` | Timeout y reintentos del SDK (429, 5xx, red) |
 | `AI_SERVICE_MAX_BODY_CHARS` | `20000` | Recorte del cuerpo (avisando al modelo) |
 | `AI_SERVICE_MIN_CONFIDENCE` | `0.85` | Umbral de `DecisionPolicy` |
+| `AI_SERVICE_AGENT_TIMEOUT_SECONDS` | `240` | Tope del grafo entero |
+| `AI_SERVICE_DEBUG_ENDPOINTS` | `false` | Activa `POST /debug/process` (nunca en producción) |
 
 **Tests:** `tests/integration/test_anthropic_adapter.py` usa langchain y el
 SDK reales con un **transporte HTTP simulado** (`httpx2.MockTransport`):
@@ -285,9 +323,15 @@ sirve para operar el servicio.
 | `GET /health` | *Liveness*: el proceso responde (Kubernetes lo reinicia si falla) |
 | `GET /metrics` | Métricas Prometheus |
 | `GET /docs` | Documentación OpenAPI (no en producción) |
+| `POST /debug/process` | Procesa un email de prueba con el modelo **real** y devuelve la decisión, el borrador y las llamadas, sin eventos. Solo con `AI_SERVICE_DEBUG_ENDPOINTS=true` y nunca en producción (cuesta dinero) |
 
-`/ready` (Redis disponible) llega con el consumidor en la tarea 1.7 y
-`/debug/classify` con el grafo en la tarea 1.6.
+`/ready` (Redis disponible) llega con el consumidor en la tarea 1.7.
+
+```bash
+AI_SERVICE_DEBUG_ENDPOINTS=true AI_SERVICE_ANTHROPIC_API_KEY=sk-ant-... uv run ai-service-http
+curl -s localhost:8000/debug/process -H 'Content-Type: application/json' \
+  -d '{"from": "cliente@cliente.test", "subject": "Envíos", "body": "¿Enviáis a Canarias?"}'
+```
 
 ## Calidad: tests, tipos y reglas de capas
 
@@ -333,6 +377,8 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 | `LLMPort` con operaciones del dominio | Puerto genérico `generate(prompt)` | Prompts y structured outputs quedan en el adaptador; el grafo no cambia si cambia el proveedor |
 | **langchain-anthropic** con `method="json_schema"` | SDK oficial directo; langchain con function calling | Encaja con LangGraph y lo pedía la oferta; se comprobó (inspeccionando la petición) que envía `output_config` con `effort` y `format` y que no fuerza `tool_choice`. Si una función nueva de la API no llegara a langchain, el adaptador puede pasar al SDK sin tocar el grafo |
 | Una `LLMCall` por modelo con fallback | Sumar todo en una | Cada modelo factura a su tarifa: Laravel calcula bien el coste |
+| Router **determinista** | Que el modelo elija el siguiente paso | Predecible, gratis y no manipulable por el contenido del email; la IA se usa donde aporta (clasificar, redactar) |
+| Raíz de composición en `entrypoints/container.py` | Inyección con un framework de DI | Pocas piezas: una función por grafo de objetos basta y se lee de un vistazo |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
@@ -361,7 +407,7 @@ Decisiones de diseño acordadas para las siguientes tareas:
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.5 hechas |
+| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.6 hechas |
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | Pendiente |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | Pendiente |
 | 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |

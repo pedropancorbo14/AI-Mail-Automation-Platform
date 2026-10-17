@@ -49,8 +49,14 @@ class Settings(BaseSettings):
     # Laravel ya recorta el cuerpo; esto es una segunda barrera (avisando al modelo).
     max_body_chars: int = Field(default=20_000, ge=1000)
 
-    # --- Reglas de decisión ---
+    # --- Agente y reglas de decisión ---
     min_confidence: float = Field(default=0.85, ge=0, le=1)
+    # Tope del grafo entero (incluye los reintentos del SDK de cada llamada).
+    agent_timeout_seconds: float = Field(default=240.0, gt=0)
+
+    # POST /debug/process: procesa un email de prueba con el modelo real (cuesta
+    # dinero). Desactivado por defecto y nunca disponible en producción.
+    debug_endpoints: bool = False
 
     @property
     def is_production(self) -> bool:

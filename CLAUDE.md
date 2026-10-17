@@ -3429,7 +3429,24 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   langchain reales sobre `httpx2.MockTransport` (inyectado en el
   `_async_client` de `ChatAnthropic`; **anthropic 1.x usa httpx2**, no
   httpx). 129 tests
-- [ ] 1.6 Grafo LangGraph classify → router → draft → validate + `/debug/classify`
+- [x] 1.6 **Grafo LangGraph** (`agents/email_graph.py`, langgraph 1.2):
+  `LangGraphEmailAgent` (implementa `EmailAgentPort`) con `StateGraph`
+  `EmailState` (TypedDict; `calls` y `visited` con reductor
+  `operator.add`): `classify` → arista condicional **`router`**
+  determinista (injection o spam/auto_reply → `validate` sin borrador;
+  resto → `draft`) → `validate` (`DecisionPolicy`) → `END` si
+  `auto_send`, si no `human_review` (nodo final) → `END`. Los nodos que
+  llaman al modelo convierten `LLMError` en `AgentError` con todas las
+  llamadas del estado; `asyncio.timeout` del grafo
+  (`AI_SERVICE_AGENT_TIMEOUT_SECONDS`, 240) → `AgentError` reintentable;
+  `recursion_limit` 10. **Lección mypy:** los nodos deben tipar el
+  parámetro con nombre `state` (Protocol `Node`), un `Callable` no
+  encaja en las sobrecargas de `add_node`. Raíz de composición
+  `entrypoints/container.py` (`build_llm`, `build_agent`).
+  **`POST /debug/process`** (`entrypoints/http/debug.py`): solo con
+  `AI_SERVICE_DEBUG_ENDPOINTS=true` y fuera de producción; agente
+  creado al primer uso; sin clave → 503; errores del modelo → 422/502.
+  README con el diagrama Mermaid generado por LangGraph. 147 tests
 - [ ] 1.7 Adaptador de Redis Streams + consumidor (+ `/ready`)
 - [ ] 1.8 Laravel: `AI_ENGINE`, publicador y reconciliador (Pest)
 - [ ] 1.9 Laravel: consumidor de `email.processed.v1` (Pest)

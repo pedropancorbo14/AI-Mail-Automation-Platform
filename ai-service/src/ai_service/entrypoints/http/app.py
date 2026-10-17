@@ -1,11 +1,16 @@
-"""App FastAPI: solo salud y métricas (el trabajo real lo hace el consumidor de eventos)."""
+"""App FastAPI: salud, métricas y depuración (el trabajo real lo hace el consumidor)."""
+
+from collections.abc import Callable
 
 import uvicorn
 from fastapi import FastAPI, Response
 from pydantic import BaseModel
 
 from ai_service import __version__
+from ai_service.application.ports import EmailAgentPort
 from ai_service.config import Settings, get_settings
+from ai_service.entrypoints.container import build_agent
+from ai_service.entrypoints.http.debug import debug_router
 from ai_service.infrastructure.observability.logging import configure_logging, get_logger
 from ai_service.infrastructure.observability.metrics import PROMETHEUS_CONTENT_TYPE, ServiceMetrics
 
@@ -17,7 +22,11 @@ class HealthResponse(BaseModel):
     environment: str
 
 
-def create_app(settings: Settings | None = None, metrics: ServiceMetrics | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    metrics: ServiceMetrics | None = None,
+    agent_factory: Callable[[], EmailAgentPort] | None = None,
+) -> FastAPI:
     settings = settings or get_settings()
     metrics = metrics or ServiceMetrics(settings.environment.value)
 
@@ -43,6 +52,10 @@ def create_app(settings: Settings | None = None, metrics: ServiceMetrics | None 
     @app.get("/metrics", tags=["ops"])
     async def prometheus_metrics() -> Response:
         return Response(content=metrics.render(), media_type=PROMETHEUS_CONTENT_TYPE)
+
+    if settings.debug_endpoints and not settings.is_production:
+        config = settings
+        app.include_router(debug_router(agent_factory or (lambda: build_agent(config))))
 
     return app
 

@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.143",
     "langchain-anthropic>=1.7.6",
     "langchain-core>=1.6.12",
+    "langgraph>=1.2.16",
     "prometheus-client>=0.26",
     "pydantic>=2.14",
     "pydantic-settings>=2.16",
