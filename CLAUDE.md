@@ -3383,7 +3383,21 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   1.10:** job `ai-service` en GitHub Actions (uv 0.11.32 con caché,
   `uv sync --locked`, ruff, formato, mypy, lint-imports, pytest; Redis como
   servicio para los tests de la 1.7). 96 tests
-- [ ] 1.4 Puertos (`LLMPort`, `EventBusPort`) y caso de uso `ProcessEmail`
+- [x] 1.4 **Puertos y caso de uso** (`application/`): `ports.py`
+  (`Protocol`: `LLMPort.classify/draft` en lenguaje del dominio — los
+  prompts son del adaptador —, `EmailAgentPort.run`, `EventBusPort.publish`),
+  `dto.py` (`LLMCall`, `ClassificationResult`, `DraftResult`,
+  `AgentOutcome` con `model` = el que redactó), `errors.py` (`LLMError`
+  con `code`/`retryable`/`call` facturada: `LLMUnavailableError`
+  reintentable, `LLMConfigurationError`, `LLMRefusalError`,
+  `LLMInvalidOutputError`; `AgentError` con todas las llamadas),
+  `mappers.py` (evento ↔ dominio, recortes al tamaño del contrato) y
+  `use_cases/process_email.py` (`ProcessEmail`: definitivo → publica
+  `processing_failed`; temporal → relanza para reintento; `DomainError` →
+  fallo `internal`; si falla la publicación se relanza). Fakes en
+  `tests/fakes.py` (`FakeLLM` guionizado, `FakeAgent`,
+  `InMemoryEventBus`) y `tests/support/contracts.py` (validar contra el
+  esquema). 104 tests
 - [ ] 1.5 Adaptador de Anthropic (comprobar structured outputs en Opus 5.5)
 - [ ] 1.6 Grafo LangGraph classify → router → draft → validate + `/debug/classify`
 - [ ] 1.7 Adaptador de Redis Streams + consumidor (+ `/ready`)

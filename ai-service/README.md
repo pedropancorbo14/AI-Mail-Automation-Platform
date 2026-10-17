@@ -7,7 +7,7 @@ envía sola, la revisa una persona o se escala. **Laravel** sigue siendo el
 dueño de todo lo demás: ingesta IMAP, empresas, usuarios, panel, estados
 del email, reglas finales y envío.
 
-> **Estado:** Fase 1, tareas 1.1–1.3 (esqueleto, contrato de eventos y dominio). Hasta que termine la Fase 1,
+> **Estado:** Fase 1, tareas 1.1–1.4 (esqueleto, contrato de eventos, dominio, puertos y caso de uso). Hasta que termine la Fase 1,
 > Laravel sigue procesando los emails con su propio motor
 > (`AI_ENGINE=laravel`, el único que existe todavía).
 
@@ -173,6 +173,36 @@ deterministas, sin IA; se devuelven todos los motivos para la bandeja):
   recomendación: Laravel aplica después sus reglas (modo de la empresa,
   intenciones permitidas, anti-bucles, revisión del texto).
 
+## Puertos y caso de uso
+
+`application/ports.py` define lo que la aplicación necesita, **en el
+lenguaje del dominio** (como `Protocol`: un adaptador o un fake no hereda
+de nada):
+
+| Puerto | Operaciones | Lo implementa |
+|---|---|---|
+| `LLMPort` | `classify(email)`, `draft(email, clasificación)` | `infrastructure/llm/` (Anthropic) |
+| `EmailAgentPort` | `run(email)` → `AgentOutcome` | `agents/` (grafo de LangGraph) |
+| `EventBusPort` | `publish(evento)` | `infrastructure/events/` (Redis Streams) |
+
+`LLMPort` no es "genera texto con este prompt": los prompts y el formato
+de salida son detalle del adaptador, así cambiar de proveedor no toca el
+grafo. `VectorStorePort` y `ToolPort` llegan con RAG y tools (Fases 2 y 3).
+
+**`ProcessEmail`** (`application/use_cases/process_email.py`): evento →
+`Email` del dominio → agente → `email.processed.v1`. Errores:
+
+| Error | Qué hace | Por qué |
+|---|---|---|
+| Definitivo del modelo (clave/saldo, rechazo, respuesta inválida) | Publica `email.processing_failed.v1` con los tokens gastados | Reintentar cuesta dinero y no cambia nada |
+| Temporal (red, 429, 529) | Relanza: el consumidor no confirma el mensaje y se reintenta | Suele resolverse solo |
+| Dato imposible (`DomainError`) | Fallo definitivo (`internal`) | |
+| Falla la publicación | Relanza: el mensaje no se confirma | Mejor reprocesar que perder el resultado |
+
+Los adaptadores traducen sus errores a `LLMError` y subclases
+(`application/errors.py`): fuera del adaptador nunca aparece una
+excepción del SDK de Anthropic o de Redis.
+
 ## Cómo ejecutarlo
 
 Requisitos: [uv](https://docs.astral.sh/uv/) (instala él mismo Python 3.12).
@@ -253,6 +283,8 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 | JSON Schema compartido + modelos Pydantic escritos a mano + tests de contrato con los mismos ejemplos | Generar código desde el esquema (datamodel-code-generator); Pact | Sin generador que mantener; el esquema lo lee también PHP; los ejemplos compartidos detectan cualquier divergencia |
 | Dominio con **dataclasses** inmutables | Pydantic en el dominio | El dominio no depende de ninguna biblioteca (import-linter lo prohíbe); Pydantic se queda en los bordes (contratos y config) |
 | Reglas de decisión **deterministas** | Preguntar al modelo si es seguro enviar | Explicables, auditables, sin coste y sin poder ser manipuladas por el contenido del email |
+| Puertos con `typing.Protocol` | Clases abstractas (ABC) | Tipado estructural: los adaptadores y los fakes no dependen de la capa de aplicación para heredar |
+| `LLMPort` con operaciones del dominio | Puerto genérico `generate(prompt)` | Prompts y structured outputs quedan en el adaptador; el grafo no cambia si cambia el proveedor |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
@@ -281,7 +313,7 @@ Decisiones de diseño acordadas para las siguientes tareas:
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.3 hechas |
+| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.4 hechas |
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | Pendiente |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | Pendiente |
 | 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |

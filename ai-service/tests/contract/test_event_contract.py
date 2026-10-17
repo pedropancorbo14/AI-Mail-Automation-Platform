@@ -3,13 +3,11 @@ Laravel aceptan y rechazan exactamente lo mismo, con los mismos ejemplos que
 usan los tests de Pest (`/contracts/events/examples/`)."""
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 import pytest
-from jsonschema import Draft202012Validator, FormatChecker
-from referencing import Registry, Resource
+from jsonschema import Draft202012Validator
 
 from ai_service.application.contracts.events import (
     EmailProcessed,
@@ -19,35 +17,13 @@ from ai_service.application.contracts.events import (
     _Event,
 )
 from ai_service.domain.category import Category
+from tests.support.contracts import CONTRACTS, load, validator
 
-CONTRACTS = Path(
-    os.environ.get("AI_SERVICE_CONTRACTS_DIR", Path(__file__).parents[3] / "contracts" / "events")
-)
 MODELS: dict[str, type[_Event]] = {
     "email.received.v1": EmailReceived,
     "email.processed.v1": EmailProcessed,
     "email.processing_failed.v1": EmailProcessingFailed,
 }
-
-
-def load(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def registry() -> Registry[Any]:
-    resources = [
-        (schema["$id"], Resource.from_contents(schema))
-        for schema in (load(p) for p in CONTRACTS.glob("*.schema.json"))
-    ]
-    return Registry().with_resources(resources)
-
-
-def validator(event: str) -> Draft202012Validator:
-    return Draft202012Validator(
-        load(CONTRACTS / f"{event}.schema.json"),
-        registry=registry(),
-        format_checker=FormatChecker(),
-    )
 
 
 def examples(kind: str) -> list[Any]:

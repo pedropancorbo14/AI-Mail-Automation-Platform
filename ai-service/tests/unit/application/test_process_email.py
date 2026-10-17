@@ -1,0 +1,142 @@
+import pytest
+
+from ai_service.application.contracts.events import (
+    EmailProcessed,
+    EmailProcessingFailed,
+    EmailReceived,
+)
+from ai_service.application.dto import AgentOutcome
+from ai_service.application.errors import (
+    AgentError,
+    LLMConfigurationError,
+    LLMRefusalError,
+    LLMUnavailableError,
+)
+from ai_service.application.use_cases.process_email import ProcessEmail
+from ai_service.domain.category import Category
+from ai_service.domain.decision import Decision, DecisionOutcome
+from tests.fakes import FakeAgent, InMemoryEventBus, make_call
+from tests.support.contracts import assert_matches_contract, example
+from tests.unit.domain.factories import make_classification, make_draft
+
+
+def received() -> EmailReceived:
+    return EmailReceived.parse(example("email.received.v1"))
+
+
+def outcome(decision: Decision = Decision.AUTO_SEND, reasons: tuple[str, ...] = ()) -> AgentOutcome:
+    return AgentOutcome(
+        classification=make_classification(order_numbers=("45821",), customer_name="Juan Pérez"),
+        draft=make_draft(),
+        outcome=DecisionOutcome(decision, reasons),
+        calls=(
+            make_call("ai_service.classify", model="claude-opus-5-5"),
+            make_call("ai_service.draft", model="claude-sonnet-5-5"),
+        ),
+    )
+
+
+async def test_publishes_the_processed_event_with_everything_laravel_needs() -> None:
+    bus = InMemoryEventBus()
+    agent = FakeAgent(outcome=outcome())
+
+    result = await ProcessEmail(agent, bus).execute(received())
+
+    assert result.outcome == "processed"
+    [event] = bus.published
+    assert isinstance(event, EmailProcessed)
+    assert (event.tenant_id, event.email_id, event.trace_id) == (1, 42, "9f2c4e6a8b1d4f3e")
+    assert event.decision == "auto_send"
+    assert event.category == "product_question"
+    assert event.draft.startswith("Hola:")
+    assert event.confidence == 0.93
+    assert event.model == "claude-sonnet-5-5"  # el que redactó
+    assert event.classification.order_numbers == ["45821"]
+    assert [c.purpose for c in event.usage.calls] == ["ai_service.classify", "ai_service.draft"]
+    assert_matches_contract("email.processed.v1", event.to_json_dict())
+
+
+async def test_the_agent_receives_the_email_of_the_event_tenant() -> None:
+    agent = FakeAgent(outcome=outcome())
+
+    await ProcessEmail(agent, InMemoryEventBus()).execute(received())
+
+    [email] = agent.seen
+    assert email.tenant_id.value == 1
+    assert str(email.sender) == "cliente@cliente.test"
+    assert email.tenant_name == "Empresa Demo"
+
+
+async def test_reasons_and_review_decisions_are_forwarded() -> None:
+    bus = InMemoryEventBus()
+    agent = FakeAgent(
+        outcome=outcome(Decision.ESCALATE, ("El cliente menciona acciones legales.",))
+    )
+
+    await ProcessEmail(agent, bus).execute(received())
+
+    [event] = bus.published
+    assert isinstance(event, EmailProcessed)
+    assert event.decision == "escalate"
+    assert event.reasons == ["El cliente menciona acciones legales."]
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (LLMRefusalError("El modelo se negó."), "refusal"),
+        (LLMConfigurationError("Revisa ANTHROPIC_API_KEY."), "llm_config"),
+    ],
+)
+async def test_definitive_errors_publish_a_failure_with_billed_calls(
+    error: LLMRefusalError | LLMConfigurationError, code: str
+) -> None:
+    bus = InMemoryEventBus()
+    calls = (make_call(), make_call("ai_service.draft", status="refused", output_tokens=0))
+    agent = FakeAgent(error=AgentError(error, calls))
+
+    result = await ProcessEmail(agent, bus).execute(received())
+
+    assert result.outcome == "failed"
+    [event] = bus.published
+    assert isinstance(event, EmailProcessingFailed)
+    assert event.error_code == code
+    assert event.message == error.message
+    assert not event.retryable
+    assert len(event.usage.calls) == 2
+    assert_matches_contract("email.processing_failed.v1", event.to_json_dict())
+
+
+async def test_temporary_errors_are_raised_for_a_retry_and_nothing_is_published() -> None:
+    bus = InMemoryEventBus()
+    agent = FakeAgent(error=AgentError(LLMUnavailableError("529 sobrecargado"), ()))
+
+    with pytest.raises(AgentError):
+        await ProcessEmail(agent, bus).execute(received())
+
+    assert bus.published == []
+
+
+async def test_publishing_errors_propagate_so_the_message_is_not_acknowledged() -> None:
+    bus = InMemoryEventBus(fail_with=ConnectionError("redis caído"))
+
+    with pytest.raises(ConnectionError):
+        await ProcessEmail(FakeAgent(outcome=outcome()), bus).execute(received())
+
+
+async def test_spam_without_draft_is_published_with_empty_draft() -> None:
+    bus = InMemoryEventBus()
+    spam = AgentOutcome(
+        classification=make_classification(category=Category.SPAM),
+        draft=None,
+        outcome=DecisionOutcome(Decision.HUMAN_REVIEW, ("No necesita respuesta (spam).",)),
+        calls=(make_call(),),
+    )
+
+    await ProcessEmail(FakeAgent(outcome=spam), bus).execute(received())
+
+    [event] = bus.published
+    assert isinstance(event, EmailProcessed)
+    assert (event.draft, event.confidence, event.decision) == ("", 0.0, "human_review")
+    assert event.language == "es"
+    assert_matches_contract("email.processed.v1", event.to_json_dict())
