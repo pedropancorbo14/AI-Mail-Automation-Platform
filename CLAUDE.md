@@ -3228,8 +3228,18 @@ casos, y un **historial** de todas las decisiones humanas.
   endpoints nuevos y el 409), alertas, tests y problemas frecuentes;
   secciones siguientes renumeradas (API = #16)
 
-**Resumen:** 11 tareas en 12 commits (11 + 1 fix encontrado en el
-navegador), 1137 tests PHP (en esta sesión 25 fallan solo por el entorno:
+- [x] Fix tras el push (CI en rojo): `RetentionTest` (Fase 12)
+  comprobaba que la fila de auditoría de un email borrado no contuviera
+  "ana@" (la remitente), pero esa fila guarda el **email del actor**, y el
+  administrador del test tenía uno aleatorio de Faker: al salir algo como
+  `juliana@example.org`, el test fallaba sin que hubiera datos del cliente.
+  Test **inestable**, no un fallo del código: email fijo para el actor; lo
+  mismo en `EmailReviewApiTest` (comprueba que no aparezca "45821").
+  **Lección:** en aserciones "no contiene X" sobre registros que incluyen
+  datos del actor, fijar esos datos en el test
+
+**Resumen:** 11 tareas en 13 commits (11 + 1 fix encontrado en el
+navegador + 1 fix de un test inestable), 1137 tests PHP (en esta sesión 25 fallan solo por el entorno:
 pgvector 0.6 sin *iterative scans* y helpers compartidos entre archivos al
 ejecutar en paralelo; pasan en el CI) + 85 Vitest en verde, alertas
 probadas con `promtool` (`CasoSinAtender` incluida).

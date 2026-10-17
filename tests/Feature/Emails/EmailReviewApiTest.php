@@ -22,7 +22,8 @@ beforeEach(function () {
     app(MailProviderFactory::class)->extend(MailProviderType::Imap, fn () => $this->provider);
 
     $this->tenant = Tenant::factory()->create();
-    $this->ana = User::factory()->for($this->tenant)->agent()->create(['name' => 'Ana']);
+    // Email fijo: la auditoría guarda el del actor y se comprueba que no lleve datos del cliente.
+    $this->ana = User::factory()->for($this->tenant)->agent()->create(['name' => 'Ana', 'email' => 'ana@acme.test']);
     [$this->email, $this->reply] = reviewableEmail($this->tenant);
 });
 
