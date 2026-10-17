@@ -1,5 +1,9 @@
 """Raíz de composición: el único sitio que conoce los adaptadores concretos."""
 
+from typing import Any
+
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
 from ai_service.agents.email_graph import LangGraphEmailAgent
 from ai_service.application.errors import LLMConfigurationError
 from ai_service.application.ports import LLMPort
@@ -51,12 +55,21 @@ def build_tools(settings: Settings) -> McpToolClient | None:
     )
 
 
-def build_agent(settings: Settings, llm: LLMPort | None = None) -> LangGraphEmailAgent:
+def build_agent(
+    settings: Settings,
+    llm: LLMPort | None = None,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+) -> LangGraphEmailAgent:
+    """`checkpointer` (lo abre el worker): sin él, el agente no propone acciones
+    que modifican datos (no podría esperar la aprobación)."""
+    tools = build_tools(settings)
     return LangGraphEmailAgent(
         llm or build_llm(settings),
         DecisionPolicy(min_confidence=Confidence(settings.min_confidence)),
         retriever=build_retriever(settings),
-        tools=build_tools(settings),
+        tools=tools,
+        actions=tools,
+        checkpointer=checkpointer,
         max_tool_calls=settings.max_tool_calls,
         max_tokens=settings.max_tokens_per_email,
         max_steps=settings.max_graph_steps,

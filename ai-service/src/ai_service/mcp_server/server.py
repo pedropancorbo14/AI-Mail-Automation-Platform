@@ -7,8 +7,9 @@ ai-service puede llamarlo.
 Cada herramienta recibe `tenant_id` y `customer_email`. **No los elige el
 modelo**: los pone el cliente MCP de ai-service a partir del email que se
 procesa (empresa del evento y remitente). Las herramientas de escritura se
-marcan como destructivas (`destructive_hint`): ai-service no las ofrece
-todavía (necesitan aprobación humana con `interrupt`, Fase 4).
+marcan como destructivas (`destructive_hint`): ai-service solo las ejecuta
+cuando una persona aprueba la acción en el panel (Fase 4), con una clave de
+idempotencia.
 """
 
 import hmac
@@ -79,10 +80,20 @@ def build_server(data: DemoData) -> MCPServer:
         annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
     )
     def create_support_ticket(
-        tenant_id: int, customer_email: str, subject: str, description: str
+        tenant_id: int,
+        customer_email: str,
+        subject: str,
+        description: str,
+        idempotency_key: str,
+        priority: str = "normal",
     ) -> dict[str, Any]:
-        # Demostración: no persiste nada. ai-service no la ofrece hasta la Fase 4.
-        return {"created": False, "note": "Herramienta de escritura no habilitada todavía."}
+        # Demostración: en memoria (se pierde al reiniciar el contenedor).
+        try:
+            return data.create_ticket(
+                tenant_id, customer_email, subject, description, priority, idempotency_key
+            )
+        except ToolInputError as error:
+            raise ToolError(str(error)) from error
 
     return server
 

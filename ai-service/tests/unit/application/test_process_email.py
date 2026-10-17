@@ -5,7 +5,7 @@ from ai_service.application.contracts.events import (
     EmailProcessingFailed,
     EmailReceived,
 )
-from ai_service.application.dto import AgentOutcome, ToolCallRecord
+from ai_service.application.dto import AgentOutcome, PendingAction, ToolCallRecord
 from ai_service.application.errors import (
     AgentError,
     LLMConfigurationError,
@@ -16,6 +16,7 @@ from ai_service.application.use_cases.process_email import ProcessEmail
 from ai_service.domain.category import Category
 from ai_service.domain.decision import Decision, DecisionOutcome
 from ai_service.domain.draft import Source, SourceType
+from ai_service.domain.email import Email
 from tests.fakes import FakeAgent, InMemoryEventBus, make_call
 from tests.support.contracts import assert_matches_contract, example
 from tests.unit.domain.factories import make_classification, make_draft
@@ -172,3 +173,46 @@ async def test_sources_tool_calls_and_duration_reach_the_event() -> None:
     assert event.tools_used == ["search_company_documents"]
     assert event.duration_ms == 4200
     assert_matches_contract("email.processed.v1", event.to_json_dict())
+
+
+async def test_a_paused_run_publishes_the_pending_action_and_its_thread() -> None:
+    action = PendingAction(
+        action_id="c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f",
+        tool="create_support_ticket",
+        arguments={"subject": "La lámpara no enciende", "description": "x", "priority": "normal"},
+        summary="Crear un ticket de soporte «La lámpara no enciende» (prioridad normal).",
+    )
+    paused = AgentOutcome(
+        classification=make_classification(category=Category.TECHNICAL_SUPPORT),
+        draft=None,
+        outcome=DecisionOutcome(Decision.HUMAN_REVIEW, ("La IA propone una acción…",)),
+        calls=(make_call(),),
+        pending_action=action,
+        thread_id="t1-e42-0b8f6c1e-3a52-4c1f-9a77-2f1d5e4b9c10",
+    )
+    bus = InMemoryEventBus()
+    agent = FakeAgent(outcome=paused)
+
+    await ProcessEmail(agent, bus).execute(received())
+
+    [event] = bus.published
+    assert isinstance(event, EmailProcessed)
+    assert event.thread_id == "t1-e42-0b8f6c1e-3a52-4c1f-9a77-2f1d5e4b9c10"
+    assert event.pending_action is not None
+    assert str(event.pending_action.action_id) == action.action_id
+    assert (event.draft, event.decision) == ("", "human_review")
+    assert_matches_contract("email.processed.v1", event.to_json_dict())
+
+
+async def test_each_request_runs_in_its_own_thread() -> None:
+    seen: list[str | None] = []
+
+    class RecordingAgent(FakeAgent):
+        async def run(self, email: Email, *, thread_id: str | None = None) -> AgentOutcome:
+            seen.append(thread_id)
+            return await super().run(email, thread_id=thread_id)
+
+    await ProcessEmail(RecordingAgent(outcome=outcome()), InMemoryEventBus()).execute(received())
+
+    event = received()
+    assert seen == [f"t{event.tenant_id}-e{event.email_id}-{event.event_id}"]

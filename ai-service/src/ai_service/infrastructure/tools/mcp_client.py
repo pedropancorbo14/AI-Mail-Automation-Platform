@@ -1,9 +1,11 @@
-"""Cliente MCP: implementa `ToolPort` contra el servidor MCP de ai-service.
+"""Cliente MCP: implementa `ToolPort` y `ActionPort` contra el servidor MCP.
 
 Reglas (las mismas que el ToolExecutor de Laravel, Fase 7):
 
-- **Solo herramientas permitidas** (`allowed`): de momento las de lectura.
-  Las de escritura (crear tickets...) llegan con aprobación humana (Fase 4).
+- **Solo herramientas permitidas.** `call()` solo ejecuta las de lectura
+  (`allowed`); las que modifican datos (`actions`) solo por `execute()`, que
+  el grafo llama únicamente cuando una persona aprobó la acción, y siempre
+  con la clave de idempotencia de la acción (`action_id`).
 - **El contexto lo pone el backend**: `tenant_id` y `customer_email` se añaden
   aquí desde `ToolContext`; si los argumentos los traen, se rechaza la llamada.
 - **Nunca lanza**: red caída, timeout o error de la herramienta → un
@@ -22,12 +24,14 @@ import httpx2
 from mcp.client.client import Client
 from mcp.client.streamable_http import streamable_http_client
 
-from ai_service.application.dto import ToolCallRecord, ToolContext
+from ai_service.application.dto import PendingAction, ToolCallRecord, ToolContext
 
-RESERVED = frozenset({"tenant_id", "customer_email"})
+# Lo pone siempre este cliente, nunca los argumentos.
+RESERVED = frozenset({"tenant_id", "customer_email", "idempotency_key"})
 READ_ONLY_TOOLS = frozenset(
     {"get_customer", "get_order", "get_customer_orders", "get_customer_tickets"}
 )
+WRITE_TOOLS = frozenset({"create_support_ticket"})
 
 
 class McpToolClient:
@@ -37,18 +41,42 @@ class McpToolClient:
         token: str,
         *,
         allowed: frozenset[str] = READ_ONLY_TOOLS,
+        actions: frozenset[str] = WRITE_TOOLS,
         timeout_seconds: float = 10.0,
         max_result_chars: int = 8000,
     ) -> None:
         self._url = url.rstrip("/") + "/mcp"
         self._token = token
         self._allowed = allowed
+        self._actions = actions
         self._timeout = timeout_seconds
         self._max = max_result_chars
 
     @property
     def available(self) -> frozenset[str]:
         return self._allowed
+
+    @property
+    def available_actions(self) -> frozenset[str]:
+        return self._actions
+
+    async def execute(self, action: PendingAction, context: ToolContext) -> ToolCallRecord:
+        """Ejecuta una acción YA APROBADA por una persona (idempotente)."""
+        started = time.perf_counter()
+        visible = dict(action.arguments)
+        if action.tool not in self._actions:
+            return self._rejected(action.tool, visible, "Acción no permitida.", started)
+        if RESERVED & visible.keys():
+            return self._rejected(
+                action.tool, visible, "Argumentos reservados (empresa o cliente).", started
+            )
+        payload = {
+            **visible,
+            "tenant_id": context.tenant_id.value,
+            "customer_email": context.customer.value,
+            "idempotency_key": action.action_id,
+        }
+        return await self._send(action.tool, visible, payload, started)
 
     async def call(
         self, tool: str, arguments: Mapping[str, Any], context: ToolContext
@@ -75,6 +103,11 @@ class McpToolClient:
             "tenant_id": context.tenant_id.value,
             "customer_email": context.customer.value,
         }
+        return await self._send(tool, visible, payload, started)
+
+    async def _send(
+        self, tool: str, visible: dict[str, Any], payload: dict[str, Any], started: float
+    ) -> ToolCallRecord:
         try:
             async with asyncio.timeout(self._timeout):
                 result = await self._invoke(tool, payload)

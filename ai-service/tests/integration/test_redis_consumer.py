@@ -186,7 +186,7 @@ async def test_temporary_errors_are_retried_and_finally_reported(redis: Redis) -
 
 async def test_unexpected_errors_end_in_the_dead_letter_stream(redis: Redis) -> None:
     class BrokenAgent(FakeAgent):
-        async def run(self, email: Email) -> AgentOutcome:
+        async def run(self, email: Email, *, thread_id: str | None = None) -> AgentOutcome:
             self.seen.append(email)
             raise RuntimeError("bug")
 

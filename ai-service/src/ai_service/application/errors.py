@@ -8,7 +8,7 @@ from typing import Literal
 
 from ai_service.application.dto import LLMCall
 
-ErrorCode = Literal["llm_config", "refusal", "invalid_output", "timeout", "internal"]
+ErrorCode = Literal["llm_config", "refusal", "invalid_output", "timeout", "internal", "expired"]
 
 
 class LLMError(Exception):
@@ -46,6 +46,18 @@ class LLMInvalidOutputError(LLMError):
     """La respuesta no cumple el esquema o se cortó por max_tokens."""
 
     code: ErrorCode = "invalid_output"
+
+
+class ResumeExpiredError(LLMError):
+    """Se pidió reanudar una ejecución en pausa que ya no existe (caducó o ya se
+    resolvió). Reintentar no sirve: Laravel lo manda a una persona."""
+
+    code: ErrorCode = "expired"
+
+
+class ThreadMismatchError(Exception):
+    """La reanudación no corresponde a la empresa, el email o la acción del hilo
+    en pausa. Nunca se aplica: va a la cola de errores."""
 
 
 class AgentLimitError(LLMError):

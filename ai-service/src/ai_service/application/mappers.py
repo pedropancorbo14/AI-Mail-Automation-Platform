@@ -1,11 +1,15 @@
 """Traducción entre el contrato de eventos y el dominio."""
 
+import uuid
+
 from ai_service.application.contracts.events import (
     ClassificationPayload,
     EmailProcessed,
     EmailProcessingFailed,
     EmailReceived,
+    EmailReviewResumed,
     LLMCallUsage,
+    PendingActionPayload,
     SourcePayload,
     ToolCallPayload,
     Usage,
@@ -54,14 +58,24 @@ def usage_from_calls(calls: tuple[LLMCall, ...]) -> Usage:
     )
 
 
-def processed_event(received: EmailReceived, result: AgentOutcome) -> EmailProcessed:
+Cause = EmailReceived | EmailReviewResumed
+
+
+def thread_id_for(received: EmailReceived) -> str:
+    """Hilo del grafo por si queda en pausa: único por petición de Laravel."""
+    return f"t{received.tenant_id}-e{received.email_id}-{received.event_id}"
+
+
+def processed_event(cause: Cause, result: AgentOutcome) -> EmailProcessed:
+    """`causation_id` = el evento que lo provocó (el email recibido o la reanudación)."""
     c = result.classification
     draft = result.draft
+    pending = result.pending_action
     return EmailProcessed(
-        trace_id=received.trace_id,
-        tenant_id=received.tenant_id,
-        email_id=received.email_id,
-        causation_id=received.event_id,
+        trace_id=cause.trace_id,
+        tenant_id=cause.tenant_id,
+        email_id=cause.email_id,
+        causation_id=cause.event_id,
         category=c.category,
         draft=draft.body if draft else "",
         confidence=draft.confidence.value if draft else 0.0,
@@ -99,17 +113,26 @@ def processed_event(received: EmailReceived, result: AgentOutcome) -> EmailProce
         ][:50],
         duration_ms=result.duration_ms,
         usage=usage_from_calls(result.calls),
+        thread_id=result.thread_id if pending else None,
+        pending_action=PendingActionPayload(
+            action_id=uuid.UUID(pending.action_id),
+            tool=pending.tool,
+            arguments=pending.arguments,
+            summary=pending.summary[:500],
+        )
+        if pending
+        else None,
     )
 
 
 def failed_event(
-    received: EmailReceived, error: AgentError | None, message: str | None = None
+    cause: Cause, error: AgentError | None, message: str | None = None
 ) -> EmailProcessingFailed:
     return EmailProcessingFailed(
-        trace_id=received.trace_id,
-        tenant_id=received.tenant_id,
-        email_id=received.email_id,
-        causation_id=received.event_id,
+        trace_id=cause.trace_id,
+        tenant_id=cause.tenant_id,
+        email_id=cause.email_id,
+        causation_id=cause.event_id,
         error_code=error.code if error else "internal",
         message=(message or (error.cause.message if error else "Error interno."))[:500],
         retryable=False,

@@ -76,7 +76,9 @@ def build_consumer(
     )
     return EventConsumer(
         stream,
-        ProcessEmail(build_agent(settings), bus),
+        ProcessEmail(
+            build_agent(settings, checkpointer=checkpoints.saver if checkpoints else None), bus
+        ),
         bus,
         metrics,
         ConsumerOptions(

@@ -42,7 +42,7 @@ async def test_the_worker_consumes_serves_ops_endpoints_and_stops(
         consumer_name="worker-test",
     )
     agent = FakeAgent(outcome=outcome())
-    monkeypatch.setattr(worker, "build_agent", lambda _settings: agent)
+    monkeypatch.setattr(worker, "build_agent", lambda _settings, checkpointer=None: agent)
 
     task = asyncio.create_task(worker.serve(settings))
     await publish_received(redis)

@@ -65,3 +65,28 @@ def test_customer_summary_and_tickets_are_scoped() -> None:
     tickets = data.get_customer_tickets(1, CLIENTE, 5)["tickets"]
     assert [t["id"] for t in tickets] == ["TCK-1042", "TCK-0981"]
     assert data.get_customer_tickets(1, "marcos@cliente.test", 5)["tickets"] == []
+
+
+def test_creating_a_ticket_is_idempotent_and_visible_to_the_customer() -> None:
+    data = demo_data()
+
+    first = data.create_ticket(1, "Marcos@Cliente.test ", "No enciende", "Desc.", "high", "k-1")
+    again = data.create_ticket(1, "marcos@cliente.test", "No enciende", "Desc.", "high", "k-1")
+    other = data.create_ticket(1, "marcos@cliente.test", "Otro fallo", "Desc.", "normal", "k-2")
+
+    assert first["created"] is True
+    assert again == {"created": False, "ticket": first["ticket"]}
+    assert other["ticket"]["id"] != first["ticket"]["id"]
+    assert "customer_email" not in first["ticket"]
+    listed = data.get_customer_tickets(1, "marcos@cliente.test", 10)["tickets"]
+    assert {t["id"] for t in listed} == {first["ticket"]["id"], other["ticket"]["id"]}
+
+
+@pytest.mark.parametrize(
+    ("tenant_id", "subject", "priority"),
+    [(3, "Asunto", "normal"), (1, "", "normal"), (1, "x" * 151, "normal"), (1, "Asunto", "urgent")],
+    ids=["tenant-without-helpdesk", "empty-subject", "long-subject", "bad-priority"],
+)
+def test_invalid_tickets_are_refused(tenant_id: int, subject: str, priority: str) -> None:
+    with pytest.raises(ToolInputError):
+        demo_data().create_ticket(tenant_id, "marcos@cliente.test", subject, "D", priority, "k")

@@ -18,6 +18,7 @@ from ai_service.application.dto import (
     DraftContext,
     DraftResult,
     EmbeddingResult,
+    PendingAction,
     ToolCallRecord,
     ToolContext,
 )
@@ -48,7 +49,20 @@ class EmailAgentPort(Protocol):
     Errores: `AgentError` con todas las llamadas facturadas.
     """
 
-    async def run(self, email: Email) -> AgentOutcome: ...
+    async def run(self, email: Email, *, thread_id: str | None = None) -> AgentOutcome:
+        """`thread_id` identifica la ejecución por si queda en pausa (acción
+        pendiente de aprobación)."""
+        ...
+
+    async def resume(
+        self, thread_id: str, *, tenant_id: TenantId, email_id: int, action_id: str, approved: bool
+    ) -> AgentOutcome:
+        """Reanuda una ejecución en pausa con la decisión de una persona.
+
+        `ResumeExpiredError` (en un `AgentError`) si ya no existe;
+        `ThreadMismatchError` si no es de esa empresa, ese email o esa acción.
+        """
+        ...
 
 
 class EventBusPort(Protocol):
@@ -100,3 +114,13 @@ class ToolPort(Protocol):
     async def call(
         self, tool: str, arguments: Mapping[str, Any], context: ToolContext
     ) -> ToolCallRecord: ...
+
+
+class ActionPort(Protocol):
+    """Acciones que MODIFICAN datos de la empresa (crear un ticket...). Solo se
+    ejecutan después de que una persona las apruebe. Nunca lanza."""
+
+    @property
+    def available_actions(self) -> frozenset[str]: ...
+
+    async def execute(self, action: PendingAction, context: ToolContext) -> ToolCallRecord: ...

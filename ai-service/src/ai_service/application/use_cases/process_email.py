@@ -5,7 +5,12 @@ from typing import Literal
 
 from ai_service.application.contracts.events import EmailReceived
 from ai_service.application.errors import AgentError
-from ai_service.application.mappers import email_from_event, failed_event, processed_event
+from ai_service.application.mappers import (
+    email_from_event,
+    failed_event,
+    processed_event,
+    thread_id_for,
+)
 from ai_service.application.ports import EmailAgentPort, EventBusPort, OutgoingEvent
 from ai_service.domain.errors import DomainError
 
@@ -38,7 +43,7 @@ class ProcessEmail:
         result: ProcessingResult
         try:
             email = email_from_event(received)
-            outcome = await self._agent.run(email)
+            outcome = await self._agent.run(email, thread_id=thread_id_for(received))
         except AgentError as error:
             if error.retryable:
                 raise

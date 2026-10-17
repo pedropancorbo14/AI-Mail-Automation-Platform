@@ -485,6 +485,56 @@ estado se guarda con **`langgraph-checkpoint-postgres`**
   `AI_SERVICE_CHECKPOINT_TTL_HOURS` (14 días).
 - `/ready` incluye `checkpoints` cuando está configurado.
 
+### Acción con aprobación: `interrupt` (tarea 4.4)
+
+```mermaid
+sequenceDiagram
+    participant L as Laravel (panel)
+    participant G as Grafo (ai-service)
+    participant P as PostgreSQL (checkpoints)
+    participant M as Servidor MCP
+    G->>G: classify → retrieve → tools (tickets del cliente)
+    G->>G: propose_action: soporte sin ticket abierto → create_support_ticket
+    G->>P: interrupt() en await_approval: estado guardado
+    G-->>L: email.processed.v1 (pending_action, thread_id, sin borrador)
+    L->>L: una persona aprueba o rechaza
+    L-->>G: email.review_resumed.v1 (thread_id, action_id, approved)
+    G->>P: lee el estado (empresa, email y acción deben coincidir)
+    G->>M: execute(acción, idempotency_key = action_id) solo si se aprobó
+    G->>G: draft (con el número de ticket) → validate
+    G->>P: borra el hilo
+    G-->>L: email.processed.v1 (causation_id = la reanudación)
+```
+
+- **Planificación determinista** (`application/services/action_planner.py`):
+  soporte técnico de un cliente cuyos tickets se pudieron consultar y no
+  tiene ninguno abierto → proponer `create_support_ticket` con el asunto del
+  email, el resumen de la clasificación (y los pedidos mencionados) y
+  prioridad alta si la urgencia es alta. El modelo no elige la acción ni sus
+  argumentos.
+- **Dos nodos**: `propose_action` planifica y guarda la acción en el
+  estado; `await_approval` llama a `interrupt()`. Al reanudar, LangGraph
+  repite el nodo del `interrupt` desde el principio: si planificara ahí, la
+  acción tendría otro `action_id`.
+- **Solo por el camino aprobado** (`ActionPort.execute`, implementado por el
+  cliente MCP): `call()` nunca ejecuta herramientas de escritura; `execute()`
+  inyecta empresa, cliente y `idempotency_key = action_id` (también
+  reservados en los argumentos). El servidor MCP devuelve el mismo ticket si
+  se repite la clave.
+- **`resume()`** comprueba que el hilo existe (si no → `ResumeExpiredError`,
+  `expired`) y que es de **esa empresa, ese email y esa acción** (si no →
+  `ThreadMismatchError`: nunca se aplica y la pausa sigue intacta).
+- **Facturación**: el resultado de la reanudación lleva **solo las llamadas
+  nuevas** al modelo (la clasificación ya se informó en la pausa) pero
+  **todas** las herramientas (la evidencia completa para la revisión del
+  texto en Laravel).
+- **`durability="exit"`**: se guarda al pausar o terminar, no en cada nodo;
+  al terminar, el hilo se borra. Sin checkpoints configurados, el agente no
+  propone acciones.
+- Probado con **PostgreSQL real + servidor MCP real + IA simulada**: la
+  pausa sobrevive a un reinicio del worker, aprobada abre el ticket una vez
+  y la respuesta cita su número (enviada sola), y no queda estado.
+
 ### Límites del agente (tarea 4.3)
 
 | Límite | Qué pasa al superarlo |

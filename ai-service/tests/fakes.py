@@ -11,6 +11,7 @@ from ai_service.application.dto import (
     DraftResult,
     EmbeddingResult,
     LLMCall,
+    PendingAction,
     ToolCallRecord,
     ToolContext,
 )
@@ -53,8 +54,27 @@ class FakeAgent:
     error: AgentError | None = None
     seen: list[Email] = field(default_factory=list)
 
-    async def run(self, email: Email) -> AgentOutcome:
+    resumes: list[dict[str, Any]] = field(default_factory=list)
+
+    async def run(self, email: Email, *, thread_id: str | None = None) -> AgentOutcome:
         self.seen.append(email)
+        if self.error:
+            raise self.error
+        assert self.outcome is not None
+        return self.outcome
+
+    async def resume(
+        self, thread_id: str, *, tenant_id: TenantId, email_id: int, action_id: str, approved: bool
+    ) -> AgentOutcome:
+        self.resumes.append(
+            {
+                "thread_id": thread_id,
+                "tenant_id": tenant_id,
+                "email_id": email_id,
+                "action_id": action_id,
+                "approved": approved,
+            }
+        )
         if self.error:
             raise self.error
         assert self.outcome is not None
@@ -169,3 +189,24 @@ class FakeToolPort:
         if isinstance(result, str):  # texto = error de la herramienta
             return ToolCallRecord(tool, arguments, None, "error", result, 3)
         return ToolCallRecord(tool, arguments, result, "success", None, 3)
+
+
+@dataclass
+class FakeActionPort:
+    """Acciones simuladas: registra lo ejecutado; mismo `action_id` → mismo ticket."""
+
+    fail_with: str | None = None
+    executed: list[tuple[PendingAction, ToolContext]] = field(default_factory=list)
+
+    @property
+    def available_actions(self) -> frozenset[str]:
+        return frozenset({"create_support_ticket"})
+
+    async def execute(self, action: PendingAction, context: ToolContext) -> ToolCallRecord:
+        self.executed.append((action, context))
+        if self.fail_with:
+            return ToolCallRecord(action.tool, action.arguments, None, "error", self.fail_with, 4)
+        ticket = {"id": "TCK-2001", "subject": action.arguments["subject"], "status": "open"}
+        return ToolCallRecord(
+            action.tool, action.arguments, {"created": True, "ticket": ticket}, "success", None, 4
+        )

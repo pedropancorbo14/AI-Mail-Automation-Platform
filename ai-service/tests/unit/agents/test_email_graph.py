@@ -100,6 +100,7 @@ async def test_low_confidence_goes_through_human_review() -> None:
         "classify",
         "retrieve",
         "tools",
+        "propose_action",
         "draft",
         "validate",
         "human_review",
@@ -112,7 +113,14 @@ async def test_auto_send_does_not_visit_human_review() -> None:
 
     state = await agent(llm).graph.ainvoke(initial())
 
-    assert state["visited"] == ["classify", "retrieve", "tools", "draft", "validate"]
+    assert state["visited"] == [
+        "classify",
+        "retrieve",
+        "tools",
+        "propose_action",
+        "draft",
+        "validate",
+    ]
 
 
 async def test_retrieve_gives_the_draft_the_documentation_of_the_email_tenant() -> None:
@@ -383,6 +391,8 @@ def test_the_graph_has_the_expected_shape() -> None:
         "classify",
         "retrieve",
         "tools",
+        "propose_action",
+        "await_approval",
         "draft",
         "validate",
         "human_review",
@@ -390,5 +400,6 @@ def test_the_graph_has_the_expected_shape() -> None:
     }
     edges = {(e.source, e.target) for e in graph.edges}
     assert {("classify", "retrieve"), ("classify", "validate"), ("retrieve", "tools")} <= edges
-    assert ("tools", "draft") in edges
+    assert {("tools", "propose_action"), ("await_approval", "draft")} <= edges
+    assert {("propose_action", "await_approval"), ("propose_action", "draft")} <= edges
     assert {("validate", "human_review"), ("validate", "__end__")} <= edges

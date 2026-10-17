@@ -3880,8 +3880,41 @@ pasos) que mandan el caso a una persona en vez de fallar.
   redactar al superar el presupuesto, embeddings fuera del presupuesto,
   límite de pasos no reintentable, el contenedor pasa los límites. 276
   tests
-- [ ] 4.4 Acción con aprobación: planificador, nodo con `interrupt`, MCP
-  idempotente y solo por el camino aprobado
+- [x] 4.4 **Acción con aprobación (`interrupt`).** `PendingAction`
+  (`action_id` = clave de idempotencia, `tool`, `arguments`, `summary`) y
+  `AgentOutcome.pending_action`/`thread_id`; `calls` = solo las llamadas de
+  esa ejecución. Errores `ResumeExpiredError` (código `expired`) y
+  `ThreadMismatchError`. Puertos: `ActionPort` (`available_actions`,
+  `execute`) y `EmailAgentPort.run(email, *, thread_id)` + `resume(thread_id,
+  *, tenant_id, email_id, action_id, approved)`. `action_planner.plan_action`
+  (determinista: soporte técnico, tickets consultados sin ninguno abierto →
+  `create_support_ticket` con asunto, resumen + pedidos, prioridad alta si
+  urgencia alta). Grafo: tools → **propose_action** → (acción) →
+  **await_approval** (`interrupt`) → draft; dos nodos porque al reanudar se
+  repite el nodo del `interrupt` (otro `action_id` si planificara ahí);
+  aprobada → `execute` (MCP, idempotente) y fallo → motivo; rechazada →
+  `ToolCallRecord` `rejected` "Una persona la rechazó."; `durability="exit"`
+  y hilo borrado al terminar; `resume()` comprueba hilo (si no `expired`),
+  empresa, email y acción (si no `ThreadMismatchError`, la pausa sigue).
+  Solo con checkpointer **y** acciones. `references_in` acepta el ticket
+  creado. MCP: `create_support_ticket` real (en memoria, `idempotency_key`,
+  validación de asunto/descripción/prioridad, empresa sin helpdesk → error);
+  cliente: `WRITE_TOOLS` solo por `execute()` con `idempotency_key`
+  reservado. Evento: `thread_id` y `pending_action` en `email.processed.v1`
+  (`thread_id_for` = `t{empresa}-e{email}-{event_id}`), `processed_event`/
+  `failed_event` aceptan también la reanudación como causa. IA simulada:
+  reglas de soporte técnico ("no enciende"…) y cita el ticket creado.
+  Contenedor: el mismo cliente MCP como `tools` y `actions`; el worker pasa
+  el `saver`. Tests: planificador (5), grafo con `InMemorySaver` (12: pausa
+  sin borrador, aprobada una vez con la misma acción y cita al ticket, solo
+  llamadas nuevas, rechazada, fallo → persona, doble reanudación →
+  `expired`, otra empresa/email/acción → rechazo sin tocar la pausa, hilo
+  desconocido, ticket ya abierto, sin checkpoints, sin estado al terminar),
+  caso de uso (evento con acción que cumple el contrato, hilo por petición),
+  backend MCP (idempotente, inválidos), cliente MCP real (`execute` con
+  clave, escritura nunca por `call`, reservados) y **grafo + IA simulada +
+  MCP real + PostgreSQL real con reinicio entre pausa y aprobación**. 303
+  tests
 - [ ] 4.5 Reanudar: consumidor de `email.review_resumed.v1` y caso de uso
 - [ ] 4.6 Indicación de la persona (`review_instruction`, prompt nuevo)
 - [ ] 4.7 Laravel: acción pendiente en el panel (aprobar/rechazar),

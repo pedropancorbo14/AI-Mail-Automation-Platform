@@ -61,4 +61,7 @@ def references_in(tool: str, result: dict[str, Any] | None) -> set[str]:
             found.add(str(ticket["id"]))
     if tool == "get_customer" and result.get("found"):
         found.add(str(result.get("email", "")))
+    ticket = result.get("ticket")  # create_support_ticket aprobada y ejecutada
+    if isinstance(ticket, dict) and ticket.get("id"):
+        found.add(str(ticket["id"]))
     return found

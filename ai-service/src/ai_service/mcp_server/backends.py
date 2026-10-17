@@ -10,7 +10,8 @@ sustituyen por Shopify, el ERP o el helpdesk reales sin tocar las tools.
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,11 +42,16 @@ def _same(a: str, b: str) -> bool:
     return a.strip().casefold() == b.strip().casefold()
 
 
+PRIORITIES = frozenset({"low", "normal", "high"})
+
+
 @dataclass(frozen=True, slots=True)
 class DemoData:
     orders: dict[str, list[dict[str, Any]]]
     tickets: dict[str, list[dict[str, Any]]]
     tenants: dict[int, str]
+    # Tickets creados por clave de idempotencia (demostración: en memoria).
+    created: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, orders_file: Path, tickets_file: Path, tenants: dict[int, str]) -> "DemoData":
@@ -120,6 +126,45 @@ class DemoData:
                 for t in mine
             ]
         }
+
+    def create_ticket(
+        self,
+        tenant_id: int,
+        customer: str,
+        subject: str,
+        description: str,
+        priority: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Abre un ticket. Repetir la llamada con la misma clave devuelve el mismo
+        ticket (una reanudación repetida no crea dos)."""
+        slug = self.tenants.get(tenant_id)
+        if slug is None:
+            raise ToolInputError("Esta empresa no tiene un sistema de tickets configurado.")
+        if not subject.strip() or len(subject) > 150 or len(description) > 2000:
+            raise ToolInputError(
+                "Asunto (de 1 a 150 caracteres) o descripción (máx. 2000) no válidos."
+            )
+        if priority not in PRIORITIES:
+            raise ToolInputError("Prioridad no válida (low, normal o high).")
+        key = f"{tenant_id}:{idempotency_key}"
+        if key in self.created:
+            return {"created": False, "ticket": self.created[key]}
+        rows = self.tickets.setdefault(slug, [])
+        ticket = {
+            "id": f"TCK-{2000 + len(self.created) + 1}",
+            "customer_email": customer.strip().lower(),
+            "subject": subject.strip(),
+            "description": description,
+            "priority": priority,
+            "status": "open",
+            "created_at": datetime.now(UTC).isoformat(),
+            "last_update": "Ticket abierto por el equipo de atención al cliente.",
+        }
+        rows.append(ticket)
+        visible = {k: v for k, v in ticket.items() if k != "customer_email"}
+        self.created[key] = visible
+        return {"created": True, "ticket": visible}
 
 
 def present_order(order: dict[str, Any]) -> dict[str, Any]:

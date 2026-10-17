@@ -51,6 +51,10 @@ _RULES: tuple[tuple[Category, tuple[str, ...]], ...] = (
         ("cobrado dos veces", "doble cobro", "cargo duplicado", "charged twice"),
     ),
     (Category.CANCELLATION, ("cancelar", "cancel")),
+    (
+        Category.TECHNICAL_SUPPORT,
+        ("no funciona", "no enciende", "no arranca", "not working", "doesn't work"),
+    ),
     (Category.RETURN_REQUEST, ("devolver", "devolución", "return", "refund", "roto", "broken")),
     (Category.INVOICE_REQUEST, ("factura", "invoice")),
     (
@@ -131,11 +135,18 @@ class SimulatedLLM:
         await self._wait()
         english = classification.language == "en"
         company = email.tenant_name or "la empresa"
-        # Solo "confía" si tiene datos: documentación o pedidos consultados.
+        # Solo "confía" si tiene datos: documentación, pedidos o un ticket abierto.
         best = context.knowledge[0] if context.knowledge else None
         orders = _orders(context)
+        tickets = _created_tickets(context)
         facts = [best.content] if best else []
         facts += [_order_fact(order, english=english) for order in orders]
+        facts += [
+            f"We have opened ticket {t['id']} for you."
+            if english
+            else f"Hemos abierto la incidencia {t['id']} para tu caso."
+            for t in tickets
+        ]
         fact = "".join(f"\n\n{f}" for f in facts)
         if english:
             body = f"Hello,\n\nThank you for your message. [Simulated AI reply]{fact}\n\nBest regards,\nThe {company} customer service team"
@@ -143,6 +154,7 @@ class SimulatedLLM:
             body = f"Hola:\n\nGracias por escribirnos. [Respuesta de la IA simulada]{fact}\n\nUn saludo,\nEl equipo de atención al cliente de {company}"
         sources = [Source(SourceType.DOCUMENT, best.source)] if best else []
         sources += [Source(SourceType.ORDER, str(order["order_number"])) for order in orders]
+        sources += [Source(SourceType.TICKET, str(t["id"])) for t in tickets]
         confident = bool(facts)
         draft = Draft(
             body=body,
@@ -206,3 +218,13 @@ def _order_fact(order: dict[str, Any], *, english: bool) -> str:
         if shipment.get("carrier"):
             text += f" Transportista {shipment['carrier']}, seguimiento {shipment.get('tracking_number')}."
     return text
+
+
+def _created_tickets(context: DraftContext) -> list[dict[str, Any]]:
+    """Tickets abiertos por una acción aprobada (create_support_ticket)."""
+    found: list[dict[str, Any]] = []
+    for record in context.tool_results:
+        ticket = (record.result or {}).get("ticket") if record.status == "success" else None
+        if record.tool == "create_support_ticket" and isinstance(ticket, dict) and ticket.get("id"):
+            found.append(ticket)
+    return found

@@ -59,15 +59,33 @@ class DraftResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PendingAction:
+    """Acción que modifica datos de la empresa y espera la aprobación de una
+    persona. Los argumentos los construye el backend (nunca el modelo); empresa
+    y cliente se añaden al ejecutarla. `action_id` es también la clave de
+    idempotencia: ejecutarla dos veces no crea dos tickets."""
+
+    action_id: str
+    tool: str
+    arguments: dict[str, Any]
+    summary: str
+
+
+@dataclass(frozen=True, slots=True)
 class AgentOutcome:
-    """Lo que devuelve el agente al terminar el grafo."""
+    """Lo que devuelve el agente al terminar el grafo (o al quedar en pausa)."""
 
     classification: Classification
     draft: Draft | None
     outcome: DecisionOutcome
+    # Solo las llamadas al modelo de ESTA ejecución (las de antes de una pausa ya
+    # se informaron a Laravel: se facturarían dos veces).
     calls: tuple[LLMCall, ...]
     tool_calls: tuple[ToolCallRecord, ...] = field(default_factory=tuple)
     duration_ms: int = 0
+    # Grafo en pausa esperando la aprobación de esta acción.
+    pending_action: PendingAction | None = None
+    thread_id: str | None = None
 
     @property
     def tools_used(self) -> tuple[str, ...]:
