@@ -7,7 +7,7 @@ envía sola, la revisa una persona o se escala. **Laravel** sigue siendo el
 dueño de todo lo demás: ingesta IMAP, empresas, usuarios, panel, estados
 del email, reglas finales y envío.
 
-> **Estado:** Fase 1, tareas 1.1–1.7 (esqueleto, contrato, dominio, puertos, caso de uso, adaptador de Claude, grafo de LangGraph y consumidor de Redis Streams). Hasta que termine la Fase 1,
+> **Estado:** Fase 1, tareas 1.1–1.10 (servicio completo, integración con Laravel, Docker, Grafana y alertas). Falta la prueba de punta a punta en el stack (1.11). Hasta que termine la Fase 1,
 > Laravel sigue procesando los emails con su propio motor
 > (`AI_ENGINE=laravel`, el único que existe todavía).
 
@@ -362,7 +362,53 @@ curl localhost:8000/health   # {"status":"ok","service":"ai-service",...}
 curl localhost:8000/metrics  # formato Prometheus
 ```
 
-En Docker Compose se añade en la tarea 1.10.
+### Con Docker Compose (stack completo)
+
+ai-service y el consumidor de resultados de Laravel (`ai-results`) van en
+el **perfil `ai-service`**: solo se levantan si usas el motor de Python.
+
+```bash
+# .env (raíz del proyecto)
+AI_ENGINE=python
+COMPOSE_PROFILES=ai-service
+ANTHROPIC_API_KEY=sk-ant-...        # la usa ai-service, no Laravel
+
+docker compose up -d --build ai-service ai-results
+docker compose exec app php artisan migrate     # columnas ai_event_id...
+docker compose exec horizon php artisan horizon:terminate   # recoge AI_ENGINE
+curl -s 127.0.0.1:8001/ready                    # {"status":"ok",...}
+docker compose logs -f ai-service ai-results
+```
+
+| Servicio | Imagen | Qué hace |
+|---|---|---|
+| `ai-service` | `ai-service/Dockerfile` | Worker de Python: consume `email.received.v1`, ejecuta el grafo y publica el resultado. `/health`, `/ready`, `/metrics` en `127.0.0.1:8001` |
+| `ai-results` | la de Laravel | `php artisan ai:consume-results`: aplica los resultados (estados, borrador, `ai_requests`, envío) |
+
+**Imagen** (`ai-service/Dockerfile`, multi-stage): la etapa *builder*
+instala uv desde PyPI y las dependencias exactas de `uv.lock` (capa
+cacheada aparte del código); la de *runtime* solo lleva Python y el
+entorno virtual, con un **usuario sin privilegios (uid 10001)** y
+`HEALTHCHECK` sobre `/health`. En el compose corre con el sistema de
+archivos de **solo lectura**, sin capacidades (`cap_drop: ALL`) y
+`no-new-privileges`; `stop_grace_period` de 60 s para terminar los emails
+en curso.
+
+**Observabilidad en el stack:**
+
+- **Prometheus** descubre `ai-service` por DNS (job `ai-service`): sin el
+  perfil no hay target ni alertas.
+- **Promtail** etiqueta los logs de los contenedores con `service` (el del
+  compose) y, para `ai-service`, parsea el JSON: `level` como etiqueta.
+  Seguir un email: `{service="ai-service"} | json | trace_id="..."`.
+- **Grafana**: dashboard **"AI Mail · ai-service"** (emails procesados,
+  fallos, reintentos, % recomendado para enviar solo, tiempos, latencia
+  del modelo, tokens, categorías, resultados aplicados en Laravel y logs).
+- **Alertas** (`docker/prometheus/alerts.yml`, grupo `ai-service`, probadas
+  con `promtool`): `ServicioIANoResponde`, `ConsumidorIAParado` (latido de
+  más de 2 min), `ColaIAAtascada` (más de 50 sin leer durante 10 min),
+  `EmailsIAFallidos`, `ResultadoIAEmpresaIncorrecta` (crítica: Laravel
+  descartó un resultado con otra empresa) y `ResultadosIAEnColaDeErrores`.
 
 ### Configuración
 
@@ -421,6 +467,11 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 - **El LLM siempre se simula en los tests**: nunca se llama a la API real
   en el CI.
 
+**CI** (job `ai-service` de `.github/workflows/tests.yml`): ruff, formato,
+mypy, import-linter, pytest con Redis real, **pip-audit** (vulnerabilidades
+conocidas en las dependencias de `uv.lock`) y **construcción y arranque de
+la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root).
+
 ## Observabilidad
 
 - **Logs:** JSON, una línea por entrada, a stdout. Campos: `timestamp`
@@ -453,6 +504,8 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 | Reintento = no confirmar + `XAUTOCLAIM` | Re-publicar el mensaje con un contador | Una sola copia del mensaje; el contador de entregas lo lleva Redis |
 | Idempotencia con `SET event_id` (24 h) además del estado en Laravel | Solo la de Laravel | Si el proceso muere entre publicar y confirmar, no se vuelve a pagar al modelo |
 | Consumidor y HTTP de operación en el mismo proceso | Dos procesos | Las métricas son del consumidor; un contenedor = un proceso = una réplica |
+| Perfil de Compose `ai-service` | Servicios siempre activos | Quien sigue con el motor de Laravel no levanta nada nuevo ni ve alertas de un servicio que no usa |
+| uv instalado con `pip` en la imagen | `COPY --from=ghcr.io/astral-sh/uv` | Una dependencia de registro menos (y en algunos entornos ghcr está bloqueado) |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
@@ -481,7 +534,7 @@ Decisiones de diseño acordadas para las siguientes tareas:
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.7 hechas |
+| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.10 hechas |
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | Pendiente |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | Pendiente |
 | 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |

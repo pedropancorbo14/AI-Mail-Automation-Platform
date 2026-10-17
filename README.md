@@ -211,6 +211,8 @@ que termine su Fase 1, el diagrama de abajo sigue siendo el que funciona.
 | `grafana` | Paneles; datasources de Prometheus y Loki ya configurados. |
 | `greenmail` | Servidor de correo de pruebas (IMAP 3143, SMTP 3025, API 8080). Lo usan los tests de IMAP/SMTP y sirve para probar a mano (p. ej. con Thunderbird). Todo se queda en memoria. |
 | `ollama` | Modelos de IA locales: calcula los embeddings del RAG con `bge-m3`. Solo en la red interna (sin puerto publicado); el modelo se guarda en el volumen `ollama-data`. |
+| `ai-service` | **Perfil `ai-service`** (solo con `AI_ENGINE=python`). Microservicio de IA en Python ([`ai-service/`](ai-service/README.md)): consume `email.received.v1` de Redis Streams y publica el resultado. `/health`, `/ready` y `/metrics` en `127.0.0.1:8001`. |
+| `ai-results` | **Perfil `ai-service`**. Misma imagen que la app: `php artisan ai:consume-results` aplica los resultados de ai-service (estado, borrador, `ai_requests`, envío). |
 
 Configuración de cada servicio en [`docker/`](docker/) y en
 [`docker-compose.yml`](docker-compose.yml).

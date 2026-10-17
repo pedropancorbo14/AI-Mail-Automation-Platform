@@ -131,6 +131,72 @@ services:
       - "logging=promtail"
 
   # ---------------------------------------------------------------
+  # Microservicio de IA en Python (ai-service) + consumidor de sus
+  # resultados en Laravel. Solo con el perfil "ai-service" (AI_ENGINE=python):
+  #   COMPOSE_PROFILES=ai-service en .env, o docker compose --profile ai-service up -d
+  # ---------------------------------------------------------------
+  ai-service:
+    build:
+      context: ./ai-service
+    image: ai-mail-automation-ai-service:latest
+    profiles: ["ai-service"]
+    restart: unless-stopped
+    environment:
+      AI_SERVICE_ENVIRONMENT: ${AI_SERVICE_ENVIRONMENT:-production}
+      AI_SERVICE_LOG_LEVEL: ${AI_SERVICE_LOG_LEVEL:-INFO}
+      AI_SERVICE_LLM_PROVIDER: ${AI_SERVICE_LLM_PROVIDER:-anthropic}
+      AI_SERVICE_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_SERVICE_ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+      # Misma BD de Redis (sin prefijo) que la conexión "streams" de Laravel.
+      AI_SERVICE_REDIS_URL: redis://:${REDIS_PASSWORD:-secret}@redis:6379/${REDIS_STREAMS_DB:-3}
+      AI_SERVICE_DEBUG_ENDPOINTS: ${AI_SERVICE_DEBUG_ENDPOINTS:-false}
+    # Solo local: /health, /ready, /metrics y (si se activa) /debug/process.
+    ports:
+      - "127.0.0.1:${AI_SERVICE_PORT:-8001}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-net
+      # Prometheus lee su /metrics directamente.
+      - observability-net
+    # Endurecido: sistema de archivos de solo lectura, sin capacidades.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # Termina los emails en curso antes de parar (lo no confirmado se reclama).
+    stop_grace_period: 60s
+    labels:
+      - "logging=promtail"
+
+  ai-results:
+    build: *app-build
+    image: ai-mail-automation-app:latest
+    profiles: ["ai-service"]
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan ai:consume-results
+    environment:
+      <<: *app-env
+    volumes:
+      - ./:/var/www/html
+      - app-storage:/var/www/html/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-net
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    labels:
+      - "logging=promtail"
+
+  # ---------------------------------------------------------------
   # Data stores
   # ---------------------------------------------------------------
   postgres:

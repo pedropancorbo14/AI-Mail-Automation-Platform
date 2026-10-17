@@ -244,3 +244,116 @@ tests:
       - eval_time: 25m
         alertname: IAFrenadaPorLimites
         exp_alerts: []
+
+  # ai-service: target caído durante 2 min.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="ai-service", instance="10.0.0.5:8000"}'
+        values: "1 1 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ServicioIANoResponde
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: ServicioIANoResponde
+        exp_alerts:
+          - exp_labels: { severity: critical, job: ai-service, instance: "10.0.0.5:8000" }
+            exp_annotations:
+              summary: "Prometheus no puede leer /metrics de ai-service (10.0.0.5:8000)"
+              description: "El worker de Python está caído o reiniciándose (¿falta AI_SERVICE_ANTHROPIC_API_KEY?). Los emails se quedan en processing y ai:reconcile-remote los republicará. docker compose logs ai-service."
+
+  # Latido parado en t=0: a partir de 120 s + 2 min de "for".
+  - interval: 1m
+    input_series:
+      - series: 'aiservice_consumer_heartbeat_timestamp_seconds{job="ai-service", instance="10.0.0.5:8000"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ConsumidorIAParado
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: ConsumidorIAParado
+        exp_alerts:
+          - exp_labels: { severity: critical, job: ai-service, instance: "10.0.0.5:8000" }
+            exp_annotations:
+              summary: "El bucle del consumidor de ai-service (10.0.0.5:8000) no gira desde hace 6m 0s"
+              description: "El proceso responde pero no lee eventos (colgado o Redis inaccesible). /ready ya devuelve 503; reiniciar el contenedor."
+
+  # Cola: 60 sin leer durante 10 min alerta; 40 no.
+  - interval: 1m
+    input_series:
+      - series: 'aiservice_stream_lag{job="ai-service", instance="10.0.0.5:8000"}'
+        values: "60x15"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ColaIAAtascada
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: ColaIAAtascada
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "60 emails esperando a ai-service sin leer"
+              description: "Entran más emails de los que procesa (o el modelo va lento). Añadir réplicas o subir AI_SERVICE_CONCURRENCY; mirar la latencia de las llamadas al modelo."
+  - interval: 1m
+    input_series:
+      - series: 'aiservice_stream_lag{job="ai-service", instance="10.0.0.5:8000"}'
+        values: "40x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ColaIAAtascada
+        exp_alerts: []
+
+  # Fallos de ai-service: la serie aparece ya con 3 (primera aparición) → alerta.
+  - interval: 1m
+    input_series:
+      - series: 'aiservice_events_total{job="ai-service", instance="10.0.0.5:8000", result="failed"}'
+        values: "_ 3 3 3"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: EmailsIAFallidos
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "ai-service no pudo procesar 3 emails en 15 min"
+              description: "Errores definitivos del modelo (clave, saldo, rechazos) o reintentos agotados. Logs: {service=\"ai-service\", level=\"ERROR\"} en Loki."
+  - interval: 1m
+    input_series:
+      - series: 'aiservice_events_total{job="ai-service", instance="10.0.0.5:8000", result="failed"}'
+        values: "_ 1 2 2"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EmailsIAFallidos
+        exp_alerts: []
+
+  # Un solo resultado con empresa distinta ya es crítico (primera aparición incluida).
+  - interval: 1m
+    input_series:
+      - series: 'aimail_ai_remote_results_total{job="laravel", instance="nginx:80", event="processed", result="tenant_mismatch"}'
+        values: "_ 1 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ResultadoIAEmpresaIncorrecta
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "Laravel ha descartado un resultado de IA con una empresa que no es la del email"
+              description: "Nunca debería ocurrir: posible bug en ai-service o mensajes manipulados en Redis. El resultado no se aplicó; está en email.processed.v1.dlq. Investigar ya."
+      - eval_time: 20m
+        alertname: ResultadoIAEmpresaIncorrecta
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'aimail_ai_remote_results_total{job="laravel", instance="nginx:80", event="processed", result="invalid"}'
+        values: "0 0 1 1"
+      - series: 'aimail_ai_remote_results_total{job="laravel", instance="nginx:80", event="processed", result="applied"}'
+        values: "0 5 10 15"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ResultadosIAEnColaDeErrores
+        exp_alerts:
+          - exp_labels: { severity: warning, result: invalid }
+            exp_annotations:
+              summary: "Resultados de ai-service en la cola de errores de Laravel (invalid)"
+              description: "invalid = no cumplen el contrato (¿versiones distintas de Laravel y ai-service?); dead_lettered = fallaron al aplicarse varias veces. Revisar los streams *.dlq y el log de ai-results."

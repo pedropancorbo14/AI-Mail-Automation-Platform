@@ -3542,7 +3542,40 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   contrato roto, duplicado, email borrado, reintento → DLQ, el gasto del
   servicio cuenta para el presupuesto). Suite Laravel: 1169 en verde y
   los mismos 25 del entorno
-- [ ] 1.10 Dockerfile multi-stage, compose, Prometheus/Promtail (el CI se adelantó a la 1.3)
+- [x] Revisión del CI (pedida por el usuario, 2026-10-17): solo fallaron
+  los pushes de la 1.3 y la 1.4 (el test de valores por defecto, ya
+  arreglado en `4e7e678`); 1.5–1.9 en verde en los 4 jobs, 162 tests de
+  ai-service sin saltos (Redis real en el CI). **Regla desde ahora:
+  comprobar el CI tras cada push y arreglarlo antes de seguir.**
+- [x] 1.10 **Docker, compose, observabilidad y CI.** `ai-service/Dockerfile`
+  multi-stage (builder: `pip install uv==0.11.32` — ghcr bloqueado en la
+  nube y una dependencia menos —, `uv sync --locked --no-dev
+  --no-install-project` y luego el paquete, `--no-editable`; runtime
+  `python:3.12-slim-bookworm` con el `.venv`, usuario `app` uid 10001,
+  `HEALTHCHECK` /health, `CMD ai-service-worker`; ~370 MB) +
+  `.dockerignore`. Construida y probada aquí (con una copia del
+  Dockerfile que añade el CA del proxy): solo lectura, sin capacidades,
+  uid 10001, `/ready` ok, parada limpia. Compose: servicios
+  **`ai-service`** y **`ai-results`** (`php artisan ai:consume-results`)
+  en el **perfil `ai-service`** (`COMPOSE_PROFILES=ai-service`);
+  ai-service con `read_only`, `tmpfs /tmp`, `cap_drop: ALL`,
+  `no-new-privileges`, `stop_grace_period` 60 s, puerto
+  `127.0.0.1:8001`, Redis `redis://:<pass>@redis:6379/<REDIS_STREAMS_DB>`,
+  clave = `ANTHROPIC_API_KEY` del `.env`. Prometheus: job `ai-service`
+  por **DNS SD** (sin perfil no hay target). Promtail: etiqueta
+  `service` (servicio del compose) y `match {service="ai-service"}` →
+  JSON con `level` como etiqueta y hora del log. Dashboard
+  **`ai-service.json`** (uid `aimail-ai-service`, 18 paneles, generado
+  con un script; las 14 consultas probadas contra un Prometheus real).
+  Alertas (grupo `ai-service`, 6 reglas con pruebas en
+  `alerts.test.yml`, `promtool` SUCCESS): `ServicioIANoResponde`,
+  `ConsumidorIAParado`, `ColaIAAtascada`, `EmailsIAFallidos`,
+  `ResultadoIAEmpresaIncorrecta` (crítica), `ResultadosIAEnColaDeErrores`.
+  CI del job `ai-service`: **pip-audit** (`uv export --no-emit-project`
+  con hashes; 0 vulnerabilidades) y **construir + arrancar la imagen**
+  (`/ready`, `/health`, uid 10001). `.env.docker.example`:
+  `COMPOSE_PROFILES`, `AI_SERVICE_ENVIRONMENT`, `AI_SERVICE_LLM_PROVIDER`,
+  `AI_SERVICE_DEBUG_ENDPOINTS`
 - [ ] 1.11 Prueba de punta a punta en el stack + README final
 
 ### Pendientes anotados para más adelante

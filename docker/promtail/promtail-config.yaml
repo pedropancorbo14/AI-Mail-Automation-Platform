@@ -22,6 +22,27 @@ scrape_configs:
         target_label: container
       - source_labels: ["__meta_docker_container_log_stream"]
         target_label: stream
+      # Servicio del compose (app, horizon, ai-service...): filtra sin depender
+      # del nombre del proyecto.
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: service
+    pipeline_stages:
+      # ai-service escribe JSON (structlog) con "level" en mayúsculas como
+      # Laravel: el nivel pasa a etiqueta y la hora es la del propio log.
+      # trace_id, tenant_id y email_id NO son etiquetas (demasiadas series):
+      # {service="ai-service"} | json | tenant_id="1"
+      - match:
+          selector: '{service="ai-service"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  time: timestamp
+            - labels:
+                level:
+            - timestamp:
+                source: time
+                format: RFC3339Nano
 
   # Log de Laravel en JSON (canal "json", Fase 11): una línea por entrada con
   # message, level_name, context (datos del log) y extra (Context de Laravel:

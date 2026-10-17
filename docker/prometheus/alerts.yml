@@ -134,3 +134,64 @@ groups:
         annotations:
           summary: "{{ $labels.tenant }}: emails sin IA por límite de gasto ({{ $labels.reason }})"
           description: "budget = la empresa agotó su presupuesto diario (ver ai:budget); sender = un remitente supera el máximo de emails en 24 h (¿inundación o bucle con otro sistema?). Esos emails los atiende una persona."
+
+  # Microservicio de IA en Python (ai-service) y el consumidor de sus
+  # resultados en Laravel. Sin el perfil "ai-service" no hay series: no alertan.
+  - name: ai-service
+    rules:
+      - alert: ServicioIANoResponde
+        expr: up{job="ai-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus no puede leer /metrics de ai-service ({{ $labels.instance }})"
+          description: "El worker de Python está caído o reiniciándose (¿falta AI_SERVICE_ANTHROPIC_API_KEY?). Los emails se quedan en processing y ai:reconcile-remote los republicará. docker compose logs ai-service."
+
+      - alert: ConsumidorIAParado
+        expr: time() - aiservice_consumer_heartbeat_timestamp_seconds > 120
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El bucle del consumidor de ai-service ({{ $labels.instance }}) no gira desde hace {{ $value | humanizeDuration }}"
+          description: "El proceso responde pero no lee eventos (colgado o Redis inaccesible). /ready ya devuelve 503; reiniciar el contenedor."
+
+      - alert: ColaIAAtascada
+        expr: sum(aiservice_stream_lag) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} emails esperando a ai-service sin leer"
+          description: "Entran más emails de los que procesa (o el modelo va lento). Añadir réplicas o subir AI_SERVICE_CONCURRENCY; mirar la latencia de las llamadas al modelo."
+
+      - alert: EmailsIAFallidos
+        expr: |
+          sum(increase(aiservice_events_total{result=~"failed|dead_lettered"}[15m])) >= 3
+          or sum(aiservice_events_total{result=~"failed|dead_lettered"} unless aiservice_events_total{result=~"failed|dead_lettered"} offset 15m) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "ai-service no pudo procesar {{ $value }} emails en 15 min"
+          description: "Errores definitivos del modelo (clave, saldo, rechazos) o reintentos agotados. Logs: {service=\"ai-service\", level=\"ERROR\"} en Loki."
+
+      - alert: ResultadoIAEmpresaIncorrecta
+        expr: |
+          sum(increase(aimail_ai_remote_results_total{result="tenant_mismatch"}[15m])) > 0
+          or sum(aimail_ai_remote_results_total{result="tenant_mismatch"} unless aimail_ai_remote_results_total{result="tenant_mismatch"} offset 15m) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Laravel ha descartado un resultado de IA con una empresa que no es la del email"
+          description: "Nunca debería ocurrir: posible bug en ai-service o mensajes manipulados en Redis. El resultado no se aplicó; está en email.processed.v1.dlq. Investigar ya."
+
+      - alert: ResultadosIAEnColaDeErrores
+        expr: |
+          sum by (result) (increase(aimail_ai_remote_results_total{result=~"invalid|dead_lettered"}[15m])) > 0
+          or sum by (result) (aimail_ai_remote_results_total{result=~"invalid|dead_lettered"} unless aimail_ai_remote_results_total{result=~"invalid|dead_lettered"} offset 15m) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Resultados de ai-service en la cola de errores de Laravel ({{ $labels.result }})"
+          description: "invalid = no cumplen el contrato (¿versiones distintas de Laravel y ai-service?); dead_lettered = fallaron al aplicarse varias veces. Revisar los streams *.dlq y el log de ai-results."
