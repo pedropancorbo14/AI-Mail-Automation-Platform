@@ -29,6 +29,12 @@ del email, reglas finales y envío.
   draft → validate) con **Claude** por langchain-anthropic: structured
   outputs nativos, `effort`, fallbacks de servidor, `stop_reason`. La
   validación solo deja citar lo que se consultó de verdad.
+- **Human in the loop de verdad:** si el agente quiere **modificar datos**
+  (abrir un ticket), el grafo se para con **`interrupt`**, su estado queda
+  en **PostgreSQL** (checkpointer de LangGraph, esquema y rol propios) y una
+  persona lo aprueba o rechaza en el panel; al reanudar se comprueba
+  empresa, email y acción, y la acción es **idempotente** (`action_id`).
+  Sobrevive a reinicios del worker. Límites de tokens y pasos por email.
 - **Seguridad:** la IA **recomienda**, Laravel **decide** (reglas
   deterministas antes de enviar nada); reglas del dominio que nunca dejan
   prometer reembolsos; `tenant_id` en cada evento y Laravel rechaza
@@ -119,7 +125,7 @@ flowchart LR
     human_review --> END
 ```
 
-Grafo **actual** (Fase 3), generado por LangGraph con
+Grafo **actual** (Fase 4, con checkpoints y acciones configurados), generado por LangGraph con
 `agent.graph.get_graph().draw_mermaid()` (las líneas discontinuas son
 aristas condicionales):
 
@@ -129,6 +135,8 @@ graph TD;
 	classify(classify)
 	retrieve(retrieve)
 	tools(tools)
+	propose_action(propose_action)
+	await_approval(await_approval<br/>interrupt)
 	draft(draft)
 	validate(validate)
 	human_review(human_review)
@@ -137,7 +145,10 @@ graph TD;
 	classify -. router .-> retrieve;
 	classify -. router .-> validate;
 	retrieve --> tools;
-	tools --> draft;
+	tools --> propose_action;
+	propose_action -. hay acción .-> await_approval;
+	propose_action -. sin acción .-> draft;
+	await_approval --> draft;
 	draft --> validate;
 	validate -. auto_send .-> __end__;
 	validate -. human_review / escalate .-> human_review;
@@ -150,9 +161,11 @@ graph TD;
 | `router` (arista condicional) | **Determinista, sin IA**: sospecha de manipulación o categoría que no se contesta (spam, respuesta automática) → directo a `validate` sin buscar ni redactar; el resto → `retrieve` |
 | `retrieve` | Documentación de **la empresa del email** (RAG). Se registra como la herramienta `search_company_documents`. Si Ollama o la BD fallan, el email sigue y va a revisión |
 | `tools` | Datos del cliente en CRM, ERP y tickets por **MCP**, con un plan **determinista** según la intención (`plan_tool_calls`: pedido mencionado → `get_order`, hasta 3; sin número → `get_customer_orders`; factura o cobro → también sus pedidos; soporte o queja → `get_customer_tickets`; cambio de cuenta → `get_customer`). Empresa y cliente salen del email, nunca del modelo. Máximo `AI_SERVICE_MAX_TOOL_CALLS` (5), en paralelo. Una consulta que falla o no encuentra lo pedido → revisión humana |
-| `draft` | `LLMPort.draft` con la clasificación, la documentación (`<documentacion>` con fuentes citables) y los datos del cliente (`<datos>`, prompt `email_draft@3`); el borrador devuelve `sources` (`document`, `order`, `ticket`, `customer`) |
+| `propose_action` | **Determinista** (`plan_action`): soporte técnico de un cliente sin ticket abierto → propone `create_support_ticket` con argumentos del backend. Solo con checkpoints y acciones configurados |
+| `await_approval` | **`interrupt()`**: el grafo se para y su estado queda en PostgreSQL hasta que una persona decide en el panel (`email.review_resumed.v1`). Aprobada → la ejecuta (MCP, idempotente); rechazada → sigue sin ella |
+| `draft` | `LLMPort.draft` con la clasificación, la documentación (`<documentacion>` con fuentes citables), los datos del cliente (`<datos>`) y la indicación de la persona si la hay (`<indicacion_del_equipo>`, prompt `email_draft@4`); el borrador devuelve `sources` (`document`, `order`, `ticket`, `customer`). No se llama si el email superó su presupuesto de tokens |
 | `validate` | `DecisionPolicy` con `Evidence` (lo consultado de verdad: fuentes de la documentación + pedidos, tickets y cuenta devueltos por las herramientas, `references_in`): **una cita a algo que no se consultó → revisión humana**, y cualquier problema al consultar también |
-| `human_review` | Nodo final: la revisión la hace una persona en el panel de Laravel (Fase 13). `interrupt` + checkpointing en la Fase 4 |
+| `human_review` | Nodo final: la revisión de la respuesta la hace una persona en el panel de Laravel (Fase 13). Reprocesar con una indicación empieza un grafo nuevo (no reanuda) |
 
 Detalles (`agents/email_graph.py`):
 
@@ -160,7 +173,8 @@ Detalles (`agents/email_graph.py`):
   si falla un nodo, `AgentError` lleva también las de los anteriores (se
   facturaron).
 - Tope de tiempo del grafo entero (`AI_SERVICE_AGENT_TIMEOUT_SECONDS`, 240 s)
-  → error reintentable; `recursion_limit` 10 (el grafo no tiene ciclos).
+  → error reintentable; `recursion_limit` = `AI_SERVICE_MAX_GRAPH_STEPS`
+  (15; el grafo no tiene ciclos).
 - El grafo solo importa puertos y dominio (import-linter lo comprueba).
 
 ### Capas (arquitectura hexagonal + DDD)
@@ -463,7 +477,7 @@ un `httpx2.AsyncClient` que lleva el token):
 
 ## Acciones con aprobación humana (Fase 4)
 
-> En curso (falta la tarea 4.8: compose, CI y prueba de punta a punta). El contrato y el flujo completo están en
+> El contrato y el flujo completo están en
 > [`contracts/README.md`](../contracts/README.md#acciones-con-aprobación-humana-fase-4-de-ai-service).
 
 ### Checkpoints en PostgreSQL (tarea 4.2)
@@ -706,7 +720,7 @@ COMPOSE_PROFILES=ai-service
 ANTHROPIC_API_KEY=sk-ant-...        # la usa ai-service, no Laravel
 
 docker compose up -d --build ai-service ai-mcp ai-results
-docker compose exec app php artisan migrate     # columnas ai_event_id, rol ai_service_reader...
+docker compose exec app php artisan migrate     # columnas ai_event_id/ai_pending_action, roles ai_service_reader y ai_service_checkpoints...
 docker compose exec ollama ollama pull bge-m3   # una vez (RAG), si no lo tenías
 docker compose exec horizon php artisan horizon:terminate   # recoge AI_ENGINE
 curl -s 127.0.0.1:8001/ready                    # {"status":"ok",...}
@@ -720,8 +734,13 @@ docker compose logs -f ai-service ai-results
 | `ai-results` | la de Laravel | `php artisan ai:consume-results`: aplica los resultados (estados, borrador, `ai_requests`, envío) |
 
 `ai-service` se conecta a PostgreSQL como `ai_service_reader`
-(`AI_SERVICE_DB_PASSWORD`, solo lectura con RLS), a Ollama (`bge-m3`) y a
-`ai-mcp`; espera a que PostgreSQL y `ai-mcp` estén sanos para arrancar.
+(`AI_SERVICE_DB_PASSWORD`, solo lectura con RLS) para el RAG y como
+`ai_service_checkpoints` (`AI_SERVICE_CHECKPOINTS_DB_PASSWORD`, solo su
+esquema `ai_service`) para las pausas, a Ollama (`bge-m3`) y a `ai-mcp`;
+espera a que PostgreSQL y `ai-mcp` estén sanos para arrancar. Las
+contraseñas de los dos roles tienen que ser las mismas en el `.env` de
+Laravel (las migraciones crean los roles con ellas) y en el de ai-service
+(el compose las toma del mismo `.env`).
 
 **Imagen** (`ai-service/Dockerfile`, multi-stage): la etapa *builder*
 instala uv desde PyPI y las dependencias exactas de `uv.lock` (capa
@@ -877,6 +896,27 @@ Decisiones de diseño acordadas para las siguientes tareas:
 
 ## Prueba de punta a punta (2026-10-17)
 
+### Fase 4: aprobación humana
+
+Stack de la sesión: PostgreSQL (BD de desarrollo, migraciones de la Fase 4
+aplicadas), Redis, GreenMail, servidor MCP y worker (IA simulada,
+checkpoints en PostgreSQL), Laravel con `AI_ENGINE=python` y su **API real**
+(`php artisan serve` + token de Sanctum). "Empresa Demo" en modo `auto` con
+`technical_support` entre las intenciones que se envían solas.
+
+| Paso | Resultado |
+|---|---|
+| Marcos escribe por SMTP: "el robot aspirador del pedido 76540 no enciende" | `get_order` + `get_customer_tickets` (sin tickets) → **pausa** con `create_support_ticket`; Laravel: revisión humana, "La IA propone una acción…", sin propuesta. Una fila en `ai_service.checkpoints` |
+| Se **reinicia el worker** y se aprueba por `POST /api/v1/emails/8/action/approve` | El worker nuevo reanuda la pausa desde PostgreSQL → ticket **TCK-2001** (una vez) → respuesta con el pedido y el ticket → **enviada sola** (llega al cliente). Historial: processing → human_review → processing ("Acción aprobada por Test User") → ai_review → approved → sent. Auditoría `email.action_approved` con solo la herramienta. Checkpoints: 0 |
+| John: "la lámpara no enciende" → pausa → **rechazada** por la API | `create_support_ticket` queda `rejected` ("Una persona la rechazó."), sin ticket; la respuesta (sin datos) va a revisión |
+| El mismo email, **reprocesado con una indicación** ("Pídele una foto de la etiqueta") | Grafo nuevo desde cero (nueva pausa con la acción); tras aprobarla, la respuesta vuelve a revisión: "Redactada con una indicación del equipo". Auditoría `email.reprocessed` con `with_instruction`, sin el texto |
+
+**Encontrado y corregido en esta prueba:** al reanudar, ai-service vuelve a
+mandar todas las herramientas (son la evidencia de la respuesta) y Laravel
+las guardaba otra vez en una ejecución nueva: auditoría y métricas
+duplicadas. Ahora el resultado tras reanudar **continúa la ejecución de la
+pausa** y solo añade las herramientas nuevas.
+
 ### Fase 3: herramientas por MCP
 
 Imagen construida y lanzada como en el compose: `ai-mcp` (servidor MCP,
@@ -944,6 +984,6 @@ costes en Grafana). Solo responde con confianza a preguntas generales
 | 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | ✅ Hecha (probada de punta a punta con la IA simulada; pendiente de que la pruebes tú) |
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | ✅ Hecha (tests contra PostgreSQL real; Ollama simulado en los tests) |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | ✅ Hecha (probada de punta a punta con la IA simulada y el servidor MCP en Docker) |
-| 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |
+| 4 | Checkpointing, `interrupt` (acciones con aprobación humana), reprocesar con una indicación y límites del agente | ✅ Hecha (probada de punta a punta con la IA simulada, la API del panel y un reinicio del worker en mitad de la pausa) |
 | 5 | Supervisor con subagentes y modo *shadow* (comparar con el motor de Laravel) | Pendiente |
 | 6 | Kubernetes (probado en kind) | Pendiente |

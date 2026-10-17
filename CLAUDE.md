@@ -3781,7 +3781,7 @@ revise la rama `fase-ai-service`, el CI en verde y lo pruebe en su equipo:
 `AI_SERVICE_MCP_TOKEN` en el `.env`. Siguiente: Fase 4 (checkpointing,
 `interrupt`, límites y herramientas de escritura con aprobación).
 
-### AI-Service, Fase 4 (checkpointing, aprobación humana y límites): EN CURSO (2026-10-17)
+### AI-Service, Fase 4 (checkpointing, aprobación humana y límites): COMPLETADA Y PROBADA DE PUNTA A PUNTA CON LA IA SIMULADA (2026-10-17), pendiente de que la pruebe el usuario
 
 Misma rama `fase-ai-service`, misma forma de trabajo (un commit por tarea,
 tests en verde, CI comprobado tras cada push, documentación al día).
@@ -3996,7 +3996,42 @@ pasos) que mandan el caso a una persona en vez de fallar.
   coste y duración, añade solo las herramientas nuevas (las de la pausa van
   primero, en orden) y las de la pausa pasan a colgar del primer paso.
   Test en `RemoteApprovalTest`
-- [ ] 4.8 Compose, CI, README y prueba de punta a punta
+- [x] 4.8 **Compose, CI, README y prueba de punta a punta.** Compose y CI ya
+  cubrían la fase (URL de checkpoints del rol `ai_service_checkpoints` en
+  `ai-service` desde la 4.2; los tests de integración de Python usan el
+  PostgreSQL del CI; las contraseñas de los roles salen del mismo `.env`).
+  **Prueba en la sesión** (BD de desarrollo migrada, Redis, GreenMail,
+  servidor MCP y worker con IA simulada y checkpoints en PostgreSQL, Laravel
+  con `AI_ENGINE=python` y su API real con `php artisan serve` y token de
+  Sanctum; empresa en `auto` con `technical_support` permitido): Marcos,
+  "el robot aspirador del pedido 76540 no enciende" → pausa con
+  `create_support_ticket` (1 checkpoint) → **reinicio del worker** →
+  aprobada por la API → TCK-2001 una vez → respuesta con pedido y ticket
+  **enviada sola**, sin checkpoints; John → rechazada → `rejected`, sin
+  ticket, a revisión; reprocesado con indicación → grafo nuevo, nueva pausa
+  y, tras aprobar, revisión "Redactada con una indicación del equipo".
+  Encontrado: herramientas duplicadas al reanudar (fix anterior). README del
+  servicio (resumen de entrevista, grafo con `propose_action`/
+  `await_approval` regenerado, nodos, compose con los dos roles, prueba de
+  punta a punta, hoja de ruta) y README raíz. **Lecciones del entorno:**
+  GreenMail pierde las cuentas al reiniciar el contenedor (crearlas con su
+  API `POST /api/user` y volver a poner el buzón en `active`); el login por
+  token devuelve `token` en la raíz, no en `data`; en tests de PHP un `[]`
+  vacío se codifica como array JSON, y el contrato pide objeto
+  (`arguments`)
+
+**Resumen de la Fase 4:** 8 tareas + 2 fixes (CI y duplicados al
+reanudar), 316 tests de Python (checkpoints con PostgreSQL real, grafo con
+`interrupt`, worker real reanudando tras reinicio), 10 tests Pest nuevos
+(`RemoteApprovalTest`) + 8 de checkpoints, 87 Vitest, alerta
+`ReanudacionIARechazada` probada con `promtool`. **Pendiente para
+cerrarla:** que el usuario revise la rama `fase-ai-service`, el CI en verde
+y lo pruebe en su equipo: `.env` con `AI_SERVICE_CHECKPOINTS_DB_PASSWORD`,
+`migrate` (rol y esquema `ai_service`, columnas `ai_pending_action` y
+`ai_review_instruction`), `docker compose up -d --build ai-service ai-mcp
+ai-results` y un correo de soporte técnico de un cliente sin ticket
+abierto (p. ej. marcos@cliente.test). Siguiente: Fase 5 (supervisor con
+subagentes y modo *shadow*) cuando lo apruebe.
 
 ### Pendientes anotados para más adelante
 
