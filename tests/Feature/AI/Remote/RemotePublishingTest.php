@@ -4,11 +4,9 @@ use App\AI\Contracts\LLMProvider;
 use App\AI\Remote\Contracts\EventStream;
 use App\AI\Remote\EventContract;
 use App\Automation\AutomationMode;
-use App\Automation\EmailProcessor;
 use App\Automation\ProcessEmailJob;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
-use App\Models\EmailStatusChange;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Log;
@@ -38,17 +36,6 @@ function remoteEmail(Tenant $tenant, array $attributes = []): Email
         'subject' => '¿Hacéis envíos a Canarias?',
         'text_body' => 'Hola, ¿enviáis a Tenerife?',
     ]));
-}
-
-function processRemote(Email $email, bool $reprocess = false): ?EmailStatus
-{
-    return inTenant($email->tenant, fn () => app(EmailProcessor::class)->process($email->fresh(), $reprocess));
-}
-
-function remoteStatusPath(Email $email): array
-{
-    return inTenant($email->tenant, fn () => $email->statusChanges()->get()
-        ->map(fn (EmailStatusChange $change) => $change->to_status->value)->all());
 }
 
 it('publishes email.received.v1 and leaves the email waiting in processing', function () {

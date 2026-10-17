@@ -159,3 +159,19 @@ function costOrTokenKeys(mixed $data, string $path = ''): array
 
     return $found;
 }
+
+/**
+ * Procesa un email con EmailProcessor dentro de su empresa (motor remoto:
+ * lo publica para ai-service y lo deja en processing).
+ */
+function processRemote(App\Models\Email $email, bool $reprocess = false): ?App\Mail\Enums\EmailStatus
+{
+    return inTenant($email->tenant, fn () => app(App\Automation\EmailProcessor::class)->process($email->fresh(), $reprocess));
+}
+
+/** @return list<string> Estados por los que ha pasado un email. */
+function remoteStatusPath(App\Models\Email $email): array
+{
+    return inTenant($email->tenant, fn () => $email->statusChanges()->get()
+        ->map(fn (App\Models\EmailStatusChange $change) => $change->to_status->value)->all());
+}

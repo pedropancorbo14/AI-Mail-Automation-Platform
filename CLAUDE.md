@@ -3510,7 +3510,38 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   **Pint no se aplica en este repo** (reformatea líneas ajenas: `' . '`
   → `'.'`), no pasarlo. Suite Laravel: 1156 en verde y los mismos 25
   fallos del entorno de la nube (pgvector 0.6, BD en paralelo)
-- [ ] 1.9 Laravel: consumidor de `email.processed.v1` (Pest)
+- [x] 1.9 **Laravel: consumidor de resultados.**
+  `App\AI\Remote\RemoteResultHandler`: valida contra el contrato, busca el
+  email (global) y **exige que su empresa sea la del `tenant_id` del
+  evento** (`TenantMismatchException` → cola de errores + `Log::critical`,
+  nunca se aplica); dentro del tenant y en transacción con
+  `lockForUpdate`, solo si sigue en processing (si no, `stale`); guarda
+  **una fila de `ai_requests` por llamada** (coste con
+  `CostCalculator::forUsage` = precios de Laravel; `response` =
+  `{source: ai-service, prompt}`; así Grafana, la auditoría y
+  `AiSpendGuard` ven el gasto del servicio); `processed` →
+  `recordClassification` (con la petición de clasificación) → spam/
+  auto_reply con confianza alta → ignored (`EmailProcessor::ignoreReason`)
+  → sin borrador → human_review ("La IA lo escala…"/"pide revisión…") →
+  con borrador: `email_replies` draft (`needs_human` si la decisión no es
+  `auto_send`, motivos) → ai_review → **`AutoSendPolicy`** (la última
+  palabra es de Laravel) → `ReplySender::approve` o human_review;
+  `processing_failed` → `llm_config` failed, resto human_review.
+  Comando **`ai:consume-results {--once}`** (proceso largo; `trap`
+  SIGTERM/SIGINT): grupo `laravel` en `email.processed.v1` y
+  `email.processing_failed.v1`, reclama abandonados (`claim_idle_ms`
+  60 s), lee, aplica y confirma; contrato roto o empresa distinta → DLQ;
+  error inesperado → sin confirmar y, con `max_deliveries` (3), DLQ;
+  recorta los streams cada minuto (`retention_hours` 168). Métrica
+  `ai_remote_results_total{event,result}`. Helpers de tests
+  `processRemote()`/`remoteStatusPath()` movidos a `tests/Pest.php`
+  (**lección:** los helpers definidos en otro archivo de test no existen
+  si se lanza un archivo suelto). Tests `RemoteResultsTest` (13: envío
+  automático con costes y clasificación, modo borrador manda, revisión
+  con motivos, spam ignorado, escalado, fallos, empresa distinta,
+  contrato roto, duplicado, email borrado, reintento → DLQ, el gasto del
+  servicio cuenta para el presupuesto). Suite Laravel: 1169 en verde y
+  los mismos 25 del entorno
 - [ ] 1.10 Dockerfile multi-stage, compose, Prometheus/Promtail (el CI se adelantó a la 1.3)
 - [ ] 1.11 Prueba de punta a punta en el stack + README final
 
