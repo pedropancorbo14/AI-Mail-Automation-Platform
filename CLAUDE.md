@@ -284,6 +284,15 @@ Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
 OpenAI primero, por presupuesto ajustado ahora mismo. OpenAI/Gemini quedan
 como interfaces intercambiables para el futuro, no implementadas todavía.
 
+**Decisión tomada (2026-10-17), distinta al plan original (secciones 5,
+8 y 19):** el "cerebro de IA" se extrae a un **microservicio en Python**
+(`ai-service/`, ver su sección "AI-Service" más abajo). Razones: el
+ecosistema de agentes (LangGraph, MCP) está en Python, la carga de la IA es
+distinta a la web, y el usuario prepara una oferta que pide Python,
+LangGraph, MCP, hexagonal/DDD, eventos y Kubernetes. Laravel sigue siendo
+el monolito de todo lo demás. El motor de IA de Laravel (Fases 5–9) **no
+se borra**: convive con un interruptor `AI_ENGINE=laravel|python`.
+
 ### Fase 1 (base del proyecto): VERIFICADA EN LOCAL (2026-09-29)
 
 Probada de extremo a extremo con Docker Desktop (Windows) en entorno
@@ -3248,6 +3257,107 @@ rama `fase-13-human-in-the-loop`, el CI en verde, la fusione y siga
 "Actualizar un entorno anterior a la Fase 13" del README en su equipo
 (migración, `RolesAndPermissionsSeeder` por el permiso `emails.review`,
 reiniciar Prometheus/Grafana y Horizon).
+
+### AI-Service (microservicio de IA en Python): EN CURSO — Fase 1 (2026-10-17)
+
+Rama **`fase-ai-service`** (sesión en la nube, como las Fases 11 y 13: los
+commits se suben a esa rama, nunca a `main`; el usuario revisa el CI y la
+fusiona). Un commit por tarea, tests en verde antes de cada commit, este
+archivo y los README actualizados en cada commit. La numeración de fases
+de esta sección es **propia del servicio** (Fase 1–6), no la de las 17
+fases de la plataforma.
+
+**Objetivo:** Laravel publica `email.received.v1`; el servicio Python
+clasifica, (más adelante) consulta RAG y tools, redacta, calcula la
+confianza y publica `email.processed.v1`; Laravel aplica el resultado.
+Laravel se queda con ingesta, tenants, autenticación, panel, estados y
+envío.
+
+**Stack:** Python 3.12 + uv, FastAPI (solo salud, métricas y depuración),
+Pydantic v2, LangGraph + langchain-anthropic (solo Claude), Redis Streams
+con consumer groups, PostgreSQL + pgvector (SQLAlchemy 2 async / psycopg),
+SDK oficial de MCP, pytest + pytest-asyncio, ruff, mypy estricto,
+import-linter, logs JSON (structlog) y métricas Prometheus.
+
+**Decisiones tomadas (aprobadas por el usuario):**
+- **Laravel tiene la última palabra sobre el envío**: la `decision` de
+  Python es una recomendación; Laravel la pasa por `AutoSendPolicy` +
+  `ReplyContentGuard` (modo de la empresa, intenciones, anti-bucles,
+  límites por remitente). `escalate` → `human_review` con su motivo.
+- **Contrato ampliado** (JSON Schema único en `/contracts/events/`,
+  validado en los dos lados): sobre común `event_id` (idempotencia: Redis
+  Streams entrega al menos una vez), `event_type`, `event_version`,
+  `occurred_at`, `trace_id` (= `request_id` de Laravel); en
+  `email.processed.v1` además `language`, `reasons`, `model` y `usage`
+  (tokens y coste: Laravel los guarda en `ai_requests`, de los que
+  dependen los costes de Grafana y `AiSpendGuard`; Python no escribe en
+  tablas de Laravel); evento aparte `email.processing_failed.v1`
+  (`error_code`, `message`, `retryable`) para errores definitivos. Añadir
+  campos opcionales no rompe la v1; quitar o renombrar exige v2.
+- **`email.received.v1` se publica en `EmailProcessor::run()` tras los
+  filtros baratos** (correo automático → ignored, modo `off`,
+  `AiSpendGuard`), en el punto donde hoy se llama a la IA; el email sigue
+  en PROCESSING mientras Python trabaja. Publicación *after commit* + un
+  comando reconciliador que republica los que lleven N minutos en
+  PROCESSING (outbox descartado en la Fase 1 por simplicidad).
+- **`human_review` es un nodo final en la Fase 1.** `interrupt` +
+  checkpointing (esquema propio `ai_service` en PostgreSQL) en la Fase 4,
+  solo para reprocesar con una indicación de la persona
+  (`email.review_resumed.v1`) y aprobar tools que modifican datos.
+- Streams: conexión de Redis `streams` **sin el prefijo de claves** de
+  Laravel; DLQ `*.dlq` tras N entregas; `XAUTOCLAIM` de pendientes;
+  `XDEL` tras procesar y `XTRIM MINID` por antigüedad (el cuerpo del email
+  es dato personal y la retención de la Fase 12 no llega a Redis).
+- **Riesgo a comprobar en la tarea 1.5:** en Opus 5.5 forzar `tool_choice`
+  da 400 y `with_structured_output` de langchain-anthropic fuerza una tool
+  por defecto. Usar structured outputs nativos (`json_schema`) o, si no
+  lo admite, el SDK oficial `anthropic` dentro del adaptador de `LLMPort`.
+- Capas hexagonales comprobadas con **import-linter** (`lint-imports`):
+  `entrypoints` → `agents | infrastructure | mcp_server` → `application` →
+  `domain`; el dominio sin bibliotecas externas; el grafo sin adaptadores.
+- Logs JSON con `level` en mayúsculas (como `level_name` de Laravel) y
+  `timestamp` UTC; registro de métricas propio por app (prefijo
+  `aiservice_`).
+
+**Plan por fases del servicio:** 1 camino mínimo (abajo) · 2 RAG (rol de
+PostgreSQL de solo lectura + RLS por `tenant_id`, embeddings bge-m3 en
+Ollama, nodo `retrieve` con citas, tests de aislamiento) · 3 MCP + tools
+(servidor MCP por streamable HTTP con CRM/ERP/tickets simulados; el cliente
+inyecta `tenant_id` y remitente, el LLM nunca los elige; tools usadas →
+`ai_tool_calls` en Laravel) · 4 checkpointing, `interrupt` y límites
+(iteraciones, tiempo, coste) · 5 supervisor con subagentes (facturación,
+pedidos, soporte) + modo `shadow` · 6 Kubernetes (Deployment, Service,
+ConfigMap, Secret) probado en kind por el usuario (aquí `kubeconform`).
+
+**Entorno de la sesión en la nube:** Python 3.12 y uv disponibles (PyPI
+accesible por el proxy); Docker Hub limitado (429) y sin kind.
+
+**Tareas de la Fase 1 (commit):**
+- [x] 1.1 **Esqueleto de `ai-service/`**: proyecto uv (`pyproject.toml`,
+  `uv.lock`, `.python-version` 3.12), paquete `src/ai_service` con las
+  capas `domain`, `application`, `infrastructure`, `agents`, `mcp_server`,
+  `entrypoints`; `config.py` (Pydantic Settings, prefijo `AI_SERVICE_`,
+  inmutable, valores inválidos → error al arrancar); logs JSON con
+  structlog (`infrastructure/observability/logging.py`: también uvicorn y
+  la biblioteca estándar, `bind_context`/`clear_context`); métricas con
+  registro propio (`metrics.py`, `aiservice_build_info`); app FastAPI
+  (`entrypoints/http/app.py`: `GET /health`, `GET /metrics`, `/docs` solo
+  fuera de producción) y comando `ai-service-http`. Calidad: ruff (con
+  reglas de seguridad), mypy estricto en `src` y `tests`, pytest-asyncio,
+  import-linter con 3 contratos. 15 tests. README del servicio
+  (arquitectura con Mermaid, contrato, decisiones); README raíz (estado y
+  arquitectura) y este archivo
+- [ ] 1.2 Contrato de eventos: JSON Schema en `/contracts/events/` +
+  modelos Pydantic + tests de contrato
+- [ ] 1.3 Dominio puro (value objects + `DecisionPolicy`)
+- [ ] 1.4 Puertos (`LLMPort`, `EventBusPort`) y caso de uso `ProcessEmail`
+- [ ] 1.5 Adaptador de Anthropic (comprobar structured outputs en Opus 5.5)
+- [ ] 1.6 Grafo LangGraph classify → router → draft → validate + `/debug/classify`
+- [ ] 1.7 Adaptador de Redis Streams + consumidor (+ `/ready`)
+- [ ] 1.8 Laravel: `AI_ENGINE`, publicador y reconciliador (Pest)
+- [ ] 1.9 Laravel: consumidor de `email.processed.v1` (Pest)
+- [ ] 1.10 Dockerfile multi-stage, compose, Prometheus/Promtail y CI
+- [ ] 1.11 Prueba de punta a punta en el stack + README final
 
 ### Pendientes anotados para más adelante
 

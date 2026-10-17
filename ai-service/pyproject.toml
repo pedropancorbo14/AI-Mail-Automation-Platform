@@ -1,0 +1,101 @@
+[project]
+name = "ai-service"
+version = "0.1.0"
+description = "Cerebro de IA de AI Mail Automation Platform: clasifica emails, consulta datos y propone respuestas."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.143",
+    "prometheus-client>=0.26",
+    "pydantic>=2.14",
+    "pydantic-settings>=2.16",
+    "structlog>=26.1",
+    "uvicorn[standard]>=0.54",
+]
+
+[project.scripts]
+ai-service-http = "ai_service.entrypoints.http.app:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "import-linter>=2.1",
+    "mypy>=2.4",
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+    "ruff>=0.17",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_service"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/W/F: errores básicos · I: imports ordenados · B: bugs típicos · UP: sintaxis moderna
+# N: nombres · S: seguridad (bandit) · ASYNC: errores de async · SIM: simplificaciones
+# RUF: reglas propias de ruff · PT: estilo de pytest · TID: imports prohibidos (capas)
+select = ["E", "W", "F", "I", "B", "UP", "N", "S", "ASYNC", "SIM", "RUF", "PT", "TID"]
+
+[tool.ruff.lint.per-file-ignores]
+# En los tests, assert es la herramienta (S101).
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = ["--strict-markers", "--strict-config", "-ra"]
+
+# Reglas de la arquitectura hexagonal, comprobadas con `uv run lint-imports`
+# (también en el CI). Si una capa interna importa una externa, falla.
+[tool.importlinter]
+root_package = "ai_service"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Capas: las dependencias solo apuntan hacia dentro"
+type = "layers"
+layers = [
+    "ai_service.entrypoints",
+    "ai_service.agents | ai_service.infrastructure | ai_service.mcp_server",
+    "ai_service.application",
+    "ai_service.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "El dominio no depende de ninguna biblioteca externa"
+type = "forbidden"
+source_modules = ["ai_service.domain"]
+forbidden_modules = [
+    "pydantic", "pydantic_settings", "fastapi", "structlog", "prometheus_client",
+    "langgraph", "langchain_core", "langchain_anthropic", "anthropic",
+    "redis", "sqlalchemy", "psycopg", "mcp", "ai_service.config",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "El grafo solo usa puertos, nunca adaptadores"
+type = "forbidden"
+source_modules = ["ai_service.agents"]
+forbidden_modules = ["ai_service.infrastructure", "ai_service.mcp_server", "ai_service.entrypoints"]

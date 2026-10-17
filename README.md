@@ -34,6 +34,7 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 11 | Observabilidad: métricas de Prometheus, 6 dashboards de Grafana, logs en Loki y alertas probadas; IA simulada para probar sin coste | ✅ Hecha (probada en el stack con la IA simulada) |
 | 12 | Seguridad: auditoría inmutable, cuenta propia, freno del gasto de IA, revisión del texto antes de enviar, cabeceras y CSP, secretos fuera de los logs, retención y derecho de supresión, infraestructura solo en local, tests de arquitectura | ✅ Hecha (probada con ataques contra el stack) |
 | 13 | Revisión humana (*human in the loop*): bandeja de casos pendientes, aprobar, corregir o descartar la respuesta de la IA, responder, cerrar, reprocesar, asignarse casos, historial de decisiones con métricas y alerta | ✅ Hecha (probada en el navegador con la IA simulada y GreenMail) |
+| AI | **Microservicio de IA en Python** ([`ai-service/`](ai-service/README.md)): LangGraph, Redis Streams, MCP, arquitectura hexagonal; Laravel publica cada email como evento y aplica el resultado | 🚧 En curso (Fase 1, tarea 1.1). Hasta terminar la Fase 1 la IA sigue en Laravel |
 | 14–17 | Integraciones, evaluación, producción, SaaS | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
@@ -163,8 +164,13 @@ docker compose exec prometheus promtool test rules /etc/prometheus/alerts.test.y
 
 ## 2. Arquitectura
 
-Monolito modular en Laravel (sin microservicios): una sola imagen de PHP
-que se usa para la app web, los workers de colas y el scheduler.
+Monolito modular en Laravel: una sola imagen de PHP que se usa para la
+app web, los workers de colas y el scheduler. **En construcción:** el
+"cerebro de IA" (clasificar, RAG, tools, redactar, confianza) se está
+extrayendo a un microservicio en Python, [`ai-service/`](ai-service/README.md),
+que se comunica con Laravel por eventos en Redis Streams. Laravel se queda
+con la ingesta, los estados, el panel, las reglas finales y el envío. Hasta
+que termine su Fase 1, el diagrama de abajo sigue siendo el que funciona.
 
 ```
   Cliente (curl, panel, integraciones)
