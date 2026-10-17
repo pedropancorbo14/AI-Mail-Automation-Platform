@@ -3005,6 +3005,33 @@ casos, y un **historial** de todas las decisiones humanas.
   de esto es asignable en masa. Permiso **`emails.review`** (los tres
   roles). Tests: `HumanReviewModelTest` (columnas, relaciones,
   aislamiento y fallo cerrado, cascade, sin asignación en masa)
+- [x] 2. **`App\Automation\Review\HumanReviewService`** (dentro del
+  tenant del email; cada decisión en una transacción y en `email_reviews`
+  con `waited_seconds` = tiempo desde que el email entró en su estado
+  actual): **`approve($reply, $user, ?$body)`** (con `$body` distinto —sin
+  contar `\r\n` ni espacios finales, `normalize()`— guarda
+  `original_body` la primera vez, `edited_by`/`edited_at`; descarta las
+  demás propuestas en borrador; `ReplySender::approve()` con la persona →
+  se envía **sin `Auto-Submitted`**; motivo "Respuesta de la IA aprobada
+  (con cambios) por Ana"), **`reject($reply, $user, ?$reason)`** (la
+  propuesta → `rejected` con quién/cuándo/motivo; el email sigue en
+  `human_review`), **`reply($email, $user, $body)`** (respuesta escrita por
+  la persona: `created_by`, sin `agent_run_id`; sustituye a los borradores
+  y se envía), **`close($email, $user, ?$reason)`** (→ `ignored` "Cerrado
+  sin responder por Ana: …"), **`reprocess($email, $user)`** (descarta los
+  borradores, → `processing` con la persona y encola `ProcessEmailJob`
+  con `reprocess` *after commit*: el procesador sigue desde `processing`
+  como un reintento y repite el agente; **nunca** si ya se intentó un
+  envío: `EmailProcessor::sendWasAttempted()`) y **`assign($email,
+  ?$user)`** (no cambia el estado). Un email con error (`failed`) pasa
+  primero a `human_review` ("Lo revisa Ana"): `failed → approved` no es un
+  paso válido. Todo condicional: si el email ya no espera a una persona o
+  la respuesta ya no es un borrador (otra persona se adelantó) →
+  **`ReviewException`** con mensaje para el panel y no se cambia nada.
+  Tests: `HumanReviewServiceTest` (16: aprobar tal cual y editada, saltos
+  de línea no cuentan, otras propuestas descartadas, descartar, responder,
+  responder a un envío fallido, cerrar, reprocesar y nunca tras un envío,
+  estados no revisables, dos personas a la vez, asignar, fuera del tenant)
 
 ### Pendientes anotados para más adelante
 
