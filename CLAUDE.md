@@ -3716,7 +3716,20 @@ con eventos `document.uploaded.v1` / `document.indexed.v1`).
   inexistente/otra empresa = mismo error, listados y tickets acotados) y
   servidor (lista con anotaciones, llamada con contexto, pedido ajeno sin
   datos, HTTP con y sin token, no arranca sin token). 216 tests
-- [ ] 3.2 `ToolPort` + cliente MCP (contexto inyectado, solo lectura, límites)
+- [x] 3.2 **`ToolPort` y cliente MCP.** `ToolContext(tenant_id, customer)`
+  en `application/dto.py` (lo construye el backend, nunca el modelo);
+  `ToolPort` (`available`, `call(tool, arguments, context) ->
+  ToolCallRecord`, nunca lanza). `infrastructure/tools/mcp_client.py`
+  (`McpToolClient`): `Client(streamable_http_client(url, http_client=
+  httpx2.AsyncClient(headers={Authorization: Bearer})))` por llamada
+  (servidor sin estado); solo `READ_ONLY_TOOLS`; argumentos con
+  `tenant_id`/`customer_email` → `rejected`; inyecta el contexto; timeout
+  (`asyncio.timeout`, 10 s); `is_error` → `error` con el mensaje; red/token/
+  protocolo → `error` "servicio no disponible"; resultado JSON recortado a
+  8000 caracteres; registra los argumentos sin el contexto. Tests contra el
+  servidor real por HTTP: pedido propio, ajeno sin datos, mismo cliente en
+  otra empresa sin nada, contexto en argumentos rechazado, escritura
+  rechazada, token malo y servidor caído como error. 222 tests
 - [ ] 3.3 Nodo `tools`, prompt con datos, `tool_calls` en el contrato → `ai_tool_calls`
 - [ ] 3.4 Compose, CI, README y prueba de punta a punta
 

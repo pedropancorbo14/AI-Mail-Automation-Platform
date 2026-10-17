@@ -6,6 +6,7 @@ from typing import Any, Literal
 from ai_service.domain.classification import Classification
 from ai_service.domain.decision import DecisionOutcome
 from ai_service.domain.draft import Draft
+from ai_service.domain.email import EmailAddress, TenantId
 from ai_service.domain.knowledge import KnowledgeChunk
 
 CallStatus = Literal["success", "failed", "refused"]
@@ -101,3 +102,12 @@ class DraftContext:
     knowledge: tuple[KnowledgeChunk, ...] = ()
     # Hubo documentación que consultar pero no se pudo (Ollama o la BD caídos).
     knowledge_unavailable: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ToolContext:
+    """Para quién se llama a una herramienta. Lo construye el backend con el email
+    que se procesa (empresa del evento y remitente); NUNCA sale del modelo."""
+
+    tenant_id: TenantId
+    customer: EmailAddress

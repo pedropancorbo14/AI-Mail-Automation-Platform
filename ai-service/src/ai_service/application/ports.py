@@ -5,8 +5,8 @@ Streams) y el grafo de `agents/`. Se usan `Protocol` (tipado estructural):
 un adaptador no hereda de nada de este paquete, y un fake de test tampoco.
 """
 
-from collections.abc import Sequence
-from typing import Protocol
+from collections.abc import Mapping, Sequence
+from typing import Any, Protocol
 
 from ai_service.application.contracts.events import (
     EmailProcessed,
@@ -18,6 +18,8 @@ from ai_service.application.dto import (
     DraftContext,
     DraftResult,
     EmbeddingResult,
+    ToolCallRecord,
+    ToolContext,
 )
 from ai_service.domain.classification import Classification
 from ai_service.domain.email import Email, TenantId
@@ -81,3 +83,20 @@ class VectorStorePort(Protocol):
         limit: int,
         min_similarity: float,
     ) -> list[KnowledgeChunk]: ...
+
+
+class ToolPort(Protocol):
+    """Herramientas de los sistemas de la empresa (CRM, ERP, tickets) vía MCP.
+
+    `context` (empresa y cliente) lo pone el backend; `arguments` son solo los
+    propios de la herramienta. Nunca lanza: los fallos vuelven como
+    `ToolCallRecord` con `status` error o rejected (el modelo los lee y el caso va
+    a una persona).
+    """
+
+    @property
+    def available(self) -> frozenset[str]: ...
+
+    async def call(
+        self, tool: str, arguments: Mapping[str, Any], context: ToolContext
+    ) -> ToolCallRecord: ...

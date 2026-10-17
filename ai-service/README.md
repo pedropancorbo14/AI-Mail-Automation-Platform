@@ -409,6 +409,23 @@ CRM se deriva de los pedidos y los tickets están en
 14 de la plataforma, los backends se sustituyen por los sistemas reales sin
 tocar las herramientas.
 
+### Cliente MCP (`ToolPort`)
+
+`infrastructure/tools/mcp_client.py` (`McpToolClient`) implementa el puerto
+`ToolPort` con el cliente del SDK (`Client` + `streamable_http_client` con
+un `httpx2.AsyncClient` que lleva el token):
+
+- **Solo herramientas permitidas** (`READ_ONLY_TOOLS`): las de escritura se
+  rechazan (`rejected`) hasta la Fase 4.
+- **El contexto lo inyecta el backend** desde `ToolContext` (empresa del
+  evento y remitente). Si los argumentos traen `tenant_id` o
+  `customer_email`, la llamada se rechaza. Se registra lo que pidió el
+  agente, sin el contexto.
+- **Nunca lanza**: servidor caído, token incorrecto, timeout (10 s) o error
+  de la herramienta → `ToolCallRecord` con `status` error (el caso irá a
+  una persona).
+- Resultado recortado a 8000 caracteres, como en Laravel.
+
 ## Eventos: Redis Streams y el worker
 
 **Proceso `ai-service-worker`** (`entrypoints/worker.py`): un solo proceso
