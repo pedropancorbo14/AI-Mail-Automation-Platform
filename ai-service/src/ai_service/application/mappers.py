@@ -45,6 +45,7 @@ def usage_from_calls(calls: tuple[LLMCall, ...]) -> Usage:
                 stop_reason=c.stop_reason,
                 provider_request_id=c.provider_request_id,
                 error=c.error[:500] if c.error else None,
+                prompt=c.prompt,
             )
             for c in calls
         ]

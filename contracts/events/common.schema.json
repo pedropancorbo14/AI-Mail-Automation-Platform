@@ -58,7 +58,12 @@
         "latency_ms": { "type": "integer", "minimum": 0 },
         "stop_reason": { "type": ["string", "null"], "maxLength": 50 },
         "provider_request_id": { "type": ["string", "null"], "maxLength": 255 },
-        "error": { "type": ["string", "null"], "maxLength": 500 }
+        "error": { "type": ["string", "null"], "maxLength": 500 },
+        "prompt": {
+          "description": "Prompt usado, como clave@versión (p. ej. email_classification@1). Cambiar el texto de un prompt obliga a subir su versión.",
+          "type": ["string", "null"],
+          "pattern": "^[a-z][a-z0-9_]{1,63}@[0-9]{1,6}$"
+        }
       },
       "required": [
         "purpose", "provider", "requested_model", "model", "status",

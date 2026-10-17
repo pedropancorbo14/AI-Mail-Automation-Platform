@@ -7,7 +7,7 @@ envía sola, la revisa una persona o se escala. **Laravel** sigue siendo el
 dueño de todo lo demás: ingesta IMAP, empresas, usuarios, panel, estados
 del email, reglas finales y envío.
 
-> **Estado:** Fase 1, tareas 1.1–1.4 (esqueleto, contrato de eventos, dominio, puertos y caso de uso). Hasta que termine la Fase 1,
+> **Estado:** Fase 1, tareas 1.1–1.5 (esqueleto, contrato, dominio, puertos, caso de uso y adaptador de Claude). Hasta que termine la Fase 1,
 > Laravel sigue procesando los emails con su propio motor
 > (`AI_ENGINE=laravel`, el único que existe todavía).
 
@@ -203,6 +203,52 @@ Los adaptadores traducen sus errores a `LLMError` y subclases
 (`application/errors.py`): fuera del adaptador nunca aparece una
 excepción del SDK de Anthropic o de Redis.
 
+## Adaptador de Claude
+
+`infrastructure/llm/anthropic.py` implementa `LLMPort` con
+**langchain-anthropic** (`ChatAnthropic`) sobre el SDK oficial:
+
+| Qué | Cómo | Por qué |
+|---|---|---|
+| Salida estructurada | `with_structured_output(..., method="json_schema", include_raw=True)` → `output_config.format` | En Claude Opus 5.5 **forzar `tool_choice` da 400**, y el método por defecto de langchain (function calling) lo fuerza. `include_raw` da acceso a `stop_reason` y tokens |
+| Razonamiento | `reasoning_effort`: `low` al clasificar, `medium` al redactar | En Opus 5.5 el razonamiento no se puede desactivar; `effort` es el control de coste/calidad |
+| Rechazos de seguridad | `fallbacks: "default"` + beta `server-side-fallback-2026-07-01`; siempre se mira `stop_reason` (`refusal` → `LLMRefusalError`, `max_tokens` → respuesta inválida) | Anthropic reintenta con otro modelo en la misma llamada; con fallback, **cada modelo que intervino es una llamada** (`usage.iterations`) con sus tokens |
+| Errores | 429, 5xx/529 y red → `LLMUnavailableError` (reintentable); 401/403 → configuración; otros 4xx → configuración con el mensaje de la API (p. ej. "credit balance is too low") | Ninguna excepción del SDK sale del adaptador; nunca la clave en un mensaje |
+| Valores del modelo | Confianza acotada a 0–1; intención desconocida → respuesta inválida | Structured outputs no admite `minimum`/`maximum` |
+
+**Prompts versionados** (`infrastructure/llm/prompts.py`): portados de
+Laravel. `email_classification@1` (igual que el clasificador de Laravel) y
+`email_draft@1` (redactar **sin herramientas ni documentación** en la
+Fase 1: no afirma pedidos, plazos ni precios; si hacen falta, pide una
+persona con confianza baja). Cambiar el texto o el esquema obliga a subir
+la versión: un test compara el hash de cada versión, y cada llamada lleva
+`prompt: "clave@versión"` en el evento. El contenido del email va dentro de
+`<email>` como dato no fiable, y el propio texto no puede cerrar el bloque
+(`</email>` → `[/email]`).
+
+> En la Fase 1, sin herramientas, la mayoría de emails que preguntan por
+> datos concretos acabarán en revisión humana. Es intencionado: el motor
+> de Laravel (con RAG y tools) sigue siendo el de por defecto
+> (`AI_ENGINE=laravel`) hasta que el servicio llegue a las Fases 2 y 3.
+
+Variables nuevas:
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `AI_SERVICE_ANTHROPIC_API_KEY` | — | Clave de Anthropic (sin ella el adaptador no arranca) |
+| `AI_SERVICE_ANTHROPIC_MODEL` | `claude-opus-5-5` | Modelo |
+| `AI_SERVICE_ANTHROPIC_FALLBACKS` | `true` | Fallbacks de servidor ante rechazos |
+| `AI_SERVICE_CLASSIFY_EFFORT` / `AI_SERVICE_DRAFT_EFFORT` | `low` / `medium` | `effort` de cada operación |
+| `AI_SERVICE_CLASSIFY_MAX_TOKENS` / `AI_SERVICE_DRAFT_MAX_TOKENS` | `4096` / `8000` | Incluyen el razonamiento |
+| `AI_SERVICE_LLM_TIMEOUT_SECONDS` / `AI_SERVICE_LLM_MAX_RETRIES` | `60` / `2` | Timeout y reintentos del SDK (429, 5xx, red) |
+| `AI_SERVICE_MAX_BODY_CHARS` | `20000` | Recorte del cuerpo (avisando al modelo) |
+| `AI_SERVICE_MIN_CONFIDENCE` | `0.85` | Umbral de `DecisionPolicy` |
+
+**Tests:** `tests/integration/test_anthropic_adapter.py` usa langchain y el
+SDK reales con un **transporte HTTP simulado** (`httpx2.MockTransport`):
+comprueba la petición exacta (structured outputs, effort, fallbacks, sin
+`tool_choice`) y cada tipo de respuesta y error. Nunca se llama a la API.
+
 ## Cómo ejecutarlo
 
 Requisitos: [uv](https://docs.astral.sh/uv/) (instala él mismo Python 3.12).
@@ -285,6 +331,8 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 | Reglas de decisión **deterministas** | Preguntar al modelo si es seguro enviar | Explicables, auditables, sin coste y sin poder ser manipuladas por el contenido del email |
 | Puertos con `typing.Protocol` | Clases abstractas (ABC) | Tipado estructural: los adaptadores y los fakes no dependen de la capa de aplicación para heredar |
 | `LLMPort` con operaciones del dominio | Puerto genérico `generate(prompt)` | Prompts y structured outputs quedan en el adaptador; el grafo no cambia si cambia el proveedor |
+| **langchain-anthropic** con `method="json_schema"` | SDK oficial directo; langchain con function calling | Encaja con LangGraph y lo pedía la oferta; se comprobó (inspeccionando la petición) que envía `output_config` con `effort` y `format` y que no fuerza `tool_choice`. Si una función nueva de la API no llegara a langchain, el adaptador puede pasar al SDK sin tocar el grafo |
+| Una `LLMCall` por modelo con fallback | Sumar todo en una | Cada modelo factura a su tarifa: Laravel calcula bien el coste |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
@@ -313,7 +361,7 @@ Decisiones de diseño acordadas para las siguientes tareas:
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.4 hechas |
+| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.5 hechas |
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | Pendiente |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | Pendiente |
 | 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |

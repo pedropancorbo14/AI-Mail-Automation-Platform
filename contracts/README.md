@@ -43,6 +43,8 @@ Definiciones comunes en [`events/common.schema.json`](events/common.schema.json)
   servicio devuelve `draft` vacío y `human_review`; Laravel aplica su regla
   de siempre (spam/auto_reply con confianza de clasificación ≥ 0,8 →
   `ignored`).
+- Cada llamada lleva `prompt` (`clave@versión`): cambiar el texto de un
+  prompt obliga a subir su versión.
 - Los mensajes de error nunca llevan secretos ni el contenido del email.
 
 ## Añadir un ejemplo

@@ -101,6 +101,7 @@ class LLMCallUsage(BaseModel):
     stop_reason: str | None = Field(default=None, max_length=50)
     provider_request_id: str | None = Field(default=None, max_length=255)
     error: str | None = Field(default=None, max_length=500)
+    prompt: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{1,63}@[0-9]{1,6}$")
 
 
 class Usage(BaseModel):

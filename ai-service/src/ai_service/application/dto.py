@@ -27,18 +27,20 @@ class LLMCall:
     stop_reason: str | None = None
     provider_request_id: str | None = None
     error: str | None = None
+    prompt: str | None = None  # clave@versión del prompt usado
 
 
 @dataclass(frozen=True, slots=True)
 class ClassificationResult:
     classification: Classification
-    call: LLMCall
+    # Normalmente una; con fallback de servidor, una por modelo que intervino.
+    calls: tuple[LLMCall, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class DraftResult:
     draft: Draft
-    call: LLMCall
+    calls: tuple[LLMCall, ...]
 
 
 @dataclass(frozen=True, slots=True)

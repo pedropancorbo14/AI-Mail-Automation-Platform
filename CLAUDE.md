@@ -3403,7 +3403,32 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   borra las `AI_SERVICE_*` de quien lanza los tests (salvo
   `AI_SERVICE_TEST_*` y `AI_SERVICE_CONTRACTS_DIR`). **Lección:** probar en
   local con las variables del CI exportadas
-- [ ] 1.5 Adaptador de Anthropic (comprobar structured outputs en Opus 5.5)
+- [x] 1.5 **Adaptador de Claude** (`infrastructure/llm/anthropic.py`,
+  langchain-anthropic 1.7.6 + anthropic 1.15): **comprobado** que
+  `with_structured_output(method="json_schema", include_raw=True)` envía
+  `output_config.format` (sin `tool_choice`) y `reasoning_effort` →
+  `output_config.effort`; el esquema necesita `title`. `ChatAnthropic` por
+  operación (clasificar `low`/4096, redactar `medium`/8000),
+  `fallbacks: "default"` vía `model_kwargs` + beta
+  `server-side-fallback-2026-07-01` (`AI_SERVICE_ANTHROPIC_FALLBACKS`).
+  `stop_reason` `refusal` → `LLMRefusalError` (categoría de
+  `stop_details`), `max_tokens`/JSON inválido/intención desconocida →
+  `LLMInvalidOutputError`; errores del SDK → 429/5xx/529/red
+  reintentables, 401/403 y otros 4xx → configuración con el mensaje de la
+  API; siempre con la `LLMCall` facturada (o `failed` con 0 tokens). Con
+  fallback, **una `LLMCall` por iteración** (`usage.iterations`; las
+  anteriores a la última `refused`). **Cambio en los puertos:**
+  `call` → `calls` (tupla) en resultados y `LLMError`; `LLMCall.prompt` y
+  campo opcional `prompt` (`clave@versión`) en `llm_call` del contrato.
+  Prompts versionados en `infrastructure/llm/prompts.py`:
+  `email_classification@1` (portado de Laravel) y `email_draft@1` (Fase 1:
+  sin herramientas, no afirma pedidos/plazos/precios → persona);
+  `tests/unit/test_prompts.py` fija el hash de cada versión. Config
+  nueva (`AI_SERVICE_ANTHROPIC_*`, efforts, max_tokens, timeout,
+  reintentos, `MAX_BODY_CHARS`, `MIN_CONFIDENCE`). Tests con el SDK y
+  langchain reales sobre `httpx2.MockTransport` (inyectado en el
+  `_async_client` de `ChatAnthropic`; **anthropic 1.x usa httpx2**, no
+  httpx). 129 tests
 - [ ] 1.6 Grafo LangGraph classify → router → draft → validate + `/debug/classify`
 - [ ] 1.7 Adaptador de Redis Streams + consumidor (+ `/ready`)
 - [ ] 1.8 Laravel: `AI_ENGINE`, publicador y reconciliador (Pest)

@@ -12,15 +12,15 @@ ErrorCode = Literal["llm_config", "refusal", "invalid_output", "timeout", "inter
 
 
 class LLMError(Exception):
-    """Fallo al llamar al modelo. `call` lleva lo facturado aunque haya fallado."""
+    """Fallo al llamar al modelo. `calls` lleva lo facturado aunque haya fallado."""
 
     code: ErrorCode = "internal"
     retryable: bool = False
 
-    def __init__(self, message: str, call: LLMCall | None = None) -> None:
+    def __init__(self, message: str, calls: tuple[LLMCall, ...] = ()) -> None:
         super().__init__(message)
         self.message = message
-        self.call = call
+        self.calls = calls
 
 
 class LLMUnavailableError(LLMError):
