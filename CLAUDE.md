@@ -3163,6 +3163,18 @@ casos, y un **historial** de todas las decisiones humanas.
   aviso y comprobación, avisos de la propuesta, escribir sin propuesta,
   descartar con motivo, reprocesar y no tras un envío, asignar/liberar,
   409, `ReplyCard` con autor/corrección/descarte, auditoría)
+- [x] 9. **Página: historial de la revisión** (`ReviewHistoryPage`,
+  `/revision/historial`, `emails.view`, marca "Revisión" en el menú;
+  enlace "Historial de decisiones" desde la bandeja). Selector 7/30/90
+  días; **4 tarjetas**: esperan a una persona ahora (enlaza a la bandeja),
+  casos resueltos, **espera mediana** (y media), **% de propuestas de la
+  IA aprobadas sin cambios** con el desglose (tal cual / corregidas /
+  descartadas); tabla **por persona** (decisiones, aprobadas, corregidas,
+  respondidas, descartadas, cerradas, espera media); **todas las
+  decisiones** paginadas (cuándo, quién, decisión "(con cambios)", email
+  enlazado con el motivo debajo, cuánto esperó) con filtros de decisión y
+  persona. Sin gráficas (las series temporales están en Grafana, como en
+  el Resumen). Vitest: `ReviewHistoryPage.test.ts` (2: resumen y lista)
 
 ### Pendientes anotados para más adelante
 

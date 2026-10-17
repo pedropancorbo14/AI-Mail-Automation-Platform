@@ -184,6 +184,10 @@ function rowProps(row: ReviewQueueItem) {
 
 <template>
     <NCard title="Bandeja de revisión">
+        <template #header-extra>
+            <RouterLink :to="{ name: 'review-history' }"><NButton text type="primary" data-test="history-link">Historial de decisiones</NButton></RouterLink>
+        </template>
+
         <NText depth="3" tag="p" class="queue__intro">
             Emails que la IA no ha podido enviar sola o que fallaron. Los urgentes y los que más llevan esperando, primero.
         </NText>

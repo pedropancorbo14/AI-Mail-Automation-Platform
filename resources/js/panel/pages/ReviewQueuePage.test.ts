@@ -45,6 +45,7 @@ async function mountPage(permissions: string[], path = '/revision') {
         routes: [
             { path: '/revision', name: 'review', component: ReviewQueuePage },
             { path: '/emails/:id', name: 'email', component: { template: '<div>detalle</div>' } },
+            { path: '/revision/historial', name: 'review-history', component: { template: '<div />' } },
         ],
     });
     await router.push(path);
