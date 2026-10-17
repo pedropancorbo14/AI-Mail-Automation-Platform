@@ -7,13 +7,16 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "anthropic>=1.15",
     "fastapi>=0.143",
+    "httpx>=0.28",
     "langchain-anthropic>=1.7.6",
     "langchain-core>=1.6.12",
     "langgraph>=1.2.16",
     "prometheus-client>=0.26",
+    "psycopg[binary]>=3.2",
     "pydantic>=2.14",
     "pydantic-settings>=2.16",
     "redis>=5.2",
+    "sqlalchemy[asyncio]>=2.0.40",
     "structlog>=26.1",
     "uvicorn[standard]>=0.54",
 ]
@@ -54,7 +57,7 @@ select = ["E", "W", "F", "I", "B", "UP", "N", "S", "ASYNC", "SIM", "RUF", "PT", 
 
 [tool.ruff.lint.per-file-ignores]
 # En los tests, assert es la herramienta (S101).
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S105", "S106"]
 # Texto de prompts: las frases no se parten (cambiarían el hash de la versión).
 "src/ai_service/infrastructure/llm/prompts.py" = ["E501"]
 "src/ai_service/infrastructure/llm/simulated.py" = ["E501"]

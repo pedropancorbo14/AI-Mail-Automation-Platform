@@ -63,3 +63,7 @@ class AgentError(Exception):
     @property
     def code(self) -> ErrorCode:
         return self.cause.code
+
+
+class KnowledgeBaseError(Exception):
+    """No se pudo consultar la base de conocimiento (PostgreSQL)."""

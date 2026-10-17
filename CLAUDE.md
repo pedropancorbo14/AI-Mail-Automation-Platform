@@ -3648,7 +3648,27 @@ con eventos `document.uploaded.v1` / `document.indexed.v1`).
   sin acceso a `path`/`sha256`/`uploaded_by`/otras tablas, no puede
   escribir, Laravel ve todo, columnas del contrato presentes. Suite: 1181
   en verde + los 25 del entorno
-- [ ] 2.2 Python: `EmbeddingPort` (Ollama) y `VectorStorePort` (pgvector, SQLAlchemy async + psycopg)
+- [x] 2.2 **Python: embeddings y búsqueda.** `domain/knowledge.py`
+  (`KnowledgeChunk` con `source` igual que Laravel), puertos
+  `EmbeddingPort` (`model`, `embed_query`) y `VectorStorePort.search(tenant_id,
+  vector, *, embedding_model, limit, min_similarity)`, DTO
+  `EmbeddingResult`/`RetrievalResult`, `KnowledgeBaseError`.
+  `application/services/knowledge.py` (`KnowledgeRetriever`: pregunta =
+  asunto + cuerpo, 2000 caracteres; 5 resultados, ≥ 0,45; fallos de
+  Ollama/PostgreSQL → `failed` sin lanzar). `OllamaEmbeddings` (httpx;
+  mismo `/api/embed` con `truncate`, normalizado, dimensiones; conexión →
+  `LLMUnavailableError`, 404 → configuración con el `ollama pull`;
+  `LLMCall` `ai_service.knowledge_search`). `PgVectorStore` (SQLAlchemy
+  2.1 async + psycopg 3.3: `set_config('app.tenant_id')` +
+  `hnsw.iterative_scan` en la transacción, `WHERE tenant_id` en
+  `document_chunks` y `documents`, `ready`, mismo `embedding_model`,
+  distancia `<=>` con umbral, reordenado). Tests: Ollama con
+  `httpx.MockTransport` y pgvector contra PostgreSQL real
+  (`AI_SERVICE_TEST_DATABASE_URL`; fixture con `tests/fixtures/knowledge_schema.sql`,
+  el rol y el **mismo SQL de `contracts/database/`**): aislamiento entre
+  empresas, RLS como segunda barrera, sin escritura ni columnas extra,
+  `ready` + modelo, umbral/límite, error de BD. CI: servicio
+  `pgvector/pgvector:pg16` en el job `ai-service`. 190 tests
 - [ ] 2.3 Nodo `retrieve`, prompt con documentación, `sources` en el contrato
 - [ ] 3.1 Servidor MCP (SDK oficial) con CRM, ERP y tickets simulados
 - [ ] 3.2 `ToolPort` + cliente MCP (contexto inyectado, solo lectura, límites)

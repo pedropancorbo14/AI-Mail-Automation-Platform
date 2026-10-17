@@ -182,6 +182,21 @@ jobs:
         working-directory: ai-service
 
     services:
+      # PostgreSQL + pgvector: tests del RAG con el rol de solo lectura y RLS reales.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: ai_service_test
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U app -d ai_service_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
       redis:
         image: redis:7-alpine
         ports:
@@ -195,6 +210,7 @@ jobs:
     env:
       AI_SERVICE_ENVIRONMENT: testing
       AI_SERVICE_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      AI_SERVICE_TEST_DATABASE_URL: postgresql+psycopg://app:secret@127.0.0.1:5432/ai_service_test
 
     steps:
       - name: Checkout

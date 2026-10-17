@@ -6,6 +6,7 @@ from typing import Literal
 from ai_service.domain.classification import Classification
 from ai_service.domain.decision import DecisionOutcome
 from ai_service.domain.draft import Draft
+from ai_service.domain.knowledge import KnowledgeChunk
 
 CallStatus = Literal["success", "failed", "refused"]
 
@@ -58,3 +59,18 @@ class AgentOutcome:
         """Modelo que redactó la respuesta (o el que clasificó si no hubo borrador)."""
         successful = [c for c in self.calls if c.status == "success"]
         return successful[-1].model if successful else "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddingResult:
+    vector: tuple[float, ...]
+    call: LLMCall
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalResult:
+    """Lo que encontró el RAG para un email (y lo que costó buscarlo)."""
+
+    chunks: tuple[KnowledgeChunk, ...]
+    calls: tuple[LLMCall, ...] = ()
+    failed: str | None = None  # motivo si no se pudo consultar (el email sigue, a revisión)

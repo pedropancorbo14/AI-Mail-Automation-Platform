@@ -317,6 +317,56 @@ SDK reales con un **transporte HTTP simulado** (`httpx2.MockTransport`):
 comprueba la petición exacta (structured outputs, effort, fallbacks, sin
 `tool_choice`) y cada tipo de respuesta y error. Nunca se llama a la API.
 
+## RAG: documentación de la empresa (Fase 2)
+
+**Opción A (decidida):** el servicio usa el **mismo motor de embeddings**
+que Laravel (Ollama + `bge-m3`, 1024 dimensiones, vectores normalizados)
+pero **solo para buscar**. La indexación (subir, extraer, trocear,
+embeddings y guardar) sigue en Laravel, que es el único que escribe en
+`documents` y `document_chunks`. Nada del RAG de Laravel se borra: lo usa
+el motor por defecto y el panel.
+
+```mermaid
+flowchart LR
+    Q[asunto + cuerpo<br/>máx. 2000 caracteres] --> O[Ollama bge-m3<br/>EmbeddingPort]
+    O --> V[vector normalizado]
+    V --> P[(PostgreSQL + pgvector<br/>rol ai_service_reader)]
+    P -->|RLS: SET LOCAL app.tenant_id<br/>+ WHERE tenant_id| R[fragmentos de ESA empresa<br/>con su fuente]
+```
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| `EmbeddingPort` → `OllamaEmbeddings` | `infrastructure/embeddings/ollama.py` | `POST /api/embed` igual que Laravel (`truncate`, normalizado, dimensiones comprobadas). Cada búsqueda es una `LLMCall` `ai_service.knowledge_search` (coste 0 en Laravel) |
+| `VectorStorePort` → `PgVectorStore` | `infrastructure/knowledge/pgvector.py` | SQLAlchemy 2 async + psycopg. `tenant_id` obligatorio en la firma |
+| `KnowledgeRetriever` | `application/services/knowledge.py` | Pregunta → vector → búsqueda (5 resultados, similitud ≥ 0,45). Si Ollama o PostgreSQL fallan, **no lanza**: devuelve el motivo y el email sigue (irá a revisión) |
+| `KnowledgeChunk` | `domain/knowledge.py` | Fragmento con su fuente citable, igual que Laravel: "Título, pág. 3" / "Título, sección «X»" |
+
+**Aislamiento entre empresas (tres barreras):**
+
+1. **Rol de solo lectura `ai_service_reader`** con permisos **por columna**:
+   ni la ruta del fichero ni el hash, y ninguna otra tabla. No puede escribir.
+2. **Row Level Security**: en cada búsqueda `SET LOCAL app.tenant_id`; la
+   política solo deja ver esa empresa y **sin valor no ve nada**.
+3. **`WHERE tenant_id = :tenant`** en la propia consulta (y solo documentos
+   `ready` indexados con el mismo modelo).
+
+El SQL de permisos y RLS está en
+[`/contracts/database/`](../contracts/database/README.md): lo aplica una
+migración de Laravel y lo ejecutan también los tests de este servicio, así
+que no pueden divergir.
+
+**Tests** (`tests/integration/test_pgvector_store.py`, PostgreSQL + pgvector
+real con el rol y RLS): resultados ordenados con su fuente, **una empresa
+nunca ve documentos de otra** (ni con el mismo vector), RLS como segunda
+barrera aunque la consulta olvidara el filtro, el lector no puede escribir
+ni leer otras columnas, solo `ready` y mismo modelo, umbral y límite.
+Necesitan `AI_SERVICE_TEST_DATABASE_URL` (el CI levanta
+`pgvector/pgvector:pg16`):
+
+```bash
+AI_SERVICE_TEST_DATABASE_URL=postgresql+psycopg://app:secret@127.0.0.1:5432/ai_service_test uv run pytest
+```
+
 ## Eventos: Redis Streams y el worker
 
 **Proceso `ai-service-worker`** (`entrypoints/worker.py`): un solo proceso
@@ -536,6 +586,8 @@ la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root).
 | Consumidor y HTTP de operación en el mismo proceso | Dos procesos | Las métricas son del consumidor; un contenedor = un proceso = una réplica |
 | Perfil de Compose `ai-service` | Servicios siempre activos | Quien sigue con el motor de Laravel no levanta nada nuevo ni ve alertas de un servicio que no usa |
 | uv instalado con `pip` en la imagen | `COPY --from=ghcr.io/astral-sh/uv` | Una dependencia de registro menos (y en algunos entornos ghcr está bloqueado) |
+| RAG: Python solo **lee** (opción A) | Mover también la indexación a Python | Un solo escritor de las tablas, sin romper el motor de Laravel ni el panel; la indexación se moverá con eventos cuando se retire el motor de Laravel |
+| RLS + rol por columnas + filtro en la consulta | Solo el filtro en la consulta | Un bug en una consulta no puede filtrar datos de otra empresa: la base de datos lo impide |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
