@@ -3347,8 +3347,26 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   import-linter con 3 contratos. 15 tests. README del servicio
   (arquitectura con Mermaid, contrato, decisiones); README raíz (estado y
   arquitectura) y este archivo
-- [ ] 1.2 Contrato de eventos: JSON Schema en `/contracts/events/` +
-  modelos Pydantic + tests de contrato
+- [x] 1.2 **Contrato de eventos** (`contracts/`, con su README): JSON
+  Schema 2020-12 `common` (sobre, `category` = las 14 de `EmailIntent`,
+  `llm_call`) y los 3 eventos; nivel superior `additionalProperties: true`
+  (lector tolerante), `classification` y cada llamada sin extras;
+  `auto_send` exige borrador (`if/then`). `email.received.v1` con
+  opcionales `from_name`, `body_truncated`, `attachment_names`,
+  `tenant_name`; `email.processed.v1` con `classification` (lo que guarda
+  `Email::recordClassification`) y `usage.calls` (una por llamada al
+  modelo → una fila de `ai_requests`). **Cambio sobre lo acordado:** el
+  coste NO viaja en el evento, lo calcula Laravel con `CostCalculator`
+  (una sola tabla de precios). Sin decisión "ignorar": spam/auto_reply →
+  `draft` vacío + `human_review` y Laravel aplica su regla de siempre.
+  Ejemplos compartidos en `contracts/events/examples/{valid,invalid}/`
+  (`<evento>--<caso>.json`). Python: `domain/category.py`,
+  `application/contracts/events.py` (Pydantic, `from` → `sender` por
+  alias, `parse()` → `InvalidEventError`) y `tests/contract/` (esquemas
+  válidos, ejemplos válidos e inválidos en esquema y modelo, categorías
+  iguales al contrato, campos extra tolerados). **Lección:** `EmailStr`
+  rechaza dominios `.test` (y otros reales): validación ligera `x@y` como
+  el `format: email` del esquema. 41 tests
 - [ ] 1.3 Dominio puro (value objects + `DecisionPolicy`)
 - [ ] 1.4 Puertos (`LLMPort`, `EventBusPort`) y caso de uso `ProcessEmail`
 - [ ] 1.5 Adaptador de Anthropic (comprobar structured outputs en Opus 5.5)

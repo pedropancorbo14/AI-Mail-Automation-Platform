@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/events/email.processed.v1.schema.json",
+  "title": "email.processed.v1",
+  "description": "ai-service lo publica al terminar el grafo. La decision es una RECOMENDACIÓN: Laravel tiene la última palabra (AutoSendPolicy y ReplyContentGuard).",
+  "type": "object",
+  "properties": {
+    "event_id": { "$ref": "common.schema.json#/$defs/event_id" },
+    "event_type": { "const": "email.processed" },
+    "event_version": { "const": 1 },
+    "occurred_at": { "$ref": "common.schema.json#/$defs/occurred_at" },
+    "trace_id": { "$ref": "common.schema.json#/$defs/trace_id" },
+    "tenant_id": { "$ref": "common.schema.json#/$defs/tenant_id" },
+    "email_id": { "$ref": "common.schema.json#/$defs/email_id" },
+    "category": { "$ref": "common.schema.json#/$defs/category" },
+    "draft": {
+      "description": "Respuesta propuesta en texto plano. Vacía si no hace falta responder (spam, respuesta automática) o si se escala sin propuesta (sospecha de manipulación).",
+      "type": "string",
+      "maxLength": 20000
+    },
+    "confidence": {
+      "description": "Confianza en la respuesta propuesta (0 si no hay).",
+      "$ref": "common.schema.json#/$defs/confidence"
+    },
+    "decision": {
+      "description": "auto_send: se puede enviar sola si las reglas de Laravel lo permiten; human_review: la revisa una persona; escalate: caso delicado (manipulación, legal), a una persona con prioridad.",
+      "type": "string",
+      "enum": ["auto_send", "human_review", "escalate"]
+    },
+    "tools_used": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+      "maxItems": 50
+    },
+    "language": { "type": ["string", "null"], "maxLength": 20 },
+    "reasons": {
+      "description": "Motivos de la decisión, para la bandeja de revisión del panel.",
+      "type": "array",
+      "items": { "type": "string", "maxLength": 500 },
+      "maxItems": 20
+    },
+    "model": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "classification": {
+      "description": "Lo que el panel muestra en la tarjeta de clasificación.",
+      "type": "object",
+      "properties": {
+        "confidence": { "$ref": "common.schema.json#/$defs/confidence" },
+        "summary": { "type": "string", "maxLength": 2000 },
+        "sentiment": { "type": "string", "enum": ["positive", "neutral", "negative"] },
+        "urgency": { "type": "string", "enum": ["low", "normal", "high"] },
+        "injection_suspected": { "type": "boolean" },
+        "needs_human": { "type": "boolean" },
+        "needs_human_reason": { "type": ["string", "null"], "maxLength": 500 },
+        "order_numbers": { "type": "array", "items": { "type": "string", "maxLength": 100 }, "maxItems": 20 },
+        "invoice_numbers": { "type": "array", "items": { "type": "string", "maxLength": 100 }, "maxItems": 20 },
+        "customer_name": { "type": ["string", "null"], "maxLength": 255 }
+      },
+      "required": [
+        "confidence", "summary", "sentiment", "urgency", "injection_suspected",
+        "needs_human", "needs_human_reason", "order_numbers", "invoice_numbers", "customer_name"
+      ],
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "calls": { "$ref": "common.schema.json#/$defs/llm_calls" }
+      },
+      "required": ["calls"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "event_id", "event_type", "event_version", "occurred_at", "trace_id",
+    "tenant_id", "email_id", "category", "draft", "confidence", "decision",
+    "tools_used", "language", "reasons", "model", "classification", "usage"
+  ],
+  "if": { "properties": { "decision": { "const": "auto_send" } } },
+  "then": { "properties": { "draft": { "minLength": 1 } } },
+  "additionalProperties": true
+}

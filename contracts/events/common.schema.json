@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/events/common.schema.json",
+  "title": "Definiciones comunes de los eventos",
+  "$defs": {
+    "event_id": {
+      "description": "Identificador único del evento (UUID). Quien consume lo usa para no procesar dos veces una entrega repetida.",
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "occurred_at": {
+      "description": "Cuándo se publicó el evento (RFC 3339, con zona horaria).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "trace_id": {
+      "description": "Identificador para seguir un email de punta a punta en los logs (el request_id de Laravel o uno nuevo).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{8,64}$"
+    },
+    "tenant_id": {
+      "description": "Empresa dueña del email. Nada de otra empresa puede usarse al procesarlo.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "email_id": {
+      "description": "Id del email en Laravel (tabla emails).",
+      "type": "integer",
+      "minimum": 1
+    },
+    "category": {
+      "description": "Intención del email. Mismos valores que App\\AI\\Classification\\EmailIntent de Laravel.",
+      "type": "string",
+      "enum": [
+        "order_status", "return_request", "cancellation", "invoice_request",
+        "billing_issue", "product_question", "technical_support", "complaint",
+        "sales_inquiry", "account_change", "feedback", "auto_reply", "spam", "other"
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "llm_call": {
+      "description": "Una llamada al modelo. Laravel guarda una fila de ai_requests por cada una y calcula el coste con sus precios (una sola tabla de precios).",
+      "type": "object",
+      "properties": {
+        "purpose": { "type": "string", "pattern": "^[a-z][a-z0-9_.]{1,63}$" },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "requested_model": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "status": { "type": "string", "enum": ["success", "failed", "refused"] },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cache_write_tokens": { "type": "integer", "minimum": 0 },
+        "cache_read_tokens": { "type": "integer", "minimum": 0 },
+        "latency_ms": { "type": "integer", "minimum": 0 },
+        "stop_reason": { "type": ["string", "null"], "maxLength": 50 },
+        "provider_request_id": { "type": ["string", "null"], "maxLength": 255 },
+        "error": { "type": ["string", "null"], "maxLength": 500 }
+      },
+      "required": [
+        "purpose", "provider", "requested_model", "model", "status",
+        "input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens", "latency_ms"
+      ],
+      "additionalProperties": false
+    },
+    "llm_calls": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/llm_call" },
+      "maxItems": 50
+    }
+  }
+}

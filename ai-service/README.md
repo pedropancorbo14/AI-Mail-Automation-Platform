@@ -7,7 +7,7 @@ envía sola, la revisa una persona o se escala. **Laravel** sigue siendo el
 dueño de todo lo demás: ingesta IMAP, empresas, usuarios, panel, estados
 del email, reglas finales y envío.
 
-> **Estado:** Fase 1, tarea 1.1 (esqueleto). Hasta que termine la Fase 1,
+> **Estado:** Fase 1, tareas 1.1–1.2 (esqueleto y contrato de eventos). Hasta que termine la Fase 1,
 > Laravel sigue procesando los emails con su propio motor
 > (`AI_ENGINE=laravel`, el único que existe todavía).
 
@@ -117,20 +117,29 @@ importa el adaptador de Anthropic, falla.
 
 ## Contrato de eventos
 
-Se define en la tarea 1.2 (JSON Schema en `/contracts/events/`, compartido
-con Laravel). Resumen de lo acordado:
+JSON Schema en [`/contracts/events/`](../contracts/README.md), **compartido
+con Laravel**: los dos lados validan con los mismos esquemas y sus tests
+recorren los mismos ejemplos válidos e inválidos. Aquí se reflejan en
+modelos Pydantic (`application/contracts/events.py`).
 
 | Evento | Lo publica | Campos principales |
 |---|---|---|
-| `email.received.v1` | Laravel | `email_id`, `tenant_id`, `from`, `subject`, `body`, `received_at` |
-| `email.processed.v1` | ai-service | `email_id`, `tenant_id`, `category`, `draft`, `confidence`, `decision` (`auto_send` \| `human_review` \| `escalate`), `tools_used`, `language`, `reasons`, `model`, `usage` |
-| `email.processing_failed.v1` | ai-service | `email_id`, `tenant_id`, `error_code`, `message`, `retryable` |
+| `email.received.v1` | Laravel | `email_id`, `tenant_id`, `from`, `subject`, `body`, `received_at` (+ opcionales `from_name`, `body_truncated`, `attachment_names`, `tenant_name`) |
+| `email.processed.v1` | ai-service | `category`, `draft`, `confidence`, `decision` (`auto_send` \| `human_review` \| `escalate`), `tools_used`, `language`, `reasons`, `model`, `classification` (lo que muestra el panel), `usage.calls` (tokens de cada llamada) |
+| `email.processing_failed.v1` | ai-service | `error_code` (`llm_config`, `refusal`, `invalid_output`, `timeout`, `internal`), `message`, `retryable`, `usage` |
 
 Todos llevan un sobre común: `event_id` (idempotencia: Redis Streams
 entrega *al menos una vez*), `event_type`, `event_version`, `occurred_at` y
-`trace_id` (el mismo `request_id` de Laravel, para seguir un email en Loki
-de punta a punta). Añadir campos opcionales no rompe la v1; quitar o
-renombrar exige v2.
+`trace_id` (para seguir un email en Loki de punta a punta).
+
+- **Lector tolerante:** campos desconocidos en el nivel superior se
+  ignoran; añadir campos opcionales no rompe la v1. Quitar o renombrar
+  exige v2.
+- **Validación ligera del remitente** (`algo@algo`): Laravel ya aceptó el
+  correo; un validador estricto (como `EmailStr`, que rechaza los dominios
+  `.test` de desarrollo) dejaría emails reales sin procesar.
+- **El coste lo calcula Laravel** con sus precios a partir de los tokens:
+  una sola tabla de precios.
 
 ## Cómo ejecutarlo
 
@@ -183,6 +192,8 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 ```
 
 - `tests/unit/`: sin red ni servicios.
+- `tests/contract/`: los modelos Pydantic frente a los JSON Schema
+  compartidos, con los ejemplos de `/contracts/events/examples/`.
 - `tests/integration/`: piezas reales conectadas (app HTTP, y más adelante
   Redis y PostgreSQL de verdad, como el CI de Laravel).
 - **El LLM siempre se simula en los tests**: nunca se llama a la API real
@@ -207,6 +218,7 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 | **uv** para dependencias | pip + venv, Poetry | Un solo binario, `uv.lock` reproducible, muy rápido en CI y en Docker |
 | Paquete en `src/ai_service` | Carpeta plana | Los tests importan el paquete instalado, no archivos sueltos: detecta errores de empaquetado |
 | **structlog** sobre la biblioteca estándar | `python-json-logger`, solo stdlib | Contexto por tarea con `contextvars` (`trace_id` en todas las líneas sin pasarlo a mano) y JSON también para uvicorn |
+| JSON Schema compartido + modelos Pydantic escritos a mano + tests de contrato con los mismos ejemplos | Generar código desde el esquema (datamodel-code-generator); Pact | Sin generador que mantener; el esquema lo lee también PHP; los ejemplos compartidos detectan cualquier divergencia |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
@@ -235,7 +247,7 @@ Decisiones de diseño acordadas para las siguientes tareas:
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tarea 1.1 hecha |
+| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.2 hechas |
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | Pendiente |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | Pendiente |
 | 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/events/email.received.v1.schema.json",
+  "title": "email.received.v1",
+  "description": "Laravel lo publica cuando un email en PROCESSING pasa los filtros baratos (no es automático, la empresa no está en modo off, hay presupuesto de IA) y necesita la IA.",
+  "type": "object",
+  "properties": {
+    "event_id": { "$ref": "common.schema.json#/$defs/event_id" },
+    "event_type": { "const": "email.received" },
+    "event_version": { "const": 1 },
+    "occurred_at": { "$ref": "common.schema.json#/$defs/occurred_at" },
+    "trace_id": { "$ref": "common.schema.json#/$defs/trace_id" },
+    "tenant_id": { "$ref": "common.schema.json#/$defs/tenant_id" },
+    "email_id": { "$ref": "common.schema.json#/$defs/email_id" },
+    "from": {
+      "description": "Dirección del remitente. Las herramientas solo dan datos de este cliente.",
+      "type": "string",
+      "format": "email",
+      "maxLength": 320
+    },
+    "subject": { "type": "string", "maxLength": 998 },
+    "body": {
+      "description": "Cuerpo en texto plano (el HTML ya convertido en Laravel), recortado a max_body_chars.",
+      "type": "string",
+      "maxLength": 50000
+    },
+    "received_at": { "type": "string", "format": "date-time" },
+    "from_name": { "type": ["string", "null"], "maxLength": 255 },
+    "body_truncated": {
+      "description": "El cuerpo se recortó: hay que avisar al modelo y revisarlo una persona.",
+      "type": "boolean",
+      "default": false
+    },
+    "attachment_names": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 255 },
+      "maxItems": 50,
+      "default": []
+    },
+    "tenant_name": {
+      "description": "Nombre de la empresa, para firmar la respuesta.",
+      "type": ["string", "null"],
+      "maxLength": 255
+    }
+  },
+  "required": [
+    "event_id", "event_type", "event_version", "occurred_at", "trace_id",
+    "tenant_id", "email_id", "from", "subject", "body", "received_at"
+  ],
+  "additionalProperties": true
+}

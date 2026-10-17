@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/events/email.processing_failed.v1.schema.json",
+  "title": "email.processing_failed.v1",
+  "description": "ai-service lo publica cuando no puede procesar un email y no tiene sentido reintentar (los errores temporales los reintenta él mismo).",
+  "type": "object",
+  "properties": {
+    "event_id": { "$ref": "common.schema.json#/$defs/event_id" },
+    "event_type": { "const": "email.processing_failed" },
+    "event_version": { "const": 1 },
+    "occurred_at": { "$ref": "common.schema.json#/$defs/occurred_at" },
+    "trace_id": { "$ref": "common.schema.json#/$defs/trace_id" },
+    "tenant_id": { "$ref": "common.schema.json#/$defs/tenant_id" },
+    "email_id": { "$ref": "common.schema.json#/$defs/email_id" },
+    "error_code": {
+      "description": "llm_config: clave o saldo (Laravel -> failed); refusal: el modelo se negó; invalid_output: respuesta no válida; timeout: se agotó el tiempo tras los reintentos; internal: error inesperado.",
+      "type": "string",
+      "enum": ["llm_config", "refusal", "invalid_output", "timeout", "internal"]
+    },
+    "message": {
+      "description": "Motivo legible, nunca con secretos ni el contenido del email.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "retryable": { "type": "boolean" },
+    "usage": {
+      "description": "Tokens facturados aunque haya fallado.",
+      "type": "object",
+      "properties": {
+        "calls": { "$ref": "common.schema.json#/$defs/llm_calls" }
+      },
+      "required": ["calls"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "event_id", "event_type", "event_version", "occurred_at", "trace_id",
+    "tenant_id", "email_id", "error_code", "message", "retryable", "usage"
+  ],
+  "additionalProperties": true
+}
