@@ -3175,6 +3175,21 @@ casos, y un **historial** de todas las decisiones humanas.
   enlazado con el motivo debajo, cuánto esperó) con filtros de decisión y
   persona. Sin gráficas (las series temporales están en Grafana, como en
   el Resumen). Vitest: `ReviewHistoryPage.test.ts` (2: resumen y lista)
+- [x] 10. **`HumanReviewEndToEndTest`** (grupo `greenmail`): la revisión
+  humana de principio a fin con soporte y cliente como cuentas reales de
+  GreenMail y la **IA simulada** (`ai.provider=simulated`, sin coste; la
+  primera vez que un test E2E la usa en vez de `FakeLLMProvider`). El
+  cliente pregunta por envíos a Canarias → `mail:sync` → ingesta →
+  clasificación y agente simulados → empresa en modo borrador →
+  `human_review` con propuesta. Por la API del panel, como Ana (agente):
+  la bandeja la muestra con `has_draft`; **la corrige y la aprueba** → en
+  el buzón del cliente llega "Re: …" del buzón de soporte, en el hilo
+  (`In-Reply-To`), con el texto corregido y **sin `Auto-Submitted`** (la
+  envió una persona); historial processing → ai_review → human_review →
+  approved (Ana) → sent. **Descartar y escribir la suya** → llega su texto
+  (decisiones rejected, replied). **Reprocesar** → la IA simulada prepara
+  una propuesta nueva (cola sync) y la anterior queda descartada; nada
+  enviado
 
 ### Pendientes anotados para más adelante
 
