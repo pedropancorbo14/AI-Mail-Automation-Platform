@@ -25,7 +25,8 @@ use Illuminate\Support\Str;
  *  - "Pruebas": lo anterior + el email del cliente.
  *
  * Cualquier problema → la respuesta la revisa una persona (nunca se
- * reescribe). Dentro del tenant.
+ * reescribe). En la revisión humana (Fase 13) las mismas comprobaciones se
+ * muestran como avisos a la persona antes de enviar. Dentro del tenant.
  */
 class ReplyContentGuard
 {
@@ -49,8 +50,14 @@ class ReplyContentGuard
     {
     }
 
-    /** @return list<string> Problemas encontrados (vacío = el texto puede salir solo). */
-    public function problems(Email $email, EmailReply $reply): array
+    /**
+     * @param  bool  $automatic  true = se enviaría sin persona (todas las
+     *                           comprobaciones); false = avisos para la persona que la revisa
+     *                           (sin el límite de longitud ni la promesa de revisión humana,
+     *                           que ya no aplican).
+     * @return list<string> Problemas encontrados (vacío = el texto puede salir solo).
+     */
+    public function problems(Email $email, EmailReply $reply, bool $automatic = true): array
     {
         $body = (string) $reply->body;
         $companyData = $this->toolResults($reply);
@@ -61,11 +68,11 @@ class ReplyContentGuard
             return ['La respuesta está vacía.'];
         }
 
-        if (mb_strlen($body) > ($max = (int) config('ai.automation.max_auto_reply_chars'))) {
+        if ($automatic && mb_strlen($body) > ($max = (int) config('ai.automation.max_auto_reply_chars'))) {
             $problems[] = "La respuesta es demasiado larga para enviarla sola (más de {$max} caracteres).";
         }
 
-        if (collect(self::HUMAN_PROMISES)->contains(fn (string $pattern) => preg_match($pattern, $body))) {
+        if ($automatic && collect(self::HUMAN_PROMISES)->contains(fn (string $pattern) => preg_match($pattern, $body))) {
             $problems[] = 'La respuesta dice que una persona revisará el caso: no puede enviarse sola.';
         }
 

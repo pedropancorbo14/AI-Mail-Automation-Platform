@@ -3059,6 +3059,28 @@ casos, y un **historial** de todas las decisiones humanas.
   asignar/liberar y a quién se puede, 409 si otra persona se adelantó,
   validación, respuesta de otro email → 404, otra empresa → 404 en todo,
   sin permiso → 403, 401)
+- [x] 4. **Bandeja de revisión y avisos sobre el texto.** **`GET
+  /api/v1/review-queue`** (`ReviewQueueController`, `emails.view`): emails
+  en `human_review` o `failed`, **urgentes primero** (`urgency` high →
+  normal → low/sin clasificar) y, dentro de cada urgencia, **los que más
+  llevan esperando** (`waiting_since` = fecha del último cambio de estado,
+  subconsulta); cada caso con `waiting_reason` (motivo de ese cambio),
+  `has_draft` (hay propuesta de la IA) y `assignee`; filtros `assigned`
+  (`mine` / `unassigned`), `intent`, `mailbox`, `per_page`; `meta.counts`
+  (total, mías, sin asignar, con error). **Avisos para la persona:**
+  `ReplyContentGuard::problems(..., automatic: false)` omite el límite de
+  longitud y la "promesa de revisión humana" (con una persona revisando ya
+  no aplican) y deja el resto (enlaces y direcciones desconocidos, pedidos
+  e importes que no salen de ningún dato, detalles internos);
+  `HumanReviewService::warnings($email, $body, ?$basedOn)` los calcula
+  contra los datos que consultó la IA para esa propuesta. En el detalle,
+  cada propuesta en borrador de un email que espera a una persona trae
+  `checks[]`; y **`POST /emails/{id}/review-checks`** (`body`, `reply_id`
+  opcional de ese email) comprueba un texto editado antes de enviarlo. Los
+  avisos **no impiden enviar**: decide la persona. Tests:
+  `ReviewQueueApiTest` (7: orden urgencia + espera, propuesta y asignado,
+  filtros y 422, aislamiento, 401, avisos en el detalle, comprobar un texto
+  editado y propuesta de otro email → 422)
 
 ### Pendientes anotados para más adelante
 

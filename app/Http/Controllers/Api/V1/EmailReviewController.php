@@ -7,6 +7,7 @@ use App\Automation\Review\ReviewException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Emails\ApproveReplyRequest;
 use App\Http\Requests\Emails\AssignEmailRequest;
+use App\Http\Requests\Emails\CheckReplyRequest;
 use App\Http\Requests\Emails\RejectReplyRequest;
 use App\Http\Requests\Emails\ReviewEmailRequest;
 use App\Http\Requests\Emails\WriteReplyRequest;
@@ -14,6 +15,7 @@ use App\Http\Resources\EmailDetailResource;
 use App\Models\Email;
 use App\Models\EmailReply;
 use App\Security\Audit\AuditLogger;
+use Illuminate\Http\JsonResponse;
 
 /**
  * Revisión humana de un email (Fase 13): aprobar (o editar y aprobar) la
@@ -93,6 +95,17 @@ class EmailReviewController extends Controller
         }
 
         return EmailDetailResource::for($email->refresh());
+    }
+
+    /**
+     * Comprueba un texto antes de enviarlo: avisos de las comprobaciones
+     * automáticas (no impiden enviar; decide la persona).
+     */
+    public function check(CheckReplyRequest $request, Email $email): JsonResponse
+    {
+        return response()->json(['data' => [
+            'warnings' => $this->review->warnings($email, $request->validated('body'), $request->basedOn()),
+        ]]);
     }
 
     /**

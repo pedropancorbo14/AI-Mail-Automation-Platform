@@ -90,7 +90,13 @@ class EmailDetailResource extends EmailListResource
                 'user' => $change->user ? ['id' => $change->user->id, 'name' => $change->user->name] : null,
                 'at' => $change->created_at?->toIso8601String(),
             ])->all(),
-            'replies' => EmailReplyResource::collection($this->replies),
+            'replies' => $this->replies->map(fn (EmailReply $reply) => [
+                ...(new EmailReplyResource($reply))->toArray($request),
+                // Avisos de las comprobaciones automáticas sobre la propuesta pendiente.
+                'checks' => $reply->status === EmailReplyStatus::Draft && in_array($this->status, HumanReviewService::REVIEWABLE, true)
+                    ? app(HumanReviewService::class)->warnings($this->resource, $reply->body, $reply)
+                    : [],
+            ])->all(),
             // Revisión humana: si espera a una persona, a quién está asignado y lo que decidieron.
             'awaiting_person' => in_array($this->status, HumanReviewService::REVIEWABLE, true),
             // Ya se intentó enviar una respuesta (puede haber llegado): no se reprocesa con la IA.

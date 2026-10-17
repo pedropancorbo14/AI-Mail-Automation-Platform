@@ -12,6 +12,7 @@ use App\Models\Email;
 use App\Models\EmailReply;
 use App\Models\EmailReview;
 use App\Models\User;
+use App\Security\ReplyContentGuard;
 use App\Tenancy\TenantService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,7 @@ class HumanReviewService
     public function __construct(
         private readonly ReplySender $sender,
         private readonly TenantService $tenants,
+        private readonly ReplyContentGuard $guard,
     ) {
     }
 
@@ -174,6 +176,22 @@ class HumanReviewService
         ])->save();
 
         return $email;
+    }
+
+    /**
+     * Avisos sobre un texto antes de enviarlo: las comprobaciones de
+     * ReplyContentGuard (enlaces y direcciones desconocidos, pedidos o
+     * importes que no salen de ningún dato, detalles internos), contra los
+     * datos que consultó la IA para $basedOn. No impiden enviar: decide la
+     * persona.
+     *
+     * @return list<string>
+     */
+    public function warnings(Email $email, string $body, ?EmailReply $basedOn = null): array
+    {
+        $probe = new EmailReply(['body' => self::normalize($body), 'agent_run_id' => $basedOn?->agent_run_id]);
+
+        return $this->guard->problems($email, $probe, automatic: false);
     }
 
     /** Quita los saltos de línea de Windows y los espacios del final: no cuentan como edición. */
