@@ -20,6 +20,12 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Resumen' },
             },
             {
+                path: 'revision',
+                name: 'review',
+                component: () => import('@/pages/ReviewQueuePage.vue'),
+                meta: { title: 'Bandeja de revisión', permission: 'emails.view' },
+            },
+            {
                 path: 'emails',
                 name: 'emails',
                 component: () => import('@/pages/EmailsPage.vue'),

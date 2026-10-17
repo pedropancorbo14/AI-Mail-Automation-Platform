@@ -1,6 +1,7 @@
 import type { Component } from 'vue';
 import {
     BookOutline,
+    CheckmarkDoneOutline,
     BusinessOutline,
     FileTrayStackedOutline,
     HomeOutline,
@@ -16,11 +17,14 @@ export interface MenuEntry {
     icon: Component;
     /** Permiso necesario para verla (mismo que exige la API). */
     permission?: string;
+    /** Muestra junto a la etiqueta cuántos casos esperan a una persona. */
+    showsReviewCount?: boolean;
 }
 
 /** Secciones del menú lateral, en orden. */
 export const menuEntries: MenuEntry[] = [
     { route: 'home', label: 'Resumen', icon: HomeOutline },
+    { route: 'review', label: 'Revisión', icon: CheckmarkDoneOutline, permission: 'emails.view', showsReviewCount: true },
     { route: 'emails', label: 'Emails', icon: MailOutline, permission: 'emails.view' },
     { route: 'mail-connections', label: 'Buzones', icon: FileTrayStackedOutline, permission: 'mail_connections.view' },
     { route: 'documents', label: 'Documentación', icon: BookOutline, permission: 'documents.view' },

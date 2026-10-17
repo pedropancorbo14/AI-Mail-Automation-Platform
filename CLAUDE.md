@@ -3118,6 +3118,26 @@ casos, y un **historial** de todas las decisiones humanas.
   → "4h 6m 20s"—, y otra empresa con 3 h no alerta). Tests:
   `ReviewMetricsTest` (decisiones y espera con sus intervalos, transacción
   deshecha no cuenta, caso más antiguo por empresa)
+- [x] 7. **Página: bandeja de revisión** (`ReviewQueuePage`, `/revision`,
+  `emails.view`; entrada **"Revisión"** del menú justo después de
+  "Resumen" con el **número de casos pendientes** —`NBadge`— que mantiene
+  el store Pinia `reviewQueue`: lo pide al montar el layout, cada minuto
+  y al cargar la bandeja). Pestañas **Todos / Asignados a mí / Sin
+  asignar** con sus recuentos y filtro de intención, **en la URL**
+  (`?scope=mine&intent=complaint&page=2`; lo inválido se ignora). Tabla:
+  cuánto lleva esperando ("hace 2 h", fecha exacta en el título) +
+  etiqueta "Urgente", asunto (enlace al detalle) con remitente y **motivo
+  de la espera**, intención + confianza, propuesta ("De la IA" / "Sin
+  propuesta" / "Error") y asignado ("Tú", nombre o botón **"Asignarme"**
+  con `emails.review`); clic en la fila → detalle. Cliente
+  `api/reviews.ts` (bandeja, todas las decisiones, comprobación del texto,
+  historial y resumen) y tipos nuevos en `api/types.ts`;
+  `formatDuration()`/`formatSince()` en `utils/format.ts`;
+  `reviewDecisionLabels`. **Arreglado de paso:** `urgencyLabels` tenía
+  `medium`, pero el clasificador devuelve `low`/`normal`/`high` (la
+  urgencia normal salía como "—"). Vitest: `ReviewQueuePage.test.ts` (6:
+  casos con espera/motivo/propuesta/asignado, filtros de la URL a la API,
+  filtros inválidos, asignarse, sin permiso, duraciones) y el menú
 
 ### Pendientes anotados para más adelante
 

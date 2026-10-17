@@ -42,7 +42,7 @@ export const intentLabels: Record<EmailIntent, string> = {
     other: 'Otros',
 };
 
-export const urgencyLabels: Record<string, string> = { low: 'Baja', medium: 'Media', high: 'Alta' };
+export const urgencyLabels: Record<string, string> = { low: 'Baja', normal: 'Normal', high: 'Alta' };
 
 export const sentimentLabels: Record<string, string> = { positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo' };
 
@@ -67,3 +67,12 @@ export const toolLabels: Record<string, { label: string; description: string }> 
 };
 
 export const toolLabel = (tool: string): string => toolLabels[tool]?.label ?? tool;
+
+/** Decisiones de la revisión humana. */
+export const reviewDecisionLabels: Record<'approved' | 'rejected' | 'replied' | 'closed' | 'reprocessed', string> = {
+    approved: 'Aprobada',
+    rejected: 'Propuesta descartada',
+    replied: 'Respondida por una persona',
+    closed: 'Cerrado sin responder',
+    reprocessed: 'Reprocesado con la IA',
+};

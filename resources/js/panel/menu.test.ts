@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HomeOutline } from '@vicons/ionicons5';
-import { visibleMenu, type MenuEntry } from '@/menu';
+import { menuEntries, visibleMenu, type MenuEntry } from '@/menu';
 
 const entries: MenuEntry[] = [
     { route: 'home', label: 'Inicio', icon: HomeOutline },
@@ -17,5 +17,13 @@ describe('menú del panel', () => {
 
     it('muestra siempre las secciones sin permiso', () => {
         expect(visibleMenu(entries, () => false).map((entry) => entry.route)).toEqual(['home']);
+    });
+
+    it('pone la bandeja de revisión justo después del resumen, con el número de casos', () => {
+        const review = menuEntries[1];
+
+        expect(review.route).toBe('review');
+        expect(review.permission).toBe('emails.view');
+        expect(review.showsReviewCount).toBe(true);
     });
 });
