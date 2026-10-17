@@ -2947,7 +2947,7 @@ audit`). En su equipo: seguir "Actualizar un entorno anterior a la Fase
 `TRUSTED_PROXIES` con HTTPS, `security:check --production` en el
 despliegue.
 
-### Fase 13 (human in the loop): EN CURSO (2026-10-17)
+### Fase 13 (human in the loop): COMPLETADA Y PROBADA EN EL NAVEGADOR CON LA IA SIMULADA (2026-10-17), pendiente de CI
 
 Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
 este archivo actualizado en cada commit. Como en la Fase 11, se hace en una
@@ -3200,6 +3200,44 @@ casos, y un **historial** de todas las decisiones humanas.
   bloqueando igual. El menú: el número junto a "Revisión" iba pegado a la
   etiqueta (NMenu pinta la etiqueta fuera del ámbito de los estilos
   *scoped*): estilo en línea
+- [x] 11. **Prueba en el stack con la IA simulada y README.** App con
+  `php artisan serve` (puerto 8081: en la sesión de la nube el 8080 lo usa
+  la API de GreenMail), Horizon, PostgreSQL y Redis locales, GreenMail con
+  cuentas reales, `AI_PROVIDER=simulated` y `npm run build`. 5 correos por
+  SMTP (pedido, Canarias, doble cobro, lámpara rota en inglés, factura) →
+  `mail:sync` → Horizon → IA simulada → los 5 en `human_review` (modo
+  borrador). Con **Chromium headless** (Playwright) como Lucía (agente):
+  bandeja con espera, motivo, propuesta y "Asignarme"; en el pedido,
+  asignarse, corregir con un pedido inventado (#99999) → aviso; corregir
+  bien y enviar → **llegó al buzón de cliente@cliente.test** ("Re: …",
+  `In-Reply-To` del original, **sin `Auto-Submitted`**, comprobado por
+  IMAP) y el detalle enlaza el texto original de la IA; en la factura,
+  descartar con motivo y escribir la respuesta → llegó a
+  elena@cliente.test; cerrar el doble cobro con motivo. Como propietario:
+  reprocesar la lámpara → propuesta nueva y la anterior en "Respuestas
+  anteriores"; auditoría con las 6 acciones. Historial: decisiones por
+  persona, esperas y % de propuestas sin cambios. Sin errores en la consola.
+  **Grafana** (Prometheus + Grafana temporales contra la app): fila
+  "Revisión humana" con datos → corregido: la serie "Cerrada o
+  reprocesada" salía dos veces (faltaba `sum by (d)` tras el
+  `label_replace`), títulos de tarjetas cortados (acortados, el detalle en
+  la descripción) y decimales en esperas. README: sección **"14. Revisión
+  humana (human in the loop)"** (bandeja, acciones, avisos, 409, historial
+  y métricas, probarlo sin gastar, resultados, actualizar un entorno
+  anterior), estado, introducción, tabla del panel, estructura, API (10
+  endpoints nuevos y el 409), alertas, tests y problemas frecuentes;
+  secciones siguientes renumeradas (API = #16)
+
+**Resumen:** 11 tareas en 12 commits (11 + 1 fix encontrado en el
+navegador), 1137 tests PHP (en esta sesión 25 fallan solo por el entorno:
+pgvector 0.6 sin *iterative scans* y helpers compartidos entre archivos al
+ejecutar en paralelo; pasan en el CI) + 85 Vitest en verde, alertas
+probadas con `promtool` (`CasoSinAtender` incluida).
+**Pendiente para dar la Fase 13 por cerrada:** que el usuario revise la
+rama `fase-13-human-in-the-loop`, el CI en verde, la fusione y siga
+"Actualizar un entorno anterior a la Fase 13" del README en su equipo
+(migración, `RolesAndPermissionsSeeder` por el permiso `emails.review`,
+reiniciar Prometheus/Grafana y Horizon).
 
 ### Pendientes anotados para más adelante
 

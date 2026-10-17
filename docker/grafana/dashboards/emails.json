@@ -1151,7 +1151,7 @@
     },
     {
       "type": "stat",
-      "title": "Caso más antiguo esperando",
+      "title": "Caso más antiguo",
       "description": "Cuánto lleva esperando el caso más antiguo. Ámbar a partir de 4 h (alerta CasoSinAtender).",
       "datasource": {
         "type": "prometheus",
@@ -1189,7 +1189,8 @@
                 "value": 14400
               }
             ]
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -1219,7 +1220,7 @@
     },
     {
       "type": "stat",
-      "title": "Decisiones de personas",
+      "title": "Decisiones",
       "description": "Aprobar, corregir, descartar, responder, cerrar o reprocesar en el periodo.",
       "datasource": {
         "type": "prometheus",
@@ -1276,7 +1277,7 @@
     },
     {
       "type": "stat",
-      "title": "Propuestas aprobadas sin cambios",
+      "title": "Aprobadas sin cambios",
       "description": "De las propuestas de la IA que revisó una persona, las que aprobó tal cual (el resto se corrigieron o descartaron).",
       "datasource": {
         "type": "prometheus",
@@ -1333,8 +1334,8 @@
     },
     {
       "type": "stat",
-      "title": "Respuestas corregidas",
-      "description": "De las propuestas aprobadas, las que la persona editó antes de enviar.",
+      "title": "Corregidas",
+      "description": "De las propuestas de la IA aprobadas por una persona, las que editó antes de enviarlas.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1390,8 +1391,8 @@
     },
     {
       "type": "stat",
-      "title": "Espera mediana hasta resolver",
-      "description": "Desde que el caso llega a una persona hasta que se resuelve (sin contar descartar una propuesta).",
+      "title": "Espera mediana",
+      "description": "Mediana desde que el caso llega a una persona hasta que se resuelve (sin contar descartar una propuesta).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1416,7 +1417,8 @@
           "color": {
             "mode": "fixed",
             "fixedColor": "text"
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -1459,7 +1461,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "label_replace(label_replace(label_replace(label_replace(label_replace(round(sum by (decision)(increase(aimail_email_reviews_total{tenant=~\"$tenant\"}[$__interval]))), \"d\", \"Aprobada\", \"decision\", \"approved\"), \"d\", \"Respondida por una persona\", \"decision\", \"replied\"), \"d\", \"Propuesta descartada\", \"decision\", \"rejected\"), \"d\", \"Cerrada o reprocesada\", \"decision\", \"closed\"), \"d\", \"Cerrada o reprocesada\", \"decision\", \"reprocessed\")",
+          "expr": "sum by (d) (label_replace(label_replace(label_replace(label_replace(label_replace(round(sum by (decision)(increase(aimail_email_reviews_total{tenant=~\"$tenant\"}[$__interval]))), \"d\", \"Aprobada\", \"decision\", \"approved\"), \"d\", \"Respondida por una persona\", \"decision\", \"replied\"), \"d\", \"Propuesta descartada\", \"decision\", \"rejected\"), \"d\", \"Cerrada o reprocesada\", \"decision\", \"closed\"), \"d\", \"Cerrada o reprocesada\", \"decision\", \"reprocessed\"))",
           "legendFormat": "{{d}}",
           "range": true,
           "instant": false

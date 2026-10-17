@@ -33,7 +33,8 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 10 | Panel de administración (Vue + Naive UI): resumen, emails con lo que hizo la IA, buzones (con autodetección), documentación, ajustes de la IA, empresa y usuarios | ✅ Hecha (probada en navegador) |
 | 11 | Observabilidad: métricas de Prometheus, 6 dashboards de Grafana, logs en Loki y alertas probadas; IA simulada para probar sin coste | ✅ Hecha (probada en el stack con la IA simulada) |
 | 12 | Seguridad: auditoría inmutable, cuenta propia, freno del gasto de IA, revisión del texto antes de enviar, cabeceras y CSP, secretos fuera de los logs, retención y derecho de supresión, infraestructura solo en local, tests de arquitectura | ✅ Hecha (probada con ataques contra el stack) |
-| 13–17 | Human-in-the-loop, integraciones, evaluación, producción, SaaS | Pendiente |
+| 13 | Revisión humana (*human in the loop*): bandeja de casos pendientes, aprobar, corregir o descartar la respuesta de la IA, responder, cerrar, reprocesar, asignarse casos, historial de decisiones con métricas y alerta | ✅ Hecha (probada en el navegador con la IA simulada y GreenMail) |
+| 14–17 | Integraciones, evaluación, producción, SaaS | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
@@ -47,8 +48,9 @@ documentación y los pedidos del cliente que escribe. Con ellas, el
 **agente** prepara una **propuesta de respuesta** para cada email, citando
 de dónde saca cada dato, y el backend decide si una persona debe revisarla.
 Si la empresa lo permite y la respuesta es segura, **se envía sola** en el
-hilo del cliente; si no, queda para una persona (la bandeja de revisión es
-la Fase 13). Todo se ve y se configura desde el **panel web**
+hilo del cliente; si no, va a la **bandeja de revisión**, donde una persona
+la aprueba (tal cual o corregida), la descarta y escribe la suya, o cierra
+el caso (ver [Revisión humana](#14-revisión-humana-human-in-the-loop)). Todo se ve y se configura desde el **panel web**
 (`http://localhost:8080`), y el funcionamiento de la plataforma (volumen,
 automatización, IA, costes, errores) se sigue en **Grafana**
 (`http://localhost:3000`) con alertas. Lo que hace cada persona queda en
@@ -114,7 +116,7 @@ docker compose exec app php artisan test            # todos los tests en verde
 | Servicio | URL | Acceso |
 |---|---|---|
 | **Panel** | http://localhost:8080 | `test@example.com` / `password` |
-| API | http://localhost:8080/api/v1 | ver [API](#15-api) |
+| API | http://localhost:8080/api/v1 | ver [API](#16-api) |
 | Horizon (colas) | http://localhost:8080/horizon | libre en entorno `local` |
 | **Grafana** (dashboards y alertas) | http://localhost:3000 | `admin` / `admin` (`GRAFANA_USER`/`GRAFANA_PASSWORD`; cámbiala fuera de tu equipo) |
 | Prometheus | http://localhost:9090 | — |
@@ -975,6 +977,7 @@ por Laravel en `/`. Cada empresa ve y gestiona **solo lo suyo**.
 | Sección | Qué hace | Permiso |
 |---|---|---|
 | **Resumen** | Emails del periodo (7/30/90 días), respondidos solos y % de automatización, los que esperan a una persona, con error, ignorados, respuesta media de la IA, intenciones más frecuentes, estados y "necesitan atención" | `emails.view` |
+| **Revisión** | Bandeja de lo que espera a una persona (con su número en el menú) e historial de decisiones ([Revisión humana](#14-revisión-humana-human-in-the-loop)) | `emails.view` / `emails.review` |
 | **Emails** | Listado con filtros (estado, intención, buzón, texto, fechas; guardados en la URL) | `emails.view` |
 | Detalle del email | Mensaje (texto o formato original aislado), adjuntos, clasificación, **respuesta propuesta** con los motivos de revisión, **historial de estados** y **lo que hizo la IA** (cada paso y cada herramienta con lo que consultó y lo que vio) | `emails.view` |
 | **Buzones** | Añadir IMAP (con **autodetección**), conectar Microsoft 365 / Gmail (OAuth), probar, editar, desactivar, eliminar | `mail_connections.view` / `.manage` |
@@ -1143,6 +1146,7 @@ Se ven en http://localhost:9090/alerts y en el dashboard **Errores**.
 | `BuzonSinSincronizar` | Un buzón activo lleva más de 15 min sin sincronizar. |
 | `EmailsConError` | ≥ 3 emails de una empresa pasan a error en 15 min. |
 | `RevisionHumanaAcumulada` (info) | Una empresa tiene más de 50 emails esperando a una persona durante 1 h. |
+| `CasoSinAtender` | El caso más antiguo de una empresa lleva más de 4 h esperando a una persona (5 min). |
 | `IAConErrores` | Más del 20 % de las peticiones a la IA fallan (con al menos 5 en 10 min). |
 | `GastoIAPorHoraAlto` | La IA gasta más de 5 $ en una hora. |
 
@@ -1322,7 +1326,108 @@ docker compose restart nginx prometheus                # nginx sin versión; nue
 docker compose exec horizon php artisan horizon:terminate
 ```
 
-## 14. Estructura del proyecto
+## 14. Revisión humana (*human in the loop*)
+
+La IA no tiene la última palabra: lo que no puede enviar sola (modo
+borrador, confianza baja, quejas, cobros, sospecha de *prompt injection*,
+envíos fallidos...) lo resuelve una persona desde el panel. Código en
+[`app/Automation/Review/`](app/Automation/Review/).
+
+### La bandeja
+
+**Revisión** (`/revision`, primera entrada del menú, con el **número de
+casos pendientes**): los emails en `human_review` o `failed`, **primero los
+urgentes y, dentro de cada urgencia, los que más llevan esperando**. Cada
+caso muestra cuánto lleva esperando, el **motivo** (por qué no salió solo),
+la intención, si la IA dejó una propuesta y a quién está asignado.
+Pestañas *Todos / Asignados a mí / Sin asignar* y filtro de intención (en
+la URL). "Asignarme" evita que dos personas trabajen el mismo caso sin
+saberlo (no lo bloquea: un responsable puede actuar igual).
+
+### Qué puede hacer una persona
+
+En el detalle del email aparece la tarjeta **Revisión** (permiso
+`emails.review`, que tienen los tres roles: es el trabajo diario de un
+agente):
+
+| Acción | Qué pasa |
+|---|---|
+| **Aprobar y enviar** | La respuesta de la IA sale tal cual, en el hilo del cliente, por el buzón en el que llegó. |
+| **Enviar con mis cambios** | Al editar el texto, se guarda el **original de la IA** (se puede ver "qué corrigió") y sale el corregido. |
+| **Descartar propuesta** | La propuesta queda descartada (con motivo opcional); el caso sigue esperando a una persona. |
+| **Enviar respuesta** (sin propuesta) | La persona escribe la suya. |
+| **Cerrar sin responder** | El email pasa a "Sin respuesta" (`ignored`), con motivo opcional. |
+| **Reprocesar con la IA** | La IA prepara una propuesta nueva (la anterior se descarta). **Nunca** si ya se intentó enviar una respuesta: podría llegar dos veces. |
+
+- Lo que envía una persona sale **sin `Auto-Submitted`** (no es una respuesta
+  automática) y el historial dice quién lo aprobó.
+- **Avisos antes de enviar:** las comprobaciones de la [revisión del
+  texto](#revisión-del-texto-antes-de-enviar-sola) (enlaces o direcciones
+  ajenos, pedidos o importes que no salen de ningún dato, detalles internos)
+  se muestran sobre la propuesta y se repiten al editar. No impiden enviar:
+  decide la persona. Si el texto promete que "una persona revisará el caso",
+  se le recuerda que alguien tiene que hacer ese seguimiento.
+- **Dos personas a la vez:** cada decisión es condicional; si otra persona (o
+  la plataforma) se adelantó, la API responde **409** con el motivo y no
+  cambia nada.
+- Un email con un **envío fallido** también se resuelve aquí, con un aviso:
+  la respuesta anterior puede haber llegado.
+
+### Historial y métricas
+
+- Cada decisión queda en **`email_reviews`** (quién, qué, si corrigió el
+  texto, motivo, cuánto esperó el caso), en el historial de estados del
+  email y en la **auditoría** (sin el texto ni los motivos: pueden llevar
+  datos del cliente y la auditoría dura más que el email).
+- **Historial de la revisión** (`/revision/historial`): casos pendientes,
+  resueltos, espera mediana y media, **% de propuestas de la IA aprobadas
+  sin cambios** (corregidas / descartadas: la mejor medida de la calidad
+  real de la IA), qué decidió cada persona y la lista de todas las
+  decisiones.
+- **Grafana** (dashboard Emails, fila "Revisión humana"): pendientes, caso
+  más antiguo, decisiones, aprobadas sin cambios, corregidas, espera mediana
+  y p95. Métricas `aimail_email_reviews_total`,
+  `aimail_email_review_wait_seconds` y
+  `aimail_email_review_oldest_waiting_seconds`; alerta **`CasoSinAtender`**
+  si el caso más antiguo de una empresa pasa de 4 h esperando.
+
+### Probarlo sin gastar en IA
+
+```bash
+# .env: AI_PROVIDER=simulated (IA de pruebas por palabras clave) y reiniciar Horizon
+docker compose exec horizon php artisan horizon:terminate
+docker compose exec app php artisan ai:automation 1 --mode=draft     # todo pasa por una persona
+# Envía correos a soporte@demo.test (GreenMail, SMTP 127.0.0.1:3025) y en < 1 min
+# aparecen en http://localhost:8080/revision. Las respuestas llegan al buzón del
+# remitente en GreenMail (IMAP 127.0.0.1:3143, contraseña "secret").
+```
+
+### Resultados de la prueba en el navegador (IA simulada + GreenMail)
+
+5 correos de clientes (pedido, envíos a Canarias, doble cobro, lámpara rota
+en inglés, factura) → los 5 en la bandeja en segundos, con su motivo. Como
+agente: **corregir** la propuesta del pedido con un número inventado
+(#99999) → aviso "menciona pedidos que no aparecen…"; corregido y enviado →
+llegó al buzón del cliente en GreenMail, en el hilo y sin `Auto-Submitted`,
+y el detalle enlaza el texto original de la IA. **Descartar** la propuesta
+de la factura con motivo y **escribir** la respuesta → llegó. **Cerrar** el
+doble cobro ("atendido por teléfono"). Como propietario: **reprocesar** la
+lámpara → propuesta nueva y la anterior en "Respuestas anteriores". El
+número del menú bajó de 5 a 2, el historial mostró las decisiones por
+persona y la auditoría las 6 acciones. Encontrado y corregido: la IA
+simulada propone "A member of our team will review your message shortly" y
+no se avisaba al aprobarla (ahora es un recordatorio).
+
+### Actualizar un entorno anterior a la Fase 13
+
+```bash
+docker compose exec app php artisan migrate
+docker compose exec app php artisan db:seed --class=RolesAndPermissionsSeeder   # permiso emails.review
+docker compose restart prometheus grafana                # alerta CasoSinAtender y fila nueva del dashboard Emails
+docker compose exec horizon php artisan horizon:terminate
+```
+
+## 15. Estructura del proyecto
 
 ```
 app/
@@ -1368,7 +1473,8 @@ app/
 │   └── ToolExecutor          Valida, controla permisos, ejecuta y registra (ai_tool_calls)
 ├── ERP/                      Pedidos: OrderProvider + DemoOrderProvider (integraciones reales en la Fase 14)
 ├── Automation/               Automatización (Fase 9): EmailProcessor + ProcessEmailJob, AutoSendPolicy,
-│                             ReplySender + SendReplyJob (envío en el hilo), AutomationMode
+│                             ReplySender + SendReplyJob (envío en el hilo), AutomationMode;
+│                             Review/ (Fase 13): HumanReviewService (decisiones de las personas), ReviewStats
 ├── Observability/            Métricas (Fase 11): Metrics (catálogo y almacén Redis), StateMetrics (estado actual),
 │                             Observers/ (métricas desde los registros de auditoría), QueueMetricsSubscriber,
 │                             MetricLabels; DashboardStats (cifras del resumen del panel)
@@ -1381,7 +1487,7 @@ app/
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
 │                             EmailRecipient, EmailAttachment, MailSyncState,
 │                             AiRequest, AiPromptVersion, Document, DocumentChunk, AiToolCall,
-│                             TenantTool, AiAgentRun, EmailReply, EmailStatusChange, AuditLog
+│                             TenantTool, AiAgentRun, EmailReply, EmailStatusChange, AuditLog, EmailReview
 ├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy, DocumentPolicy, EmailPolicy
 ├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders, AI
 ├── Tenancy/                  TenantService, BelongsToTenant, TenantScope
@@ -1405,12 +1511,14 @@ tests/
 ├── Feature/Tenancy/          Tenants, roles, permisos, aislamiento
 ├── Feature/Users/            Gestión de usuarios y empresa
 ├── Feature/Mail/             Conexiones: Imap/, Smtp/ (GreenMail real), Microsoft/, Google/ (APIs simuladas)
-├── Feature/Emails/           Tablas y modelos de emails; Ingestion/ (servicio, sync, job, comando, E2E con GreenMail)
+├── Feature/Emails/           Tablas y modelos de emails, API del panel (listado, detalle, revisión, bandeja, historial);
+│                             Ingestion/ (servicio, sync, job, comando, E2E con GreenMail)
 ├── Feature/AI/               Proveedor Anthropic (HTTP simulado, también tool calling), AIService, costes, prompts, clasificación,
 │                             embeddings (Ollama simulado), Agent/ (bucle, límites, decisión humana, comando ai:reply)
 ├── Feature/Documents/        Documentos: extracción, troceado, indexado, búsqueda, API, aislamiento, comandos
 ├── Feature/Tools/            Registro, ejecutor (validación, permisos, errores), herramientas por empresa, comandos ai:tool/ai:tools
-├── Feature/Automation/       Modos, política de envío, envío en el hilo, procesador, job, comandos y E2E con GreenMail real
+├── Feature/Automation/       Modos, política de envío, envío en el hilo, procesador, job, comandos y E2E con GreenMail real;
+│                             Review/ (revisión humana: modelo, servicio y E2E con GreenMail y la IA simulada)
 ├── Feature/Observability/    Métricas (emails, IA, HTTP, colas, estado), /metrics, logs JSON, dashboard del panel
 ├── Feature/Security/         Auditoría, gasto de IA, revisión del texto, cabeceras, logs, retención, infraestructura,
 │                             arquitectura (aislamiento, rutas protegidas, dependencias encapsuladas, higiene)
@@ -1425,7 +1533,7 @@ lógica de negocio en servicios y los controladores finos.
 
 ---
 
-## 15. API
+## 16. API
 
 Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 `Accept: application/json`.
@@ -1471,6 +1579,16 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | PATCH | `/automation/tools/{tool}` | `automation.manage` | Activar o desactivar una herramienta (`enabled`) |
 | DELETE | `/emails/{id}` | `emails.delete` | Borrar un email con sus adjuntos, respuestas e historial (409 si se está procesando o enviando) |
 | GET | `/audit-logs` | `audit.view` | Registro de auditoría (filtros `category`, `user`, `from`, `to`; paginado) |
+| GET | `/review-queue` | `emails.view` | Bandeja de revisión: lo que espera a una persona, urgentes y más antiguos primero (filtros `assigned` = `mine`/`unassigned`, `intent`, `mailbox`; `meta.counts`) |
+| POST | `/emails/{id}/replies/{reply}/approve` | `emails.review` | Aprobar y enviar la propuesta de la IA (`body` opcional: el texto corregido) |
+| POST | `/emails/{id}/replies/{reply}/reject` | `emails.review` | Descartar la propuesta (`reason` opcional) |
+| POST | `/emails/{id}/replies` | `emails.review` | Enviar una respuesta escrita por la persona (`body`) |
+| POST | `/emails/{id}/close` | `emails.review` | Cerrar sin responder (`reason` opcional) |
+| POST | `/emails/{id}/reprocess` | `emails.review` | Volver a procesarlo con la IA (409 si ya se intentó un envío) |
+| PUT | `/emails/{id}/assignee` | `emails.review` | Asignar el caso (`user_id`, o `null` para liberarlo) |
+| POST | `/emails/{id}/review-checks` | `emails.review` | Avisos de las comprobaciones automáticas sobre un texto (`body`, `reply_id` opcional) |
+| GET | `/reviews` | `emails.view` | Historial de decisiones (filtros `decision`, `user`, `from`, `to`; paginado) |
+| GET | `/reviews/summary?days=7\|30\|90` | `emails.view` | Resumen: pendientes, esperas, propuestas de la IA aprobadas sin cambios, por persona |
 
 ```bash
 # Login
@@ -1495,13 +1613,14 @@ de forma automática. El panel no usa tokens: entra con cookie de sesión
 | 401 | Sin token o token inválido/caducado | `{"message":"No autenticado."}` |
 | 403 | Sin permiso, o empresa desactivada | `{"message":"No autorizado."}` / `"La empresa está desactivada."` |
 | 404 | No existe **o es de otra empresa** | `{"message":"Recurso no encontrado."}` |
+| 409 | El recurso cambió entre medias (p. ej. otra persona ya aprobó la respuesta) o está en uso | `{"message":"<motivo>"}` |
 | 422 | Datos inválidos | `{"message":"...","errors":{"campo":["..."]}}` |
 | 429 | Demasiadas peticiones (60/min en general, 5/min en login, 10/min al probar conexiones) | — |
 | 500 | Error inesperado | `{"message":"Error interno del servidor."}` |
 
 ---
 
-## 16. Tests
+## 17. Tests
 
 ```bash
 docker compose exec app php artisan test                       # todos
@@ -1554,12 +1673,18 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
   `eval`/`unserialize` ni `env()` fuera de `config/`. Se comprueban con el
   tokenizer de PHP sobre `app/`; el `arch()` de Pest analiza también
   `vendor/` y se queda sin memoria.
+- **Revisión humana:** `tests/Feature/Automation/Review/` (servicio y modelo)
+  y `tests/Feature/Emails/` (API de la revisión, bandeja e historial).
+  `HumanReviewEndToEndTest` recorre el caso completo contra GreenMail con la
+  **IA simulada** (`ai.provider=simulated`): el cliente escribe, la IA
+  propone, una persona corrige y aprueba por la API, y la respuesta llega a
+  su buzón.
 - **Panel:** Vitest + `@vue/test-utils` en `resources/js/panel/**/*.test.ts`
   (`docker compose exec vite npm test`), con `fetch` simulado: rutas y
   permisos, cliente HTTP, filtros en la URL, el iframe aislado del email,
   formularios y páginas por rol.
 
-## 17. CI
+## 18. CI
 
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales, y además el job
@@ -1571,13 +1696,13 @@ una vulnerabilidad conocida
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 18. Entornos
+## 19. Entornos
 
 Ahora mismo solo existe el entorno **local**. Staging y producción (con su
 `.env` y un override de Docker Compose sin el código montado desde disco) se
 prepararán en la fase de producción.
 
-## 19. Problemas frecuentes
+## 20. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -1601,7 +1726,10 @@ prepararán en la fase de producción.
 | Los emails se guardan pero se quedan en `received` | `AI_PROCESS_ON_INGEST=false`, o Horizon no procesa la cola `ai`: `horizon:supervisors` debe mostrar `supervisor-ai` en **`redis-long:ai`** (si no, `horizon:terminate`). Para encolarlos: `ai:process --pending`. |
 | Todos los emails van a `human_review` | Es lo normal en modo `draft` (por defecto). Mira el motivo en `email_status_changes`: "La IA no está configurada" (falta `ANTHROPIC_API_KEY`; tras ponerla, `horizon:terminate` y `ai:process <id> --now --reprocess`), modo `off`, intención no permitida, confianza baja... |
 | No se envía nada aunque la empresa esté en `auto` | `AI_AUTO_SEND=false`, la intención no está en `ai:automation <empresa>`, o el motivo está en `email_status_changes`. Si el email está `approved`, Horizon no procesa la cola `mail` (`supervisor-mail`). |
-| Un email en `failed` con "No se pudo enviar la respuesta" | El servidor rechazó el envío o falló la conexión tras los reintentos (`send_error` en `email_replies`). No se reprocesa solo para no enviarlo dos veces: lo revisa una persona. |
+| Un email en `failed` con "No se pudo enviar la respuesta" | El servidor rechazó el envío o falló la conexión tras los reintentos (`send_error` en `email_replies`). No se reprocesa solo para no enviarlo dos veces: aparece en la **bandeja de revisión**, donde una persona comprueba si llegó y responde o lo cierra. |
+| "Este email ya no está esperando a una persona" (409) al aprobar | Otra persona (o la plataforma) decidió antes: recarga la página para ver su estado. |
+| No veo la tarjeta "Revisión" en un email | Solo aparece si el email espera a una persona (`human_review` o `failed`) y tu rol tiene `emails.review` (en un entorno anterior a la Fase 13: `db:seed --class=RolesAndPermissionsSeeder`). |
+| En Grafana, "Aprobadas sin cambios" o los totales salen por debajo de la realidad | Limitación de Prometheus: `increase()` no cuenta la primera aparición de una serie. Con uso continuo no se nota; la cifra exacta está en **Revisión → Historial** del panel. |
 | Un documento se queda en `failed`: "El modelo bge-m3 no está descargado en Ollama" | Falta descargarlo: `docker compose exec ollama ollama pull bge-m3` y después `POST /documents/{id}/reindex`. |
 | Un documento se queda en `pending` | Horizon no procesa la cola `documents`: `horizon:supervisors` debe mostrar `supervisor-documents` (si no, `horizon:terminate`). |
 | "El PDF no contiene texto extraíble" | Es un PDF escaneado (solo imágenes). El OCR no está soportado todavía: súbelo en texto o PDF con texto. |
