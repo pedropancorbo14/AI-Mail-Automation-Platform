@@ -37,7 +37,7 @@ async def test_another_customers_order_is_an_error_without_their_data() -> None:
     assert record.status == "error"
     assert record.result is None
     assert record.error is not None
-    assert "No hay ningún pedido" in record.error
+    assert record.error.startswith("No hay ningún pedido")
 
 
 async def test_the_same_customer_in_another_tenant_sees_nothing() -> None:

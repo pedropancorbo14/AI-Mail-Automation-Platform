@@ -34,7 +34,7 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 11 | Observabilidad: métricas de Prometheus, 6 dashboards de Grafana, logs en Loki y alertas probadas; IA simulada para probar sin coste | ✅ Hecha (probada en el stack con la IA simulada) |
 | 12 | Seguridad: auditoría inmutable, cuenta propia, freno del gasto de IA, revisión del texto antes de enviar, cabeceras y CSP, secretos fuera de los logs, retención y derecho de supresión, infraestructura solo en local, tests de arquitectura | ✅ Hecha (probada con ataques contra el stack) |
 | 13 | Revisión humana (*human in the loop*): bandeja de casos pendientes, aprobar, corregir o descartar la respuesta de la IA, responder, cerrar, reprocesar, asignarse casos, historial de decisiones con métricas y alerta | ✅ Hecha (probada en el navegador con la IA simulada y GreenMail) |
-| AI | **Microservicio de IA en Python** ([`ai-service/`](ai-service/README.md)): LangGraph, Redis Streams, MCP, arquitectura hexagonal; Laravel publica cada email como evento y aplica el resultado | ✅ Fase 1 hecha (probada de punta a punta con la IA simulada). Opcional con `AI_ENGINE=python`; por defecto sigue el motor de Laravel |
+| AI | **Microservicio de IA en Python** ([`ai-service/`](ai-service/README.md)): LangGraph, Redis Streams, MCP, arquitectura hexagonal; Laravel publica cada email como evento y aplica el resultado | ✅ Fases 1, 2 (RAG) y 3 (MCP + tools) hechas (probadas de punta a punta con la IA simulada). Opcional con `AI_ENGINE=python`; por defecto sigue el motor de Laravel |
 | 14–17 | Integraciones, evaluación, producción, SaaS | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
@@ -213,6 +213,7 @@ reglas finales y el envío. El diagrama de abajo es el motor por defecto
 | `greenmail` | Servidor de correo de pruebas (IMAP 3143, SMTP 3025, API 8080). Lo usan los tests de IMAP/SMTP y sirve para probar a mano (p. ej. con Thunderbird). Todo se queda en memoria. |
 | `ollama` | Modelos de IA locales: calcula los embeddings del RAG con `bge-m3`. Solo en la red interna (sin puerto publicado); el modelo se guarda en el volumen `ollama-data`. |
 | `ai-service` | **Perfil `ai-service`** (solo con `AI_ENGINE=python`). Microservicio de IA en Python ([`ai-service/`](ai-service/README.md)): consume `email.received.v1` de Redis Streams y publica el resultado. `/health`, `/ready` y `/metrics` en `127.0.0.1:8001`. |
+| `ai-mcp` | **Perfil `ai-service`**. Servidor MCP del microservicio (CRM, ERP y tickets de demostración, los mismos pedidos que el motor de Laravel). Solo red interna, con token (`AI_SERVICE_MCP_TOKEN`). |
 | `ai-results` | **Perfil `ai-service`**. Misma imagen que la app: `php artisan ai:consume-results` aplica los resultados de ai-service (estado, borrador, `ai_requests`, envío). |
 
 Configuración de cada servicio en [`docker/`](docker/) y en

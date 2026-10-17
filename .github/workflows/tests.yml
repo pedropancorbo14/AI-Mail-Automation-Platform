@@ -260,3 +260,15 @@ jobs:
           curl -fs localhost:8000/health
           test "$(docker exec ai-service id -u)" = "10001"
           docker stop -t 20 ai-service
+
+      - name: Probar el servidor MCP de la imagen (arranca, /health y token obligatorio)
+        run: |
+          docker run -d --name ai-mcp --network host --read-only --tmpfs /tmp --cap-drop ALL \
+            -e AI_SERVICE_MCP_TOKEN=ci-mcp-token -e AI_SERVICE_MCP_ORDERS_FILE=/data/orders.json \
+            -v "$GITHUB_WORKSPACE/database/seeders/demo/orders.json:/data/orders.json:ro" \
+            ai-mail-automation-ai-service:ci ai-service-mcp
+          for i in $(seq 1 20); do curl -fs localhost:8100/health && break; sleep 1; done
+          curl -fs localhost:8100/health
+          # Sin token, la ruta MCP responde 401.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8100/mcp)" = "401"
+          docker stop -t 10 ai-mcp

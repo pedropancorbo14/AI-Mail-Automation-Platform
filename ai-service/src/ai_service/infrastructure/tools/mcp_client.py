@@ -86,7 +86,9 @@ class McpToolClient:
 
         text = "".join(getattr(part, "text", "") for part in result.content)
         if result.is_error:
-            return self._record(tool, visible, None, "error", text[:500] or "Error.", started)
+            # El SDK antepone "Error executing tool X: " al mensaje de la herramienta.
+            message = text.removeprefix(f"Error executing tool {tool}: ")
+            return self._record(tool, visible, None, "error", message[:500] or "Error.", started)
         return self._record(tool, visible, self._parse(text), "success", None, started)
 
     async def _invoke(self, tool: str, payload: dict[str, Any]) -> Any:

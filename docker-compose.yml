@@ -150,11 +150,23 @@ services:
       # Misma BD de Redis (sin prefijo) que la conexión "streams" de Laravel.
       AI_SERVICE_REDIS_URL: redis://:${REDIS_PASSWORD:-secret}@redis:6379/${REDIS_STREAMS_DB:-3}
       AI_SERVICE_DEBUG_ENDPOINTS: ${AI_SERVICE_DEBUG_ENDPOINTS:-false}
+      # RAG (Fase 2): solo lectura con el rol ai_service_reader (RLS por
+      # empresa) y el mismo modelo de embeddings que indexa Laravel.
+      AI_SERVICE_DATABASE_URL: postgresql+psycopg://ai_service_reader:${AI_SERVICE_DB_PASSWORD:-reader-secret}@postgres:5432/${DB_DATABASE:-app}
+      AI_SERVICE_OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      AI_SERVICE_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-bge-m3}
+      # Herramientas (Fase 3): CRM, ERP y tickets en el servidor MCP.
+      AI_SERVICE_MCP_URL: http://ai-mcp:8100
+      AI_SERVICE_MCP_TOKEN: ${AI_SERVICE_MCP_TOKEN:-local-mcp-token}
     # Solo local: /health, /ready, /metrics y (si se activa) /debug/process.
     ports:
       - "127.0.0.1:${AI_SERVICE_PORT:-8001}:8000"
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      ai-mcp:
         condition: service_healthy
     networks:
       - app-net
@@ -169,6 +181,37 @@ services:
       - no-new-privileges:true
     # Termina los emails en curso antes de parar (lo no confirmado se reclama).
     stop_grace_period: 60s
+    labels:
+      - "logging=promtail"
+
+  # Servidor MCP (Fase 3): CRM, ERP y tickets para el grafo de ai-service.
+  # Misma imagen, otro proceso. Sin puertos publicados: solo lo llama
+  # ai-service por la red interna, con token.
+  ai-mcp:
+    image: ai-mail-automation-ai-service:latest
+    profiles: ["ai-service"]
+    restart: unless-stopped
+    command: ai-service-mcp
+    environment:
+      AI_SERVICE_MCP_TOKEN: ${AI_SERVICE_MCP_TOKEN:-local-mcp-token}
+      # Los MISMOS pedidos de demostración que el DemoOrderProvider de Laravel.
+      AI_SERVICE_MCP_ORDERS_FILE: /data/orders.json
+    volumes:
+      - ./database/seeders/demo/orders.json:/data/orders.json:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - app-net
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     labels:
       - "logging=promtail"
 

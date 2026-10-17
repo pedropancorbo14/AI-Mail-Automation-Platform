@@ -3606,7 +3606,7 @@ del servicio) y, si quiere, con Claude real
 (`AI_SERVICE_LLM_PROVIDER=anthropic`). Siguiente: Fase 2 (RAG) cuando lo
 apruebe.
 
-### AI-Service, Fases 2 (RAG) y 3 (MCP + tools): EN CURSO (2026-10-17)
+### AI-Service, Fases 2 (RAG) y 3 (MCP + tools): COMPLETADAS Y PROBADAS DE PUNTA A PUNTA CON LA IA SIMULADA (2026-10-17), pendiente de que las pruebe el usuario
 
 Misma rama `fase-ai-service` (pedido por el usuario: son cambios sobre lo
 que ya existe). Misma forma de trabajo: un commit por tarea, tests en
@@ -3755,7 +3755,31 @@ con eventos `document.uploaded.v1` / `document.indexed.v1`).
   adaptador de Claude con datos, IA simulada, contenedor y **grafo + IA
   simulada + servidor MCP real** (pedido propio enviado solo con
   seguimiento; ajeno a persona sin sus datos). 249 tests
-- [ ] 3.4 Compose, CI, README y prueba de punta a punta
+- [x] 3.4 **Compose, CI, README y prueba de punta a punta.** Servicio
+  **`ai-mcp`** (perfil `ai-service`, misma imagen, `ai-service-mcp`, sin
+  puertos publicados, token `AI_SERVICE_MCP_TOKEN` —`local-mcp-token` en
+  local—, `orders.json` montado de solo lectura, healthcheck sobre
+  `:8100/health`, endurecido como `ai-service`). `ai-service`:
+  `AI_SERVICE_DATABASE_URL` con `ai_service_reader` +
+  `AI_SERVICE_DB_PASSWORD`, `OLLAMA_URL`/`OLLAMA_EMBEDDING_MODEL`,
+  `AI_SERVICE_MCP_URL=http://ai-mcp:8100`; espera a PostgreSQL y `ai-mcp`
+  sanos. Promtail parsea también el JSON de `ai-mcp`. CI: prueba de la
+  imagen como servidor MCP (`/health`, 401 sin token). Cliente MCP: quita
+  el prefijo "Error executing tool X:" del SDK. **Prueba en Docker** (imagen
+  construida, `ai-mcp` + worker con IA simulada + Laravel con
+  `AI_ENGINE=python` + GreenMail): pedido propio #45821 → `get_order` →
+  enviada sola con transportista y seguimiento; pedido ajeno #76540 →
+  revisión humana sin sus datos; Laura sin número → `get_customer_orders`
+  → enviada sola con #78123. RAG: sin Ollama en la sesión, probado con
+  PostgreSQL real y embeddings simulados. README del servicio (compose,
+  prueba, hoja de ruta, resumen de entrevista) y README raíz
+
+**Pendiente para dar las Fases 2 y 3 por cerradas:** que el usuario
+revise la rama `fase-ai-service`, el CI en verde y lo pruebe en su equipo:
+`docker compose up -d --build ai-service ai-mcp ai-results`, `migrate`
+(rol `ai_service_reader`), `ollama pull bge-m3` si no lo tenía y
+`AI_SERVICE_MCP_TOKEN` en el `.env`. Siguiente: Fase 4 (checkpointing,
+`interrupt`, límites y herramientas de escritura con aprobación).
 
 ### Pendientes anotados para más adelante
 

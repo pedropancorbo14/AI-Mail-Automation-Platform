@@ -27,12 +27,12 @@ scrape_configs:
       - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
         target_label: service
     pipeline_stages:
-      # ai-service escribe JSON (structlog) con "level" en mayúsculas como
+      # ai-service y ai-mcp escriben JSON (structlog) con "level" en mayúsculas como
       # Laravel: el nivel pasa a etiqueta y la hora es la del propio log.
       # trace_id, tenant_id y email_id NO son etiquetas (demasiadas series):
       # {service="ai-service"} | json | tenant_id="1"
       - match:
-          selector: '{service="ai-service"}'
+          selector: '{service=~"ai-service|ai-mcp"}'
           stages:
             - json:
                 expressions:

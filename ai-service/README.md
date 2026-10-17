@@ -24,9 +24,11 @@ del email, reglas finales y envío.
 - **Arquitectura:** **hexagonal + DDD** (dominio puro sin dependencias,
   puertos como `Protocol`, adaptadores para Claude y Redis), comprobada
   por **import-linter** en el CI.
-- **IA:** grafo de **LangGraph** (classify → router determinista → draft →
-  validate) con **Claude** por langchain-anthropic: structured outputs
-  nativos, `effort`, fallbacks de servidor, `stop_reason`.
+- **IA:** grafo de **LangGraph** (classify → router determinista →
+  retrieve (RAG con pgvector) → tools (CRM/ERP/tickets por **MCP**) →
+  draft → validate) con **Claude** por langchain-anthropic: structured
+  outputs nativos, `effort`, fallbacks de servidor, `stop_reason`. La
+  validación solo deja citar lo que se consultó de verdad.
 - **Seguridad:** la IA **recomienda**, Laravel **decide** (reglas
   deterministas antes de enviar nada); reglas del dominio que nunca dejan
   prometer reembolsos; `tenant_id` en cada evento y Laravel rechaza
@@ -541,8 +543,9 @@ AI_ENGINE=python
 COMPOSE_PROFILES=ai-service
 ANTHROPIC_API_KEY=sk-ant-...        # la usa ai-service, no Laravel
 
-docker compose up -d --build ai-service ai-results
-docker compose exec app php artisan migrate     # columnas ai_event_id...
+docker compose up -d --build ai-service ai-mcp ai-results
+docker compose exec app php artisan migrate     # columnas ai_event_id, rol ai_service_reader...
+docker compose exec ollama ollama pull bge-m3   # una vez (RAG), si no lo tenías
 docker compose exec horizon php artisan horizon:terminate   # recoge AI_ENGINE
 curl -s 127.0.0.1:8001/ready                    # {"status":"ok",...}
 docker compose logs -f ai-service ai-results
@@ -551,7 +554,12 @@ docker compose logs -f ai-service ai-results
 | Servicio | Imagen | Qué hace |
 |---|---|---|
 | `ai-service` | `ai-service/Dockerfile` | Worker de Python: consume `email.received.v1`, ejecuta el grafo y publica el resultado. `/health`, `/ready`, `/metrics` en `127.0.0.1:8001` |
+| `ai-mcp` | la misma que `ai-service` (`ai-service-mcp`) | Servidor MCP (CRM, ERP, tickets) en `ai-mcp:8100`, **sin puertos publicados**, con token (`AI_SERVICE_MCP_TOKEN`). Monta `database/seeders/demo/orders.json` de solo lectura: los mismos pedidos que el motor de Laravel |
 | `ai-results` | la de Laravel | `php artisan ai:consume-results`: aplica los resultados (estados, borrador, `ai_requests`, envío) |
+
+`ai-service` se conecta a PostgreSQL como `ai_service_reader`
+(`AI_SERVICE_DB_PASSWORD`, solo lectura con RLS), a Ollama (`bge-m3`) y a
+`ai-mcp`; espera a que PostgreSQL y `ai-mcp` estén sanos para arrancar.
 
 **Imagen** (`ai-service/Dockerfile`, multi-stage): la etapa *builder*
 instala uv desde PyPI y las dependencias exactas de `uv.lock` (capa
@@ -567,7 +575,7 @@ en curso.
 - **Prometheus** descubre `ai-service` por DNS (job `ai-service`): sin el
   perfil no hay target ni alertas.
 - **Promtail** etiqueta los logs de los contenedores con `service` (el del
-  compose) y, para `ai-service`, parsea el JSON: `level` como etiqueta.
+  compose) y, para `ai-service` y `ai-mcp`, parsea el JSON: `level` como etiqueta.
   Seguir un email: `{service="ai-service"} | json | trace_id="..."`.
 - **Grafana**: dashboard **"AI Mail · ai-service"** (emails procesados,
   fallos, reintentos, % recomendado para enviar solo, tiempos, latencia
@@ -705,6 +713,27 @@ Decisiones de diseño acordadas para las siguientes tareas:
 
 ## Prueba de punta a punta (2026-10-17)
 
+### Fase 3: herramientas por MCP
+
+Imagen construida y lanzada como en el compose: `ai-mcp` (servidor MCP,
+solo lectura del sistema de archivos, sin capacidades) y el worker con la
+IA simulada apuntando a él con token. Tres correos por SMTP a GreenMail →
+`mail:sync` → `email.received.v1` → grafo → `email.processed.v1` →
+`ai:consume-results`:
+
+| Email | Herramienta | Resultado |
+|---|---|---|
+| Cliente Pérez: "¿dónde está mi pedido #45821?" | `get_order` ✓ | **Enviada sola**: "Pedido #45821: Enviado. Transportista SEUR, seguimiento SEU123456789ES." (`ReplyContentGuard` encontró el pedido en `ai_tool_calls`) |
+| Cliente Pérez: "¿dónde está mi pedido #76540?" (de otro cliente) | `get_order` ✗ | **Revisión humana**: "La consulta get_order no fue bien: No hay ningún pedido con ese número asociado a este cliente." Ningún dato del pedido ajeno en el borrador |
+| Laura: "¿cómo va mi pedido?" (sin número) | `get_customer_orders` ✓ | **Enviada sola** con su pedido más reciente (#78123, en preparación) |
+
+Ajuste encontrado: el SDK de MCP antepone "Error executing tool X:" a los
+errores de las herramientas; el cliente lo quita para que el motivo que ve
+la persona en el panel sea limpio. Sin Ollama en la sesión, el RAG se
+probó con PostgreSQL real y embeddings simulados (tests de integración).
+
+### Fase 1
+
 Stack de la sesión: PostgreSQL + Redis + GreenMail reales, Laravel
 (`AI_ENGINE=python`, "Empresa Demo" en modo `auto`, buzón IMAP de
 GreenMail) y el worker con la **IA simulada**
@@ -749,8 +778,8 @@ costes en Grafana). Solo responde con confianza a preguntas generales
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | ✅ Hecha (probada de punta a punta con la IA simulada; pendiente de que la pruebes tú) |
-| 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | Pendiente |
-| 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | Pendiente |
+| 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | ✅ Hecha (tests contra PostgreSQL real; Ollama simulado en los tests) |
+| 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | ✅ Hecha (probada de punta a punta con la IA simulada y el servidor MCP en Docker) |
 | 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |
 | 5 | Supervisor con subagentes y modo *shadow* (comparar con el motor de Laravel) | Pendiente |
 | 6 | Kubernetes (probado en kind) | Pendiente |
