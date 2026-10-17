@@ -61,6 +61,7 @@ class RemoteResultHandler
         private readonly AutoSendPolicy $policy,
         private readonly ReplySender $sender,
         private readonly CostCalculator $costs,
+        private readonly ShadowResultHandler $shadow,
     ) {
     }
 
@@ -83,8 +84,8 @@ class RemoteResultHandler
         $event = $this->contract->validate("{$type}.v1", $message->payload());
 
         if (($event['mode'] ?? 'live') === 'shadow') {
-            // Una copia en modo sombra nunca toca el email: solo se compara (Fase 5).
-            return 'shadow';
+            // Una copia en modo sombra nunca toca el email: solo se guarda para comparar.
+            return $this->shadow->handle($event, $type);
         }
 
         $email = Email::withoutGlobalScope(TenantScope::class)->with('tenant')->find($event['email_id']);

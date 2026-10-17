@@ -12,6 +12,7 @@ use App\AI\Exceptions\LLMException;
 use App\AI\Remote\AIEngine;
 use App\AI\Remote\EmailEventPublisher;
 use App\AI\Remote\Exceptions\InvalidEventException;
+use App\AI\Remote\ShadowPublisher;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
 use App\Models\EmailReply;
@@ -50,6 +51,7 @@ class EmailProcessor
         private readonly TenantService $tenants,
         private readonly AiSpendGuard $spendGuard,
         private readonly EmailEventPublisher $publisher,
+        private readonly ShadowPublisher $shadow,
     ) {
     }
 
@@ -159,6 +161,9 @@ class EmailProcessor
 
             return;
         }
+
+        // Modo sombra: una copia para ai-service, solo para comparar (nunca falla aquí).
+        $this->shadow->maybePublish($email);
 
         if ($email->classified_at === null) {
             $email->recordClassification($this->classifier->classify($email));

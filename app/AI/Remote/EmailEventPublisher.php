@@ -44,7 +44,7 @@ class EmailEventPublisher
      */
     public function publish(Email $email): array
     {
-        $event = $this->contract->validate('email.received.v1', $this->event($email));
+        $event = $this->contract->validate('email.received.v1', $this->build($email));
 
         $email->forceFill([
             'ai_event_id' => $event['event_id'],
@@ -73,8 +73,13 @@ class EmailEventPublisher
         return $event;
     }
 
-    /** @return array<string, mixed> */
-    private function event(Email $email): array
+    /**
+     * El evento de un email. En modo sombra (copia para comparar con el motor de
+     * Laravel) no lleva la indicación de una persona: esa es del email real.
+     *
+     * @return array<string, mixed>
+     */
+    public function build(Email $email, string $mode = 'live'): array
     {
         $email->loadMissing('attachments', 'tenant');
 
@@ -100,7 +105,8 @@ class EmailEventPublisher
                 ->map(fn ($attachment) => mb_substr((string) $attachment->filename, 0, 255))->values()->all(),
             'tenant_name' => mb_substr($email->tenant->name, 0, 255),
             // Indicación de la persona al reprocesar: la respuesta la revisa siempre una persona.
-            'review_instruction' => $email->ai_review_instruction ? mb_substr($email->ai_review_instruction, 0, 2000) : null,
+            'review_instruction' => $mode === 'live' && $email->ai_review_instruction ? mb_substr($email->ai_review_instruction, 0, 2000) : null,
+            'mode' => $mode,
         ];
     }
 

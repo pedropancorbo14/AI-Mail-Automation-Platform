@@ -202,6 +202,16 @@ return [
         'checkpoints_db_password' => env('AI_SERVICE_CHECKPOINTS_DB_PASSWORD', 'checkpoints-secret'),
     ],
 
+    // Modo sombra (AI-Service, Fase 5): con AI_ENGINE=laravel, una muestra de
+    // emails se procesa también en ai-service SIN efectos (nunca se aplica al
+    // email) para comparar los dos motores. Cuesta dinero real (las llamadas a
+    // la IA se hacen dos veces): cuenta para el presupuesto diario de la empresa.
+    'shadow' => [
+        'enabled' => (bool) env('AI_SHADOW_ENABLED', false),
+        // Fracción de emails (0 a 1), elegidos de forma determinista por su id.
+        'sample_rate' => (float) env('AI_SHADOW_SAMPLE_RATE', 0.1),
+    ],
+
     // Freno del gasto (App\Security\AiSpendGuard): superado un límite, el
     // email va a revisión humana sin llamar a la IA.
     'limits' => [

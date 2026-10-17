@@ -4195,7 +4195,35 @@ el de Python afecte a nada.
   hilo, redacta), caso de uso (procesado y fallo en sombra cumplen el
   contrato; los normales salen `live`), consumidor con Redis real (sale en
   sombra y la métrica la separa). 371 tests de Python
-- [ ] 5.6 Laravel: publicar en sombra y guardar el resultado
+- [x] 5.6 **Laravel: publicar en sombra y guardar el resultado.** Tabla
+  `ai_shadow_runs` (tenant restrict, **email cascade** —borrador y
+  clasificación son datos del cliente—, `event_id` único, status
+  pending/completed/failed, recomendación: categoría, confianzas, decisión,
+  borrador, motivos, especialistas, resumen de herramientas con origen,
+  modelo, tokens, `cost_usd`, duración, error) y modelo `AiShadowRun`
+  (`BelongsToTenant`, nada asignable en masa). Config `ai.shadow.enabled`
+  (`AI_SHADOW_ENABLED`, false) y `sample_rate` (`AI_SHADOW_SAMPLE_RATE`,
+  0,1). `EmailEventPublisher::build($email, $mode)` (en sombra sin
+  `review_instruction`; `mode` siempre en el evento). **`ShadowPublisher`**:
+  solo con el motor de Laravel, muestra determinista (`crc32` del id), una
+  copia por email, fila pendiente + publicación after commit, **nunca
+  rompe el procesamiento real** (cualquier fallo → aviso en el log) y no
+  toca `ai_event_id`/`ai_requested_at`. `EmailProcessor` la llama tras los
+  filtros baratos y `AiSpendGuard`, antes de clasificar. **`ShadowResultHandler`**
+  (desde `RemoteResultHandler` si `mode: shadow`): busca la copia por
+  `causation_id` (sin él → `missing`), exige su empresa y su email
+  (si no, `TenantMismatchException` → cola de errores), entrega repetida →
+  `stale`, guarda la recomendación o el fallo con el coste de
+  `CostCalculator` (precios de Laravel) sin tocar el email ni crear
+  `ai_requests`. `AiSpendGuard::spentToday()` suma también el coste de las
+  copias (dinero real). `.env.docker.example` con las dos variables. Tests
+  `ShadowModeTest` (8: publica la copia —contrato válido, modo sombra—
+  mientras el motor de Laravel procesa igual y sin tocar los campos del
+  motor remoto; muestra determinista y una sola copia; nada si está
+  desactivada o con el motor de Python; guarda el resultado con coste sin
+  tocar el email ni `ai_requests` y una entrega repetida no lo cambia;
+  copia fallida; otra empresa → cola de errores; cuenta para el
+  presupuesto; se borra con el email). Laravel 1239 + los 25 del entorno
 - [ ] 5.7 Comparación, métricas, Grafana e informe
 - [ ] 5.8 Compose, CI, README y prueba de punta a punta
 

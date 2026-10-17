@@ -671,6 +671,18 @@ hilo ya terminado (`expired`).
   sin tocar el email) para comparar los dos motores (intención, decisión,
   coste, tiempo).
 
+**Modo sombra en Laravel (tarea 5.6):** con `AI_ENGINE=laravel`,
+`AI_SHADOW_ENABLED=true` y `AI_SHADOW_SAMPLE_RATE` (0,1 por defecto),
+`EmailProcessor` publica, tras los filtros baratos y el freno de gasto, una
+copia de la muestra de emails (elegidos de forma determinista por su id, una
+sola copia por email) mientras el motor de Laravel procesa el email como
+siempre. Cada copia es una fila de `ai_shadow_runs` (pendiente →
+completada o fallida) con lo que recomendó ai-service, su coste (con los
+precios de Laravel) y su duración; **nunca se aplica al email** (ni estado,
+ni respuestas, ni `ai_requests`). Su coste cuenta para el presupuesto diario
+de la empresa (`AiSpendGuard`) y se borra con el email (retención). Un
+resultado en sombra de otra empresa u otro email va a la cola de errores.
+
 **Modo sombra en ai-service (tarea 5.5):** un `email.received.v1` con
 `mode: shadow` se procesa igual (clasificar, especialistas, redactar,
 validar) pero **sin proponer acciones ni quedar en pausa**, y el resultado
