@@ -361,7 +361,7 @@ async def test_draft_uses_its_own_effort_and_the_classification() -> None:
     assert d.confidence.value == 0.6
     assert d.pending_actions == ("Revisar el envío con SEUR",)
     assert [s.reference for s in d.sources] == ["Política de envíos, sección «Coste del envío»"]
-    assert result.calls[0].prompt == "email_draft@3"
+    assert result.calls[0].prompt == "email_draft@4"
     assert result.calls[0].purpose == "ai_service.draft"
 
 

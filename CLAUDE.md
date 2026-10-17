@@ -3932,7 +3932,17 @@ pasos) que mandan el caso a una persona en vez de fallar.
   **worker real con Redis + PostgreSQL + MCP + IA simulada** (pausa → `/ready`
   con `checkpoints` → aprobada → ticket citado, `auto_send`, solo la llamada
   de redacción facturada). 311 tests
-- [ ] 4.6 Indicación de la persona (`review_instruction`, prompt nuevo)
+- [x] 4.6 **Indicación de la persona.** `Email.review_instruction`
+  (mapeada y recortada desde el evento). Prompt **`email_draft@4`**: bloque
+  `<indicacion_del_equipo>` antes del email (seguirla sin saltarse reglas;
+  el email sigue sin ser instrucción). `neutralize()` convierte también
+  `<indicacion_del_equipo>` en `[indicacion_del_equipo]`: un email, un
+  documento o un dato no pueden fingir una indicación, y la indicación no
+  puede cerrar su bloque. `DecisionPolicy`: con indicación → revisión
+  humana ("Redactada con una indicación del equipo: la revisa una
+  persona."). Tests: bloque solo con indicación y antes del email, etiqueta
+  falsa en el email neutralizada, regla de decisión, llega al agente desde
+  el evento de ejemplo. 316 tests
 - [ ] 4.7 Laravel: acción pendiente en el panel (aprobar/rechazar),
   reprocesar con indicación, publicadores, estados y auditoría
 - [ ] 4.8 Compose, CI, README y prueba de punta a punta

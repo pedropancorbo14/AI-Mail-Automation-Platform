@@ -62,6 +62,9 @@ class Email:
     body_truncated: bool = False
     attachment_names: tuple[str, ...] = field(default_factory=tuple)
     tenant_name: str | None = None
+    # Indicación de una persona del equipo al reprocesar desde el panel. Es de la
+    # empresa (no del cliente), pero no cambia las reglas de la decisión.
+    review_instruction: str | None = None
 
     def __post_init__(self) -> None:
         if self.email_id < 1:

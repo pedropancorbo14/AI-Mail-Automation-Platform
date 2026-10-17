@@ -216,3 +216,14 @@ async def test_each_request_runs_in_its_own_thread() -> None:
 
     event = received()
     assert seen == [f"t{event.tenant_id}-e{event.email_id}-{event.event_id}"]
+
+
+async def test_the_team_instruction_reaches_the_agent() -> None:
+    event = EmailReceived.parse(example("email.received.v1--with-review-instruction"))
+    agent = FakeAgent(outcome=outcome())
+
+    await ProcessEmail(agent, InMemoryEventBus()).execute(event)
+
+    assert agent.seen[0].review_instruction == (
+        "Ofrécele el cambio por otra talla; no hables de reembolso."
+    )

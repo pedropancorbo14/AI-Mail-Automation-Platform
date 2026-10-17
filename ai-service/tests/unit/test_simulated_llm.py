@@ -79,7 +79,7 @@ async def test_drafts_with_order_data_cite_the_order() -> None:
     )
     assert [(s.type.value, s.reference) for s in result.draft.sources] == [("order", "45821")]
     assert result.draft.confidence.value == 0.9
-    assert result.calls[0].prompt == "email_draft@3"
+    assert result.calls[0].prompt == "email_draft@4"
 
 
 async def test_replies_in_english_to_english_emails() -> None:

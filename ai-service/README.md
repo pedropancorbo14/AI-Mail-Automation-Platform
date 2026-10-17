@@ -557,6 +557,23 @@ la acción → reanudación aprobada → ticket abierto, respuesta que lo cita
 (`auto_send`) y solo la llamada de redacción en `usage` (la clasificación ya
 se informó en la pausa).
 
+### Reprocesar con una indicación (tarea 4.6)
+
+Desde el panel, una persona puede reprocesar un email con una indicación
+("ofrécele el cambio de talla; no hables de reembolso"). Laravel publica
+**otro `email.received.v1`** con `review_instruction` y el grafo empieza de
+cero, con datos frescos (no reanuda nada):
+
+- El prompt **`email_draft@4`** la recibe en un bloque
+  `<indicacion_del_equipo>` (antes del email): el modelo la sigue sin
+  saltarse ninguna regla (no prometer reembolsos, solo datos consultados).
+- **Neutralizada en los dos sentidos:** la indicación no puede cerrar su
+  bloque, y un email (o un documento, o un dato) **no puede fingir** una
+  indicación del equipo: la etiqueta se convierte en `[indicacion_del_equipo]`.
+- La regla de decisión la manda **siempre a revisión humana** ("Redactada
+  con una indicación del equipo: la revisa una persona"): quien la dio quiere
+  ver cómo quedó antes de que salga.
+
 ### Límites del agente (tarea 4.3)
 
 | Límite | Qué pasa al superarlo |

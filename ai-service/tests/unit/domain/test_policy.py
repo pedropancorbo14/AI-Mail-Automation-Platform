@@ -163,3 +163,12 @@ def test_all_reasons_are_reported_and_escalation_wins() -> None:
 
     assert outcome.decision is Decision.ESCALATE
     assert len(outcome.reasons) == 4
+
+
+def test_a_reply_written_with_a_team_instruction_is_reviewed_by_a_person() -> None:
+    email = make_email(review_instruction="Ofrécele el cambio de talla.")
+
+    outcome = DecisionPolicy().decide(email, make_classification(), make_draft())
+
+    assert outcome.decision is Decision.HUMAN_REVIEW
+    assert outcome.reasons == ("Redactada con una indicación del equipo: la revisa una persona.",)

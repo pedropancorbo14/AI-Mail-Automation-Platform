@@ -75,6 +75,9 @@ class DecisionPolicy:
             )
         if email.body_truncated:
             review.append("El email era demasiado largo y la IA solo leyó una parte.")
+        if email.review_instruction:
+            # Quien la dio quiere ver cómo quedó antes de que salga.
+            review.append("Redactada con una indicación del equipo: la revisa una persona.")
 
         if draft is None or draft.is_empty:
             if classification.category.needs_reply and not escalate:

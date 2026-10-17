@@ -31,6 +31,7 @@ def email_from_event(event: EmailReceived) -> Email:
         body_truncated=event.body_truncated,
         attachment_names=tuple(event.attachment_names),
         tenant_name=event.tenant_name,
+        review_instruction=(event.review_instruction or "").strip() or None,
     )
 
 
