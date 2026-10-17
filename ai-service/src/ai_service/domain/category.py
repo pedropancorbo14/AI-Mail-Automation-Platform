@@ -23,3 +23,8 @@ class Category(StrEnum):
     AUTO_REPLY = "auto_reply"
     SPAM = "spam"
     OTHER = "other"
+
+    @property
+    def needs_reply(self) -> bool:
+        """Spam y respuestas automáticas no se contestan nunca (evita bucles)."""
+        return self not in (Category.SPAM, Category.AUTO_REPLY)

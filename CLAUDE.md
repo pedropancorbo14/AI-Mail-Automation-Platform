@@ -3367,14 +3367,29 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   iguales al contrato, campos extra tolerados). **Lección:** `EmailStr`
   rechaza dominios `.test` (y otros reales): validación ligera `x@y` como
   el `format: email` del esquema. 41 tests
-- [ ] 1.3 Dominio puro (value objects + `DecisionPolicy`)
+- [x] 1.3 **Dominio puro** (`domain/`, dataclasses inmutables, sin
+  bibliotecas): `Email`, `TenantId`, `EmailAddress` (normalizada),
+  `Category.needs_reply`, `Confidence` (validada; `clamped()` para lo del
+  modelo), `Classification` (injection → `needs_human` forzado),
+  `Draft` (con `pending_actions`), `Decision`/`DecisionOutcome`,
+  `DomainError`. `commitments.forbidden_commitments()`: promesas de
+  reembolso y cancelaciones confirmadas (es/en; informar de la política no
+  cuenta). **`DecisionPolicy`** (`min_confidence` 0,85): `escalate` por
+  injection, amenaza legal (regex afinada: "alta demanda" no cuenta) o
+  queja urgente; `human_review` por categoría sin respuesta, clasificación
+  o respuesta < umbral, la IA o la clasificación lo piden, acciones
+  pendientes, email recortado, sin borrador o compromiso prohibido;
+  todos los motivos acumulados, `escalate` gana. **Adelantado de la
+  1.10:** job `ai-service` en GitHub Actions (uv 0.11.32 con caché,
+  `uv sync --locked`, ruff, formato, mypy, lint-imports, pytest; Redis como
+  servicio para los tests de la 1.7). 96 tests
 - [ ] 1.4 Puertos (`LLMPort`, `EventBusPort`) y caso de uso `ProcessEmail`
 - [ ] 1.5 Adaptador de Anthropic (comprobar structured outputs en Opus 5.5)
 - [ ] 1.6 Grafo LangGraph classify → router → draft → validate + `/debug/classify`
 - [ ] 1.7 Adaptador de Redis Streams + consumidor (+ `/ready`)
 - [ ] 1.8 Laravel: `AI_ENGINE`, publicador y reconciliador (Pest)
 - [ ] 1.9 Laravel: consumidor de `email.processed.v1` (Pest)
-- [ ] 1.10 Dockerfile multi-stage, compose, Prometheus/Promtail y CI
+- [ ] 1.10 Dockerfile multi-stage, compose, Prometheus/Promtail (el CI se adelantó a la 1.3)
 - [ ] 1.11 Prueba de punta a punta en el stack + README final
 
 ### Pendientes anotados para más adelante

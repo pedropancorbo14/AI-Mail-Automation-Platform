@@ -171,3 +171,56 @@ jobs:
                           print(f'{f}: datasource desconocido en "{p.get("title")}"'); ok = False
           print(f'{len(uids)} dashboards'); sys.exit(0 if ok else 1)
           PY
+
+  # Microservicio de IA en Python (ai-service/): lint, tipos, reglas de capas
+  # y tests. El LLM siempre está simulado: nunca se llama a la API real.
+  ai-service:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ai-service
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      AI_SERVICE_ENVIRONMENT: testing
+      AI_SERVICE_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: ai-service/uv.lock
+
+      - name: Dependencias (exactas, de uv.lock)
+        run: uv sync --locked
+
+      - name: Lint (ruff)
+        run: uv run ruff check --output-format=github .
+
+      - name: Formato (ruff format)
+        run: uv run ruff format --check .
+
+      - name: Tipos (mypy estricto)
+        run: uv run mypy
+
+      - name: Reglas de la arquitectura hexagonal (import-linter)
+        run: uv run lint-imports
+
+      - name: Tests (pytest)
+        run: uv run pytest

@@ -7,7 +7,7 @@ envía sola, la revisa una persona o se escala. **Laravel** sigue siendo el
 dueño de todo lo demás: ingesta IMAP, empresas, usuarios, panel, estados
 del email, reglas finales y envío.
 
-> **Estado:** Fase 1, tareas 1.1–1.2 (esqueleto y contrato de eventos). Hasta que termine la Fase 1,
+> **Estado:** Fase 1, tareas 1.1–1.3 (esqueleto, contrato de eventos y dominio). Hasta que termine la Fase 1,
 > Laravel sigue procesando los emails con su propio motor
 > (`AI_ENGINE=laravel`, el único que existe todavía).
 
@@ -141,6 +141,38 @@ entrega *al menos una vez*), `event_type`, `event_version`, `occurred_at` y
 - **El coste lo calcula Laravel** con sus precios a partir de los tokens:
   una sola tabla de precios.
 
+## Dominio y regla de decisión
+
+`domain/` es Python puro (dataclasses inmutables, sin bibliotecas): se
+explica y se prueba sin nada más.
+
+| Objeto | Qué es |
+|---|---|
+| `Email` | El email a procesar. Su contenido es un **dato no fiable** |
+| `TenantId`, `EmailAddress` | Value objects (empresa; dirección normalizada) |
+| `Category` | Intención: las 14 de Laravel. `needs_reply` es falso para spam y respuestas automáticas |
+| `Confidence` | 0–1; lo que devuelve un modelo se acota (`clamped`), lo que crea el código se valida |
+| `Classification` | Categoría, confianza, resumen, tono, urgencia, datos extraídos. Con sospecha de manipulación siempre pide una persona |
+| `Draft` | Borrador: texto, confianza, si pide persona y acciones pendientes |
+| `Decision` / `DecisionOutcome` | `auto_send`, `human_review` o `escalate`, con **todos** los motivos |
+
+**`DecisionPolicy.decide(email, clasificación, borrador)`** (reglas
+deterministas, sin IA; se devuelven todos los motivos para la bandeja):
+
+- **`escalate`** (a una persona con prioridad): sospecha de prompt
+  injection (sin borrador) · amenaza legal (abogado, denuncia, demanda,
+  OCU, *lawyer*, *lawsuit*…) · queja con urgencia alta.
+- **`human_review`**: categoría que no se contesta (spam, respuesta
+  automática; Laravel decide si la ignora) · clasificación o respuesta con
+  confianza **< 0,85** (configurable) · la clasificación o la IA piden una
+  persona · acciones pendientes · email recortado · sin borrador · **el
+  borrador promete un reembolso o confirma una cancelación**
+  (`domain/commitments.py`, español e inglés; informar de la política no
+  cuenta).
+- **`auto_send`** si no se cumple nada de lo anterior. Sigue siendo una
+  recomendación: Laravel aplica después sus reglas (modo de la empresa,
+  intenciones permitidas, anti-bucles, revisión del texto).
+
 ## Cómo ejecutarlo
 
 Requisitos: [uv](https://docs.astral.sh/uv/) (instala él mismo Python 3.12).
@@ -219,6 +251,8 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 | Paquete en `src/ai_service` | Carpeta plana | Los tests importan el paquete instalado, no archivos sueltos: detecta errores de empaquetado |
 | **structlog** sobre la biblioteca estándar | `python-json-logger`, solo stdlib | Contexto por tarea con `contextvars` (`trace_id` en todas las líneas sin pasarlo a mano) y JSON también para uvicorn |
 | JSON Schema compartido + modelos Pydantic escritos a mano + tests de contrato con los mismos ejemplos | Generar código desde el esquema (datamodel-code-generator); Pact | Sin generador que mantener; el esquema lo lee también PHP; los ejemplos compartidos detectan cualquier divergencia |
+| Dominio con **dataclasses** inmutables | Pydantic en el dominio | El dominio no depende de ninguna biblioteca (import-linter lo prohíbe); Pydantic se queda en los bordes (contratos y config) |
+| Reglas de decisión **deterministas** | Preguntar al modelo si es seguro enviar | Explicables, auditables, sin coste y sin poder ser manipuladas por el contenido del email |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
@@ -247,7 +281,7 @@ Decisiones de diseño acordadas para las siguientes tareas:
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.2 hechas |
+| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.3 hechas |
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | Pendiente |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | Pendiente |
 | 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |
