@@ -25,9 +25,9 @@ it('does not let the admin edit the tenant', function () {
         ->not->toContain(Permission::TENANT_UPDATE);
 });
 
-it('gives the agent read only permissions', function () {
+it('gives the agent read only permissions plus reviewing emails', function () {
     expect(permissionsOf(Role::AGENT))
-        ->toBe([Permission::DOCUMENTS_VIEW, Permission::EMAILS_VIEW, Permission::MAIL_CONNECTIONS_VIEW, Permission::TENANT_VIEW, Permission::USERS_VIEW]);
+        ->toBe([Permission::DOCUMENTS_VIEW, Permission::EMAILS_REVIEW, Permission::EMAILS_VIEW, Permission::MAIL_CONNECTIONS_VIEW, Permission::TENANT_VIEW, Permission::USERS_VIEW]);
 });
 
 it('can run the seeder twice without duplicating permissions', function () {

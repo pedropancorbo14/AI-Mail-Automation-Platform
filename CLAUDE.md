@@ -277,7 +277,7 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-10-15)
+## ESTADO ACTUAL (actualizado 2026-10-17)
 
 **Decisión ya tomada, distinta al plan original:** empezar la Fase 5 (AI
 Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
@@ -2946,6 +2946,65 @@ audit`). En su equipo: seguir "Actualizar un entorno anterior a la Fase
 `prometheus.yml` (`credentials_file`), `SESSION_SECURE_COOKIE` y
 `TRUSTED_PROXIES` con HTTPS, `security:check --production` en el
 despliegue.
+
+### Fase 13 (human in the loop): EN CURSO (2026-10-17)
+
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit. Como en la Fase 11, se hace en una
+sesión de Claude Code en la nube: los commits se suben a la rama
+**`fase-13-human-in-the-loop`** (nunca a `main`); el usuario revisa el CI y
+la fusiona. **Sin IA real**: para probar se usa la IA simulada
+(`AI_PROVIDER=simulated`).
+
+**Entorno de la sesión en la nube:** Docker Hub limita las descargas (429)
+y GitHub solo es accesible por git (las descargas zip de Composer dan 403).
+Se usó: PostgreSQL 16 local con **pgvector 0.6** de Ubuntu (sin *iterative
+scans*: los tests de búsqueda semántica fallan solo aquí), Redis local,
+GreenMail y PHP 8.4 (`serversideup/php:8.4-cli-alpine`) desde
+`mirror.gcr.io`, y la caché de Composer rellenada con `git fetch --depth 1`
++ `git archive` de cada paquete del `composer.lock`. El proyecto no cambia.
+
+**Objetivo:** que una persona resuelva los emails que la IA no puede
+enviar sola (sección 12): una **bandeja de revisión** con los casos
+pendientes, ver el email con lo que hizo la IA, **aprobar** la respuesta
+(tal cual o **editada**), **descartarla**, **escribir una propia**,
+**cerrar** el caso sin responder o **reprocesarlo** con la IA, asignarse
+casos, y un **historial** de todas las decisiones humanas.
+
+**Decisiones tomadas:**
+- Código en **`app/Automation/Review/`** (orquesta respuestas y envío como
+  el resto de `app/Automation`).
+- Permiso nuevo **`emails.review`** para **todos los roles**: revisar y
+  responder es el trabajo diario de un agente de atención al cliente.
+- **Tabla propia `email_reviews`** (una fila por decisión: quién, qué, si
+  editó el texto de la IA, motivo y cuánto esperó el caso) además del
+  historial de estados y la auditoría: es el historial de la bandeja y la
+  fuente de sus métricas (consultas por persona y por decisión sin
+  analizar textos). Se borra con el email (retención).
+- Al editar se guarda el **texto original de la IA** (`original_body`): se
+  puede ver qué cambió la persona y medir cuánto se corrige a la IA.
+- Un email "espera a una persona" en `human_review` **o `failed`** (un
+  envío fallido o un error de procesamiento también los resuelve una
+  persona).
+
+**Tareas (commit):**
+- [x] 1. **Modelo de datos de la revisión.** Migración
+  `add_human_review`: en `email_replies`, `created_by` (users,
+  nullOnDelete; null = la IA), `original_body` (texto de la IA si una
+  persona lo editó), `edited_by`/`edited_at`, `rejected_by`/`rejected_at`/
+  `rejection_reason`; en `emails`, `assigned_to` (users, nullOnDelete) +
+  `assigned_at` e índice tenant+assigned_to; tabla **`email_reviews`**
+  (tenant restrict, email cascade, `email_reply_id` y `user_id`
+  nullOnDelete, `decision`, `edited`, `reason`, `waited_seconds`,
+  `created_at`; índices tenant+created_at, tenant+user+created_at,
+  email_id). Enum `App\Automation\Review\ReviewDecision` (approved,
+  rejected, replied, closed, reprocessed; `label()` en español,
+  `sendsReply()`). Modelo `EmailReview` (`BelongsToTenant`, sin
+  `updated_at`), `Email::reviews()`/`assignee()`,
+  `EmailReply::author()`/`editedBy()`/`rejectedBy()`/`wasEdited()`; nada
+  de esto es asignable en masa. Permiso **`emails.review`** (los tres
+  roles). Tests: `HumanReviewModelTest` (columnas, relaciones,
+  aislamiento y fallo cerrado, cascade, sin asignación en masa)
 
 ### Pendientes anotados para más adelante
 
