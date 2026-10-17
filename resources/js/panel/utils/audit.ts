@@ -38,6 +38,12 @@ const actionLabels: Record<string, string> = {
     'document.reindexed': 'Reindexó un documento',
     'document.deleted': 'Eliminó un documento',
     'email.deleted': 'Borró un email',
+    'email.reply_approved': 'Aprobó y envió la respuesta de la IA',
+    'email.reply_rejected': 'Descartó la propuesta de la IA',
+    'email.replied': 'Respondió un email con su propio texto',
+    'email.closed': 'Cerró un email sin responder',
+    'email.reprocessed': 'Reprocesó un email con la IA',
+    'email.assigned': 'Cambió a quién está asignado un email',
     'retention.emails_purged': 'Borrado automático de emails antiguos',
     'retention.address_forgotten': 'Borró todos los emails de una persona (derecho de supresión)',
 };
@@ -116,6 +122,10 @@ export function describeMetadata(entry: AuditLogEntry): string[] {
         lines.push(`Tokens de API revocados: ${meta.revoked_count}`);
     } else if (entry.action.startsWith('retention.') && meta.emails !== undefined) {
         lines.push(`Emails borrados: ${meta.emails}${meta.days ? ` (más de ${meta.days} días)` : ''}`);
+    } else if (entry.action === 'email.reply_approved') {
+        lines.push(meta.edited ? 'Con cambios en el texto' : 'Tal cual la propuso la IA');
+    } else if (entry.action === 'email.assigned') {
+        lines.push(meta.to_user ? `Ahora lo tiene ${meta.to_user}` : 'Liberado: sin asignar');
     } else if (entry.action === 'user.created' && typeof meta.role === 'string') {
         lines.push(`Rol: ${roleLabels[meta.role as keyof typeof roleLabels] ?? meta.role}`);
     }

@@ -5,6 +5,8 @@ import {
     NAlert,
     NButton,
     NCard,
+    NCollapse,
+    NCollapseItem,
     NDescriptions,
     NDescriptionsItem,
     NEllipsis,
@@ -30,7 +32,8 @@ import type { EmailDetail } from '@/api/types';
 import AgentTrace from '@/components/email/AgentTrace.vue';
 import EmailBody from '@/components/email/EmailBody.vue';
 import ReplyCard from '@/components/email/ReplyCard.vue';
-import { formatAddress, formatDateTime, formatPercent } from '@/utils/format';
+import ReviewPanel from '@/components/email/ReviewPanel.vue';
+import { formatAddress, formatDateTime, formatDuration, formatPercent } from '@/utils/format';
 import { intentLabels, sentimentLabels, statusLabels, statusTagTypes, urgencyLabels } from '@/utils/labels';
 
 const route = useRoute();
@@ -73,8 +76,16 @@ async function remove(): Promise<void> {
     }
 }
 
-// La propuesta más reciente (el agente puede haberse ejecutado varias veces).
+// La respuesta más reciente (el agente puede haberse ejecutado varias veces, o una persona escribió la suya).
 const reply = computed(() => email.value?.replies[0] ?? null);
+const olderReplies = computed(() => email.value?.replies.slice(1) ?? []);
+
+// Revisión humana: el email espera a una persona y el usuario puede decidir.
+const reviewing = computed(() => !!email.value?.awaiting_person && auth.can('emails.review'));
+
+function onReviewed(updated: EmailDetail): void {
+    email.value = updated;
+}
 const addresses = (list: { email: string | null; name: string | null }[]) => list.map(formatAddress).join(', ');
 </script>
 
@@ -130,7 +141,15 @@ const addresses = (list: { email: string | null; name: string | null }[]) => lis
                     <NCard title="Mensaje" size="small">
                         <EmailBody :email="email" />
                     </NCard>
-                    <ReplyCard :reply="reply" />
+                    <ReplyCard :reply="reply" :body-in-editor="reviewing && reply?.status === 'draft'" />
+                    <ReviewPanel v-if="reviewing" :email="email" @updated="onReviewed" />
+                    <NCollapse v-if="olderReplies.length" data-test="older-replies">
+                        <NCollapseItem :title="`Respuestas anteriores (${olderReplies.length})`" name="older">
+                            <NSpace vertical :size="12">
+                                <ReplyCard v-for="older in olderReplies" :key="older.id" :reply="older" />
+                            </NSpace>
+                        </NCollapseItem>
+                    </NCollapse>
                 </NSpace>
             </NGridItem>
 
@@ -170,6 +189,18 @@ const addresses = (list: { email: string | null; name: string | null }[]) => lis
                                 </NEllipsis>
                             </NTimelineItem>
                         </NTimeline>
+
+                        <template v-if="email.reviews.length">
+                            <NText strong tag="div" class="email__reviews-title">Decisiones de las personas</NText>
+                            <ul class="email__reviews" data-test="reviews">
+                                <li v-for="review in email.reviews" :key="review.id">
+                                    <NText>{{ review.decision_label }}{{ review.edited ? ' (con cambios)' : '' }}</NText>
+                                    <NText depth="3"> · {{ review.user?.name ?? 'Persona eliminada' }} · {{ formatDateTime(review.at) }}</NText>
+                                    <NText v-if="review.waited_seconds !== null" depth="3"> · esperó {{ formatDuration(review.waited_seconds) }}</NText>
+                                    <div v-if="review.reason" class="email__review-reason">{{ review.reason }}</div>
+                                </li>
+                            </ul>
+                        </template>
                     </NCard>
 
                     <NCard title="Lo que hizo la IA" size="small">
@@ -196,6 +227,20 @@ const addresses = (list: { email: string | null; name: string | null }[]) => lis
 
 .email__alert {
     margin-bottom: 16px;
+}
+
+.email__reviews-title {
+    margin-top: 12px;
+}
+
+.email__reviews {
+    margin: 4px 0 0;
+    padding-left: 18px;
+}
+
+.email__review-reason {
+    color: #767c82;
+    font-size: 13px;
 }
 
 .email__summary {

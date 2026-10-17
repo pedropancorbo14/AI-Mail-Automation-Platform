@@ -3138,6 +3138,31 @@ casos, y un **historial** de todas las decisiones humanas.
   urgencia normal salía como "—"). Vitest: `ReviewQueuePage.test.ts` (6:
   casos con espera/motivo/propuesta/asignado, filtros de la URL a la API,
   filtros inválidos, asignarse, sin permiso, duraciones) y el menú
+- [x] 8. **Revisión en el detalle del email.** Componente
+  `components/email/ReviewPanel.vue` (tarjeta "Revisión", solo si el email
+  espera a una persona y el usuario tiene `emails.review`): editor que
+  **parte del texto de la IA** (o vacío si no hay propuesta), a quién y
+  desde qué buzón se enviará, botón **"Aprobar y enviar"** que pasa a
+  **"Enviar con mis cambios"** al editar (con confirmación; "Volver al
+  texto de la IA"), **"Descartar propuesta"** y **"Cerrar sin responder"**
+  (diálogo con motivo opcional), **"Reprocesar con la IA"** (oculto si ya
+  se intentó un envío, con aviso de que puede haber llegado) y
+  **asignación** (Asignarme / Quedármelo / Liberar). **Avisos de las
+  comprobaciones automáticas**: los de la propuesta (`checks`) y, al
+  editar, `POST .../review-checks` 600 ms después de dejar de escribir; no
+  impiden enviar. Errores de la API (409 si otra persona se adelantó) como
+  mensaje; cada acción devuelve el email actualizado y refresca el número
+  del menú. `ReplyCard`: "Respuesta de Ana" si la escribió una persona (sin
+  confianza), quién y por qué la descartó, **"Corregida por Ana: ver el
+  texto original de la IA"** (desplegable) y no repite el texto si está en
+  el editor. `EmailPage`: respuestas anteriores en un desplegable y
+  **"Decisiones de las personas"** bajo el historial (decisión, con
+  cambios, quién, cuándo, cuánto esperó, motivo). Auditoría del panel: las
+  6 acciones nuevas en español ("Con cambios en el texto", "Ahora lo tiene
+  Bea"). Vitest: `ReviewPanel.test.ts` (11: aprobar tal cual, corregir con
+  aviso y comprobación, avisos de la propuesta, escribir sin propuesta,
+  descartar con motivo, reprocesar y no tras un envío, asignar/liberar,
+  409, `ReplyCard` con autor/corrección/descarte, auditoría)
 
 ### Pendientes anotados para más adelante
 
