@@ -3915,7 +3915,23 @@ pasos) que mandan el caso a una persona en vez de fallar.
   clave, escritura nunca por `call`, reservados) y **grafo + IA simulada +
   MCP real + PostgreSQL real con reinicio entre pausa y aprobación**. 303
   tests
-- [ ] 4.5 Reanudar: consumidor de `email.review_resumed.v1` y caso de uso
+- [x] 4.5 **Reanudar.** `ResumeReview` (`use_cases/resume_review.py`):
+  `agent.resume(...)` → `email.processed.v1` (`causation_id` = la
+  reanudación); `AgentError` no reintentable (`expired`…) →
+  `processing_failed`; temporal → se relanza; `ThreadMismatchError` se
+  propaga. `EventConsumer` genérico (`event_model` y caso de uso
+  inyectados); `ThreadMismatchError` → cola de errores + `log.critical`
+  (`resume_rejected`), resultado `rejected`. Worker: **un agente y dos
+  consumidores** (`email.received.v1`, que también purga checkpoints, y
+  `email.review_resumed.v1`), `/ready` con el latido de los dos. Stream
+  `RESUMED`. Alerta **`ReanudacionIARechazada`** (crítica, con prueba en
+  `alerts.test.yml`, primera aparición incluida). Comprobado: si el modelo
+  falla al redactar tras aprobar, la pausa sigue y el reintento repite la
+  acción con el mismo `action_id`. Tests: caso de uso (4), consumidor con
+  Redis real (una vez aunque se entregue dos veces; otra empresa → DLQ) y
+  **worker real con Redis + PostgreSQL + MCP + IA simulada** (pausa → `/ready`
+  con `checkpoints` → aprobada → ticket citado, `auto_send`, solo la llamada
+  de redacción facturada). 311 tests
 - [ ] 4.6 Indicación de la persona (`review_instruction`, prompt nuevo)
 - [ ] 4.7 Laravel: acción pendiente en el panel (aprobar/rechazar),
   reprocesar con indicación, publicadores, estados y auditoría

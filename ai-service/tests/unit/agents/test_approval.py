@@ -9,7 +9,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from ai_service.agents.email_graph import LangGraphEmailAgent
 from ai_service.application.dto import ClassificationResult, DraftResult
-from ai_service.application.errors import AgentError, ThreadMismatchError
+from ai_service.application.errors import AgentError, LLMUnavailableError, ThreadMismatchError
 from ai_service.domain.category import Category
 from ai_service.domain.decision import Decision
 from ai_service.domain.draft import Source, SourceType
@@ -242,3 +242,30 @@ async def test_finished_runs_leave_no_state_behind() -> None:
     await graph.run(make_email(), thread_id=THREAD)
 
     assert await saver.aget_tuple({"configurable": {"thread_id": THREAD}}) is None
+
+
+async def test_a_temporary_failure_after_approval_can_be_retried() -> None:
+    """Si el modelo falla al redactar tras aprobar, la reanudación se reintenta:
+    la pausa sigue y la acción se repite con el mismo action_id (idempotente)."""
+    llm = FakeLLM(
+        classifications=[support()],
+        drafts=[LLMUnavailableError("529 sobrecargado"), drafted()],
+    )
+    actions = FakeActionPort()
+    graph, first = await paused(llm, actions=actions)
+    assert first.pending_action is not None
+    decision = {
+        "tenant_id": TenantId(1),
+        "email_id": 42,
+        "action_id": first.pending_action.action_id,
+        "approved": True,
+    }
+
+    with pytest.raises(AgentError) as caught:
+        await graph.resume(THREAD, **decision)
+    assert caught.value.retryable
+
+    result = await graph.resume(THREAD, **decision)
+
+    assert result.draft is not None
+    assert {a.action_id for a, _ in actions.executed} == {first.pending_action.action_id}

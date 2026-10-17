@@ -326,6 +326,23 @@ tests:
         alertname: EmailsIAFallidos
         exp_alerts: []
 
+  # Una sola reanudación que no corresponde a su pausa ya es crítica.
+  - interval: 1m
+    input_series:
+      - series: 'aiservice_events_total{job="ai-service", instance="10.0.0.5:8000", result="rejected"}'
+        values: "_ 1 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ReanudacionIARechazada
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "ai-service ha rechazado una reanudación que no corresponde a la acción en pausa"
+              description: "La aprobación o el rechazo llegó para otra empresa, otro email u otra acción. No se ejecutó nada; está en email.review_resumed.v1.dlq. Posible bug en Laravel o mensajes manipulados en Redis: investigar ya."
+      - eval_time: 20m
+        alertname: ReanudacionIARechazada
+        exp_alerts: []
+
   # Un solo resultado con empresa distinta ya es crítico (primera aparición incluida).
   - interval: 1m
     input_series:

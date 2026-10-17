@@ -535,6 +535,28 @@ sequenceDiagram
   pausa sobrevive a un reinicio del worker, aprobada abre el ticket una vez
   y la respuesta cita su número (enviada sola), y no queda estado.
 
+### Reanudar: consumidor de `email.review_resumed.v1` (tarea 4.5)
+
+El worker arranca **dos consumidores** (mismo agente y mismo grafo): el de
+`email.received.v1` y el de `email.review_resumed.v1`, con las mismas reglas
+de confirmación, reintento, idempotencia por `event_id` y cola de errores.
+`ResumeReview` (`application/use_cases/resume_review.py`) reanuda el hilo y
+publica un **nuevo** `email.processed.v1` con `causation_id` = el
+`event_id` de la reanudación:
+
+| Caso | Resultado |
+|---|---|
+| Aprobada o rechazada, pausa encontrada | `email.processed.v1` (con el ticket si se aprobó) |
+| Pausa inexistente (caducó, o entrega repetida ya resuelta) | `email.processing_failed.v1` con `expired` → Laravel: revisión humana |
+| Error temporal del modelo tras aprobar | Sin confirmar, se reintenta: la pausa sigue y la acción se repite con el mismo `action_id` (idempotente, no crea dos tickets) |
+| Otra empresa, otro email u otra acción | **Cola de errores** sin ejecutar nada, log crítico y alerta **`ReanudacionIARechazada`** (crítica) |
+
+Probado con el **worker real** (Redis + PostgreSQL + servidor MCP + IA
+simulada): soporte técnico de un cliente sin ticket → resultado en pausa con
+la acción → reanudación aprobada → ticket abierto, respuesta que lo cita
+(`auto_send`) y solo la llamada de redacción en `usage` (la clasificación ya
+se informó en la pausa).
+
 ### Límites del agente (tarea 4.3)
 
 | Límite | Qué pasa al superarlo |

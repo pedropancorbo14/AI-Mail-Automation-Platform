@@ -1,5 +1,6 @@
-"""Consumidor de `email.received.v1`: lee del consumer group, ejecuta el caso de
-uso y confirma (o no) cada mensaje.
+"""Consumidor de un stream de entrada (`email.received.v1` o
+`email.review_resumed.v1`): lee del consumer group, ejecuta el caso de uso y
+confirma (o no) cada mensaje. El worker arranca uno por stream.
 
 Política por mensaje:
 
@@ -13,6 +14,8 @@ Política por mensaje:
   (`timeout`) y confirma.
 - Error inesperado → como el temporal; en la última entrega, fallo `internal`
   y a la cola de errores.
+- Reanudación que no corresponde a la pausa (otra empresa, email o acción) →
+  a la cola de errores sin aplicar nada (log crítico).
 """
 
 import asyncio
@@ -20,20 +23,32 @@ import contextlib
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any, Protocol
 
 from redis.asyncio import Redis
 
-from ai_service.application.contracts.events import EmailReceived, InvalidEventError, LLMCallUsage
-from ai_service.application.errors import AgentError
+from ai_service.application.contracts.events import (
+    EmailReceived,
+    EmailReviewResumed,
+    InvalidEventError,
+    LLMCallUsage,
+)
+from ai_service.application.errors import AgentError, ThreadMismatchError
 from ai_service.application.mappers import failed_event, usage_from_calls
 from ai_service.application.ports import EventBusPort
-from ai_service.application.use_cases.process_email import ProcessEmail, ProcessingResult
+from ai_service.application.use_cases.process_email import ProcessingResult
 from ai_service.infrastructure.checkpoints.postgres import PostgresCheckpoints
 from ai_service.infrastructure.events.redis_streams import RedisStreamConsumer, StreamMessage
 from ai_service.infrastructure.observability.logging import bind_context, clear_context, get_logger
 from ai_service.infrastructure.observability.metrics import ServiceMetrics
 
 log = get_logger(__name__)
+
+IncomingEvent = EmailReceived | EmailReviewResumed
+
+
+class UseCase(Protocol):
+    async def execute(self, event: Any) -> ProcessingResult: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,13 +67,15 @@ class EventConsumer:
     def __init__(
         self,
         stream: RedisStreamConsumer,
-        use_case: ProcessEmail,
+        use_case: UseCase,
         bus: EventBusPort,
         metrics: ServiceMetrics,
         options: ConsumerOptions,
         checkpoints: PostgresCheckpoints | None = None,
+        event_model: type[IncomingEvent] = EmailReceived,
     ) -> None:
         self._stream = stream
+        self._event_model = event_model
         self._checkpoints = checkpoints
         self._use_case = use_case
         self._bus = bus
@@ -116,7 +133,7 @@ class EventConsumer:
             return "duplicate"
 
         try:
-            received = EmailReceived.parse(message.payload)
+            received = self._event_model.parse(message.payload)
         except InvalidEventError as error:
             await self._stream.dead_letter(message, str(error))
             log.warning("event_invalid", message_id=message.message_id, error=str(error)[:300])
@@ -133,10 +150,14 @@ class EventConsumer:
         finally:
             clear_context()
 
-    async def _process(self, message: StreamMessage, received: EmailReceived) -> str:
+    async def _process(self, message: StreamMessage, received: IncomingEvent) -> str:
         last_attempt = message.deliveries >= self._options.max_deliveries
         try:
             result = await self._use_case.execute(received)
+        except ThreadMismatchError as error:
+            await self._stream.dead_letter(message, str(error))
+            log.critical("resume_rejected", error=str(error))
+            return "rejected"
         except AgentError as error:
             self._record_llm_calls(usage_from_calls(error.calls).calls)
             if not last_attempt:
@@ -169,7 +190,7 @@ class EventConsumer:
         self._record(result)
         return result.outcome
 
-    async def _done(self, message: StreamMessage, received: EmailReceived) -> None:
+    async def _done(self, message: StreamMessage, received: IncomingEvent) -> None:
         await self._redis.set(
             self._processed_key(str(received.event_id)),
             "1",

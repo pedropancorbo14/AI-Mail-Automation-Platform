@@ -21,6 +21,7 @@ from redis.exceptions import ResponseError
 from ai_service.application.ports import OutgoingEvent
 
 RECEIVED = "email.received.v1"
+RESUMED = "email.review_resumed.v1"
 
 
 def stream_for(event_type: str, version: int, prefix: str = "") -> str:

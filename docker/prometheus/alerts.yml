@@ -186,6 +186,16 @@ groups:
           summary: "Laravel ha descartado un resultado de IA con una empresa que no es la del email"
           description: "Nunca debería ocurrir: posible bug en ai-service o mensajes manipulados en Redis. El resultado no se aplicó; está en email.processed.v1.dlq. Investigar ya."
 
+      - alert: ReanudacionIARechazada
+        expr: |
+          sum(increase(aiservice_events_total{result="rejected"}[15m])) > 0
+          or sum(aiservice_events_total{result="rejected"} unless aiservice_events_total{result="rejected"} offset 15m) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "ai-service ha rechazado una reanudación que no corresponde a la acción en pausa"
+          description: "La aprobación o el rechazo llegó para otra empresa, otro email u otra acción. No se ejecutó nada; está en email.review_resumed.v1.dlq. Posible bug en Laravel o mensajes manipulados en Redis: investigar ya."
+
       - alert: ResultadosIAEnColaDeErrores
         expr: |
           sum by (result) (increase(aimail_ai_remote_results_total{result=~"invalid|dead_lettered"}[15m])) > 0

@@ -1,6 +1,7 @@
 """`ai-service-worker`: el proceso que hace el trabajo.
 
-Un solo proceso asyncio con dos tareas: el consumidor de eventos y la app HTTP
+Un solo proceso asyncio con tres tareas: los consumidores de eventos (emails
+recibidos y reanudaciones de acciones aprobadas o rechazadas) y la app HTTP
 de operación (/health, /ready, /metrics). Van juntos porque las métricas que
 importan (emails, llamadas al modelo) las genera el consumidor: cada réplica
 expone las suyas y Prometheus las suma.
@@ -20,8 +21,11 @@ from collections.abc import Generator
 import uvicorn
 from redis.asyncio import Redis
 
+from ai_service.agents.email_graph import LangGraphEmailAgent
+from ai_service.application.contracts.events import EmailReviewResumed
 from ai_service.application.errors import LLMError
 from ai_service.application.use_cases.process_email import ProcessEmail
+from ai_service.application.use_cases.resume_review import ResumeReview
 from ai_service.config import Settings, get_settings
 from ai_service.entrypoints.consumer import ConsumerOptions, EventConsumer
 from ai_service.entrypoints.container import build_agent
@@ -29,6 +33,7 @@ from ai_service.entrypoints.http.app import create_app
 from ai_service.infrastructure.checkpoints.postgres import PostgresCheckpoints
 from ai_service.infrastructure.events.redis_streams import (
     RECEIVED,
+    RESUMED,
     RedisStreamConsumer,
     RedisStreamsEventBus,
 )
@@ -64,33 +69,60 @@ def build_consumer(
     redis: Redis,
     metrics: ServiceMetrics,
     checkpoints: PostgresCheckpoints | None = None,
+    agent: LangGraphEmailAgent | None = None,
 ) -> EventConsumer:
-    bus = RedisStreamsEventBus(
+    """Consumidor de emails recibidos (también purga los checkpoints caducados)."""
+    agent = agent or build_agent(settings, checkpointer=checkpoints.saver if checkpoints else None)
+    bus = _bus(settings, redis)
+    return EventConsumer(
+        _stream(settings, redis, RECEIVED),
+        ProcessEmail(agent, bus),
+        bus,
+        metrics,
+        _options(settings),
+        checkpoints,
+    )
+
+
+def build_resume_consumer(
+    settings: Settings, redis: Redis, metrics: ServiceMetrics, agent: LangGraphEmailAgent
+) -> EventConsumer:
+    """Consumidor de reanudaciones (una persona aprobó o rechazó una acción)."""
+    bus = _bus(settings, redis)
+    return EventConsumer(
+        _stream(settings, redis, RESUMED),
+        ResumeReview(agent, bus),
+        bus,
+        metrics,
+        _options(settings),
+        event_model=EmailReviewResumed,
+    )
+
+
+def _bus(settings: Settings, redis: Redis) -> RedisStreamsEventBus:
+    return RedisStreamsEventBus(
         redis, prefix=settings.stream_prefix, maxlen=settings.outgoing_maxlen
     )
-    stream = RedisStreamConsumer(
+
+
+def _stream(settings: Settings, redis: Redis, name: str) -> RedisStreamConsumer:
+    return RedisStreamConsumer(
         redis,
-        stream=f"{settings.stream_prefix}{RECEIVED}",
+        stream=f"{settings.stream_prefix}{name}",
         group=settings.consumer_group,
         consumer=settings.consumer_name,
     )
-    return EventConsumer(
-        stream,
-        ProcessEmail(
-            build_agent(settings, checkpointer=checkpoints.saver if checkpoints else None), bus
-        ),
-        bus,
-        metrics,
-        ConsumerOptions(
-            concurrency=settings.concurrency,
-            read_block_ms=settings.read_block_ms,
-            claim_idle_ms=settings.claim_idle_ms,
-            max_deliveries=settings.max_deliveries,
-            retention_hours=settings.stream_retention_hours,
-            processed_ttl_seconds=settings.processed_ttl_seconds,
-            checkpoint_ttl_hours=settings.checkpoint_ttl_hours,
-        ),
-        checkpoints,
+
+
+def _options(settings: Settings) -> ConsumerOptions:
+    return ConsumerOptions(
+        concurrency=settings.concurrency,
+        read_block_ms=settings.read_block_ms,
+        claim_idle_ms=settings.claim_idle_ms,
+        max_deliveries=settings.max_deliveries,
+        retention_hours=settings.stream_retention_hours,
+        processed_ttl_seconds=settings.processed_ttl_seconds,
+        checkpoint_ttl_hours=settings.checkpoint_ttl_hours,
     )
 
 
@@ -98,7 +130,12 @@ async def serve(settings: Settings) -> None:
     metrics = ServiceMetrics(settings.environment.value)
     redis = redis_client(settings)
     checkpoints = await open_checkpoints(settings)
-    consumer = build_consumer(settings, redis, metrics, checkpoints)
+    # Un solo agente (y un solo grafo) para los dos consumidores.
+    agent = build_agent(settings, checkpointer=checkpoints.saver if checkpoints else None)
+    consumers = [
+        build_consumer(settings, redis, metrics, checkpoints, agent),
+        build_resume_consumer(settings, redis, metrics, agent),
+    ]
     stale_after = max(60.0, settings.read_block_ms / 1000 * 3)
 
     async def readiness() -> dict[str, bool]:
@@ -106,7 +143,7 @@ async def serve(settings: Settings) -> None:
             redis_ok = bool(await redis.ping())
         except Exception:
             redis_ok = False
-        alive = time.time() - consumer.last_heartbeat < stale_after
+        alive = all(time.time() - c.last_heartbeat < stale_after for c in consumers)
         checks = {"redis": redis_ok, "consumer": alive}
         if checkpoints is not None:
             checks["checkpoints"] = await checkpoints.ping()
@@ -128,7 +165,7 @@ async def serve(settings: Settings) -> None:
 
     http = asyncio.create_task(server.serve())
     try:
-        await consumer.run(stop)
+        await asyncio.gather(*(c.run(stop) for c in consumers))
     finally:
         server.should_exit = True
         await http
