@@ -67,6 +67,11 @@ class Metrics
         // (email borrado), invalid (no cumple el contrato), tenant_mismatch (empresa que no
         // coincide: nunca se aplica), retry / dead_lettered (error al aplicarlo).
         'ai_remote_results_total' => ['type' => 'counter', 'help' => 'Resultados de ai-service tratados por Laravel, por tipo de evento y resultado.', 'labels' => ['event', 'result']],
+        // Modo sombra (AI-Service, Fase 5): comparación de ai-service con el motor de Laravel
+        // cuando los dos han terminado. Decisiones: auto_send, human_review, ignore, failed.
+        'ai_shadow_comparisons_total' => ['type' => 'counter', 'help' => 'Copias en sombra comparadas: si coinciden la intención y la decisión de los dos motores.', 'labels' => ['tenant', 'intent_match', 'decision_match']],
+        'ai_shadow_decisions_total' => ['type' => 'counter', 'help' => 'Decisión de cada motor en las copias comparadas (matriz Laravel × Python).', 'labels' => ['tenant', 'laravel', 'python']],
+        'ai_shadow_cost_usd_total' => ['type' => 'counter', 'help' => 'Coste de IA de los emails comparados, por motor (el de Python es el gasto extra de la sombra).', 'labels' => ['tenant', 'engine']],
 
         // --- Plataforma ---
         'http_requests_total' => ['type' => 'counter', 'help' => 'Peticiones HTTP atendidas.', 'labels' => ['method', 'route', 'status']],

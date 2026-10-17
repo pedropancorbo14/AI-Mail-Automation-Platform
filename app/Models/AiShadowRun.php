@@ -40,6 +40,10 @@ class AiShadowRun extends Model
             'specialists' => 'array',
             'tool_calls' => 'array',
             'cost_usd' => 'decimal:6',
+            'compared_at' => 'datetime',
+            'intent_match' => 'boolean',
+            'decision_match' => 'boolean',
+            'laravel_cost_usd' => 'decimal:6',
         ];
     }
 

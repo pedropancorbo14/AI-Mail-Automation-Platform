@@ -4224,7 +4224,35 @@ el de Python afecte a nada.
   tocar el email ni `ai_requests` y una entrega repetida no lo cambia;
   copia fallida; otra empresa → cola de errores; cuenta para el
   presupuesto; se borra con el email). Laravel 1239 + los 25 del entorno
-- [ ] 5.7 Comparación, métricas, Grafana e informe
+- [x] 5.7 **Comparación, métricas, Grafana e informe.** Migración
+  `add_comparison_to_ai_shadow_runs` (`compared_at`, `laravel_intent`,
+  `laravel_decision`, `python_decision`, `intent_match`, `decision_match`,
+  `laravel_cost_usd`, `laravel_duration_ms`). **`ShadowComparator`** (en el
+  tenant): solo si la copia terminó y el email ya está decidido; compara
+  **recomendación con recomendación** (no el modo de la empresa): Laravel =
+  ignored → `ignore`, failed → `failed`, si no la primera propuesta de la IA
+  (`created_by` null) sin `needs_human` → `auto_send`, con él o sin
+  propuesta → `human_review`; Python = fallida → `failed`, spam/auto_reply
+  con confianza ≥ `ignore_min_confidence` → `ignore` (la regla que Laravel
+  aplica al resultado), escalate → `human_review`. Coste de Laravel = suma
+  de sus `ai_requests` del email; tiempo = de processing a la primera
+  decisión. Métricas `ai_shadow_comparisons_total` {tenant, intent_match,
+  decision_match}, `ai_shadow_decisions_total` {tenant, laravel, python} y
+  `ai_shadow_cost_usd_total` {tenant, engine}. Comando
+  **`ai:shadow-compare`** (cada 5 min, `withoutOverlapping`; copias
+  pendientes de más de 24 h → failed `no_response`) y
+  **`ai:shadow-report {--days=7} {--tenant=} {--limit=10}`** (copias
+  comparadas, % misma intención y decisión, coste medio y tiempo medio de
+  cada motor, fallos, matriz de decisiones y últimos desacuerdos con el
+  motivo de ai-service; solo operador). Grafana: fila **"Modo sombra"** en
+  el dashboard de ai-service (copias comparadas, misma intención, misma
+  decisión, coste de la sombra y barras "Laravel → ai-service" de un solo
+  color); las 8 consultas con `mode`/sombra comprobadas contra un
+  Prometheus real. Tests (4 más en `ShadowModeTest`, 12 en total):
+  comparación cuando los dos han terminado (coincidencia, escalar = revisión
+  humana con distinta intención, spam ignorado por los dos, email aún en
+  marcha sin comparar, métricas), copia sin respuesta → fallo de
+  ai-service, informe y programación
 - [ ] 5.8 Compose, CI, README y prueba de punta a punta
 
 ### Pendientes anotados para más adelante

@@ -20,3 +20,6 @@ Schedule::command('mail:sync')->everyMinute()->withoutOverlapping();
 
 // Motor de IA remoto (ai-service): emails sin respuesta → republicar o failed.
 Schedule::command('ai:reconcile-remote')->everyFiveMinutes()->withoutOverlapping();
+
+// Modo sombra (AI-Service, Fase 5): comparar las copias con el motor de Laravel.
+Schedule::command('ai:shadow-compare')->everyFiveMinutes()->withoutOverlapping();

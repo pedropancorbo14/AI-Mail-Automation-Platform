@@ -671,6 +671,23 @@ hilo ya terminado (`expired`).
   sin tocar el email) para comparar los dos motores (intención, decisión,
   coste, tiempo).
 
+**Comparación, métricas e informe (tarea 5.7):** `ai:shadow-compare`
+(cada 5 minutos) compara cada copia con lo que hizo el motor de Laravel en
+cuanto los dos han terminado: intención y **decisión recomendada**
+normalizada (`auto_send`, `human_review` —escalar cuenta como tal—,
+`ignore`, `failed`), coste y tiempo hasta decidir de cada motor. Se compara
+la recomendación de cada motor, no el modo de la empresa (en borrador
+también se ve si Python habría enviado sola la respuesta). Una copia sin
+respuesta en 24 h cuenta como fallo de ai-service. Métricas
+`aimail_ai_shadow_comparisons_total`, `aimail_ai_shadow_decisions_total`
+(matriz Laravel × Python) y `aimail_ai_shadow_cost_usd_total`; fila "Modo
+sombra" en el dashboard de ai-service (copias comparadas, misma intención,
+misma decisión, coste de la sombra y combinaciones de decisiones). Informe:
+
+```bash
+docker compose exec app php artisan ai:shadow-report --days=7
+```
+
 **Modo sombra en Laravel (tarea 5.6):** con `AI_ENGINE=laravel`,
 `AI_SHADOW_ENABLED=true` y `AI_SHADOW_SAMPLE_RATE` (0,1 por defecto),
 `EmailProcessor` publica, tras los filtros baratos y el freno de gasto, una

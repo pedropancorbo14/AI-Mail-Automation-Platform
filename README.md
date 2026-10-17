@@ -898,6 +898,18 @@ siguen en Laravel. Si no llega respuesta en 15 minutos,
 intentos, `failed`. Con `AI_ENGINE=laravel` (por defecto) todo sigue como
 en el diagrama.
 
+**Modo sombra** (`AI_SHADOW_ENABLED=true`, con `AI_ENGINE=laravel` y el
+perfil `ai-service` levantado): una muestra de emails (`AI_SHADOW_SAMPLE_RATE`)
+se publica **también** a ai-service con `mode: shadow` mientras el motor de
+Laravel los procesa como siempre. Lo que recomiende ai-service **nunca se
+aplica al email**: se guarda en `ai_shadow_runs` y `ai:shadow-compare`
+(cada 5 minutos) lo compara con lo que hizo Laravel cuando los dos han
+terminado. `php artisan ai:shadow-report [--days=7] [--tenant=]` muestra
+en qué coinciden (intención, decisión), cuánto cuesta y tarda cada motor y
+los desacuerdos; en Grafana, fila "Modo sombra" del dashboard de ai-service.
+Las llamadas a la IA se pagan dos veces: cuenta para el presupuesto diario
+de cada empresa.
+
 Cada cambio de estado se guarda en **`email_status_changes`** con su motivo
 y quién lo decidió (null = la plataforma; una persona en la Fase 13). Un
 email no puede saltarse pasos: las transiciones válidas están en

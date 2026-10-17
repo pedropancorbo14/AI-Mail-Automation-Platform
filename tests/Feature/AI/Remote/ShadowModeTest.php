@@ -190,3 +190,103 @@ it('deletes the shadow copy with the email (retention)', function () {
 
     expect(AiShadowRun::withoutGlobalScope(TenantScope::class)->count())->toBe(0);
 });
+
+/** Email que el motor de Laravel ya decidió (pasó por la IA y quedó en $status). */
+function decidedEmail(Tenant $tenant, string $intent, EmailStatus $status, ?bool $needsHuman = null): Email
+{
+    return inTenant($tenant, function () use ($tenant, $intent, $status, $needsHuman) {
+        $email = shadowEmail($tenant);
+        $email->forceFill(['intent' => $intent, 'intent_confidence' => 0.9, 'classified_at' => now()])->save();
+        $email->transitionTo(EmailStatus::Processing, 'Procesamiento automático.');
+        if ($needsHuman !== null) {
+            draftReply($email, ['needs_human' => $needsHuman]);
+            $email->transitionTo(EmailStatus::AiReview, 'Respuesta propuesta.');
+        }
+        $email->transitionTo($status, 'Decidido.');
+
+        return $email->fresh();
+    });
+}
+
+/** Copia en sombra ya respondida por ai-service. */
+function answeredShadow(Email $email, array $values): AiShadowRun
+{
+    return inTenant($email->tenant, function () use ($email, $values) {
+        $run = new AiShadowRun();
+        $run->forceFill(array_merge([
+            'email_id' => $email->id,
+            'event_id' => (string) Str::uuid(),
+            'requested_at' => now(),
+            'status' => AiShadowRun::COMPLETED,
+            'completed_at' => now(),
+            'confidence' => 0.9,
+            'cost_usd' => '0.010000',
+            'duration_ms' => 3000,
+        ], $values))->save();
+
+        return $run;
+    });
+}
+
+it('compares once both engines have finished, recommendation against recommendation', function () {
+    $same = decidedEmail($this->tenant, 'product_question', EmailStatus::HumanReview, needsHuman: false);
+    answeredShadow($same, ['category' => 'product_question', 'decision' => 'auto_send']);
+    $different = decidedEmail($this->tenant, 'complaint', EmailStatus::HumanReview, needsHuman: true);
+    answeredShadow($different, ['category' => 'billing_issue', 'decision' => 'escalate']);
+    $spam = decidedEmail($this->tenant, 'spam', EmailStatus::Ignored);
+    answeredShadow($spam, ['category' => 'spam', 'confidence' => 0.97, 'decision' => 'human_review']);
+    $waiting = inTenant($this->tenant, fn () => tap(shadowEmail($this->tenant))->transitionTo(EmailStatus::Processing, 'En marcha.'));
+    answeredShadow($waiting, ['category' => 'order_status', 'decision' => 'auto_send']);
+
+    $this->artisan('ai:shadow-compare')->expectsOutputToContain('Comparadas: 3')->assertSuccessful();
+
+    $runs = inTenant($this->tenant, fn () => AiShadowRun::get()->keyBy('email_id'));
+    // La empresa está en modo borrador, pero se compara lo que recomendó cada motor.
+    expect($runs[$same->id]->only(['laravel_decision', 'python_decision', 'intent_match', 'decision_match']))
+        ->toBe(['laravel_decision' => 'auto_send', 'python_decision' => 'auto_send', 'intent_match' => true, 'decision_match' => true])
+        // escalate cuenta como revisión humana: coincide la decisión, no la intención.
+        ->and($runs[$different->id]->only(['python_decision', 'intent_match', 'decision_match']))
+        ->toBe(['python_decision' => 'human_review', 'intent_match' => false, 'decision_match' => true])
+        // Spam con confianza alta: Laravel lo ignoraría también con el resultado de Python.
+        ->and($runs[$spam->id]->only(['laravel_decision', 'python_decision']))->toBe(['laravel_decision' => 'ignore', 'python_decision' => 'ignore'])
+        ->and($runs[$same->id]->laravel_duration_ms)->not->toBeNull()
+        // Laravel aún no ha decidido: se compara en otra pasada.
+        ->and($runs[$waiting->id]->compared_at)->toBeNull()
+        ->and(metricSample('ai_shadow_comparisons_total', ['intent_match' => true, 'decision_match' => true]))->toBe(2.0)
+        ->and(metricSample('ai_shadow_decisions_total', ['laravel' => 'ignore', 'python' => 'ignore']))->toBe(1.0)
+        ->and(metricSample('ai_shadow_cost_usd_total', ['engine' => 'python']))->toBe(0.03);
+});
+
+it('gives up on copies ai-service never answered and counts them as its failures', function () {
+    $email = decidedEmail($this->tenant, 'order_status', EmailStatus::HumanReview, needsHuman: true);
+    inTenant($this->tenant, function () use ($email) {
+        $run = new AiShadowRun();
+        $run->forceFill(['email_id' => $email->id, 'event_id' => (string) Str::uuid(), 'requested_at' => now()->subDays(2)])->save();
+    });
+
+    $this->artisan('ai:shadow-compare')->expectsOutputToContain('Sin respuesta de ai-service: 1')->assertSuccessful();
+
+    $run = inTenant($this->tenant, fn () => AiShadowRun::sole());
+    expect($run->status)->toBe(AiShadowRun::FAILED)
+        ->and($run->error_code)->toBe('no_response')
+        ->and($run->python_decision)->toBe('failed')
+        ->and($run->decision_match)->toBeFalse();
+});
+
+it('reports agreement, costs and disagreements to the operator', function () {
+    $same = decidedEmail($this->tenant, 'product_question', EmailStatus::HumanReview, needsHuman: false);
+    answeredShadow($same, ['category' => 'product_question', 'decision' => 'auto_send']);
+    $different = decidedEmail($this->tenant, 'order_status', EmailStatus::HumanReview, needsHuman: true);
+    answeredShadow($different, ['category' => 'order_status', 'decision' => 'auto_send', 'reasons' => []]);
+    $this->artisan('ai:shadow-compare')->assertSuccessful();
+
+    $this->artisan('ai:shadow-report')
+        ->expectsOutputToContain('Copias comparadas: 2')
+        ->expectsOutputToContain('Misma decisión')
+        ->expectsOutputToContain("#{$different->id}")
+        ->assertSuccessful();
+});
+
+it('is scheduled every five minutes', function () {
+    $this->artisan('schedule:list')->expectsOutputToContain('ai:shadow-compare')->assertSuccessful();
+});
