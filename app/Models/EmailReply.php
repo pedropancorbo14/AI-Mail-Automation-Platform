@@ -9,9 +9,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Propuesta de respuesta a un email. status y los datos de aprobación y
- * envío no son asignables en masa: los cambia App\Automation\ReplySender
- * (y la revisión humana de la Fase 13).
+ * Respuesta a un email: la propone el agente (created_by null) o la escribe
+ * una persona en la revisión humana (Fase 13). status y los datos de
+ * edición, aprobación, descarte y envío no son asignables en masa: los
+ * cambian App\Automation\ReplySender y App\Automation\Review\HumanReviewService.
  *
  * @property EmailReplyStatus $status
  */
@@ -38,6 +39,8 @@ class EmailReply extends Model
             'approved_at' => 'datetime',
             'sent_automatically' => 'boolean',
             'sent_at' => 'datetime',
+            'edited_at' => 'datetime',
+            'rejected_at' => 'datetime',
         ];
     }
 
@@ -51,6 +54,30 @@ class EmailReply extends Model
     public function approvedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    /** @return BelongsTo<User, $this> Quién la escribió (null = la IA). */
+    public function author(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /** @return BelongsTo<User, $this> Quién cambió el texto propuesto por la IA. */
+    public function editedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'edited_by');
+    }
+
+    /** @return BelongsTo<User, $this> Quién la descartó. */
+    public function rejectedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
+    }
+
+    /** Una persona cambió el texto que propuso la IA. */
+    public function wasEdited(): bool
+    {
+        return $this->original_body !== null;
     }
 
     /** @return BelongsTo<AiAgentRun, $this> */

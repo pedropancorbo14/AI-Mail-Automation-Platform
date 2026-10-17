@@ -7,10 +7,13 @@ use App\Http\Controllers\Api\V1\AutomationController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\EmailController;
+use App\Http\Controllers\Api\V1\EmailReviewController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\KnowledgeSearchController;
 use App\Http\Controllers\Api\V1\MailConnectionController;
 use App\Http\Controllers\Api\V1\MailOAuthController;
+use App\Http\Controllers\Api\V1\ReviewHistoryController;
+use App\Http\Controllers\Api\V1\ReviewQueueController;
 use App\Http\Controllers\Api\V1\TenantController;
 use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Support\Facades\Route;
@@ -64,6 +67,20 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/emails/{email}/html', [EmailController::class, 'html']);
     // El adjunto tiene que ser de ese email (scopeBindings).
     Route::get('/emails/{email}/attachments/{attachment}', [EmailController::class, 'attachment'])->scopeBindings();
+
+    // Revisión humana (Fase 13). La respuesta tiene que ser de ese email (scopeBindings).
+    Route::post('/emails/{email}/replies/{reply}/approve', [EmailReviewController::class, 'approve'])->scopeBindings();
+    Route::post('/emails/{email}/replies/{reply}/reject', [EmailReviewController::class, 'reject'])->scopeBindings();
+    Route::post('/emails/{email}/replies', [EmailReviewController::class, 'reply']);
+    Route::post('/emails/{email}/close', [EmailReviewController::class, 'close']);
+    Route::post('/emails/{email}/reprocess', [EmailReviewController::class, 'reprocess']);
+    Route::put('/emails/{email}/assignee', [EmailReviewController::class, 'assign']);
+    Route::post('/emails/{email}/review-checks', [EmailReviewController::class, 'check']);
+    // Bandeja de revisión: lo que espera a una persona, lo urgente y lo más antiguo primero.
+    Route::get('/review-queue', ReviewQueueController::class);
+    // Historial de las decisiones de las personas y su resumen.
+    Route::get('/reviews', [ReviewHistoryController::class, 'index']);
+    Route::get('/reviews/summary', [ReviewHistoryController::class, 'summary']);
 
     // Base de conocimiento (RAG): documentación de la empresa y búsqueda.
     Route::apiResource('documents', DocumentController::class)->except(['update']);

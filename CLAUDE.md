@@ -277,7 +277,7 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-10-15)
+## ESTADO ACTUAL (actualizado 2026-10-17)
 
 **Decisión ya tomada, distinta al plan original:** empezar la Fase 5 (AI
 Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
@@ -2946,6 +2946,308 @@ audit`). En su equipo: seguir "Actualizar un entorno anterior a la Fase
 `prometheus.yml` (`credentials_file`), `SESSION_SECURE_COOKIE` y
 `TRUSTED_PROXIES` con HTTPS, `security:check --production` en el
 despliegue.
+
+### Fase 13 (human in the loop): COMPLETADA Y PROBADA EN EL NAVEGADOR CON LA IA SIMULADA (2026-10-17), pendiente de CI
+
+Misma forma de trabajo: un commit por tarea, tests antes de cada commit,
+este archivo actualizado en cada commit. Como en la Fase 11, se hace en una
+sesión de Claude Code en la nube: los commits se suben a la rama
+**`fase-13-human-in-the-loop`** (nunca a `main`); el usuario revisa el CI y
+la fusiona. **Sin IA real**: para probar se usa la IA simulada
+(`AI_PROVIDER=simulated`).
+
+**Entorno de la sesión en la nube:** Docker Hub limita las descargas (429)
+y GitHub solo es accesible por git (las descargas zip de Composer dan 403).
+Se usó: PostgreSQL 16 local con **pgvector 0.6** de Ubuntu (sin *iterative
+scans*: los tests de búsqueda semántica fallan solo aquí), Redis local,
+GreenMail y PHP 8.4 (`serversideup/php:8.4-cli-alpine`) desde
+`mirror.gcr.io`, y la caché de Composer rellenada con `git fetch --depth 1`
++ `git archive` de cada paquete del `composer.lock`. El proyecto no cambia.
+
+**Objetivo:** que una persona resuelva los emails que la IA no puede
+enviar sola (sección 12): una **bandeja de revisión** con los casos
+pendientes, ver el email con lo que hizo la IA, **aprobar** la respuesta
+(tal cual o **editada**), **descartarla**, **escribir una propia**,
+**cerrar** el caso sin responder o **reprocesarlo** con la IA, asignarse
+casos, y un **historial** de todas las decisiones humanas.
+
+**Decisiones tomadas:**
+- Código en **`app/Automation/Review/`** (orquesta respuestas y envío como
+  el resto de `app/Automation`).
+- Permiso nuevo **`emails.review`** para **todos los roles**: revisar y
+  responder es el trabajo diario de un agente de atención al cliente.
+- **Tabla propia `email_reviews`** (una fila por decisión: quién, qué, si
+  editó el texto de la IA, motivo y cuánto esperó el caso) además del
+  historial de estados y la auditoría: es el historial de la bandeja y la
+  fuente de sus métricas (consultas por persona y por decisión sin
+  analizar textos). Se borra con el email (retención).
+- Al editar se guarda el **texto original de la IA** (`original_body`): se
+  puede ver qué cambió la persona y medir cuánto se corrige a la IA.
+- Un email "espera a una persona" en `human_review` **o `failed`** (un
+  envío fallido o un error de procesamiento también los resuelve una
+  persona).
+
+**Tareas (commit):**
+- [x] 1. **Modelo de datos de la revisión.** Migración
+  `add_human_review`: en `email_replies`, `created_by` (users,
+  nullOnDelete; null = la IA), `original_body` (texto de la IA si una
+  persona lo editó), `edited_by`/`edited_at`, `rejected_by`/`rejected_at`/
+  `rejection_reason`; en `emails`, `assigned_to` (users, nullOnDelete) +
+  `assigned_at` e índice tenant+assigned_to; tabla **`email_reviews`**
+  (tenant restrict, email cascade, `email_reply_id` y `user_id`
+  nullOnDelete, `decision`, `edited`, `reason`, `waited_seconds`,
+  `created_at`; índices tenant+created_at, tenant+user+created_at,
+  email_id). Enum `App\Automation\Review\ReviewDecision` (approved,
+  rejected, replied, closed, reprocessed; `label()` en español,
+  `sendsReply()`). Modelo `EmailReview` (`BelongsToTenant`, sin
+  `updated_at`), `Email::reviews()`/`assignee()`,
+  `EmailReply::author()`/`editedBy()`/`rejectedBy()`/`wasEdited()`; nada
+  de esto es asignable en masa. Permiso **`emails.review`** (los tres
+  roles). Tests: `HumanReviewModelTest` (columnas, relaciones,
+  aislamiento y fallo cerrado, cascade, sin asignación en masa)
+- [x] 2. **`App\Automation\Review\HumanReviewService`** (dentro del
+  tenant del email; cada decisión en una transacción y en `email_reviews`
+  con `waited_seconds` = tiempo desde que el email entró en su estado
+  actual): **`approve($reply, $user, ?$body)`** (con `$body` distinto —sin
+  contar `\r\n` ni espacios finales, `normalize()`— guarda
+  `original_body` la primera vez, `edited_by`/`edited_at`; descarta las
+  demás propuestas en borrador; `ReplySender::approve()` con la persona →
+  se envía **sin `Auto-Submitted`**; motivo "Respuesta de la IA aprobada
+  (con cambios) por Ana"), **`reject($reply, $user, ?$reason)`** (la
+  propuesta → `rejected` con quién/cuándo/motivo; el email sigue en
+  `human_review`), **`reply($email, $user, $body)`** (respuesta escrita por
+  la persona: `created_by`, sin `agent_run_id`; sustituye a los borradores
+  y se envía), **`close($email, $user, ?$reason)`** (→ `ignored` "Cerrado
+  sin responder por Ana: …"), **`reprocess($email, $user)`** (descarta los
+  borradores, → `processing` con la persona y encola `ProcessEmailJob`
+  con `reprocess` *after commit*: el procesador sigue desde `processing`
+  como un reintento y repite el agente; **nunca** si ya se intentó un
+  envío: `EmailProcessor::sendWasAttempted()`) y **`assign($email,
+  ?$user)`** (no cambia el estado). Un email con error (`failed`) pasa
+  primero a `human_review` ("Lo revisa Ana"): `failed → approved` no es un
+  paso válido. Todo condicional: si el email ya no espera a una persona o
+  la respuesta ya no es un borrador (otra persona se adelantó) →
+  **`ReviewException`** con mensaje para el panel y no se cambia nada.
+  Tests: `HumanReviewServiceTest` (16: aprobar tal cual y editada, saltos
+  de línea no cuentan, otras propuestas descartadas, descartar, responder,
+  responder a un envío fallido, cerrar, reprocesar y nunca tras un envío,
+  estados no revisables, dos personas a la vez, asignar, fuera del tenant)
+- [x] 3. **API de la revisión** (`EmailReviewController`, auth + tenant):
+  **`POST /emails/{id}/replies/{reply}/approve`** (`body` opcional, máx.
+  20.000: el texto que deja la persona), **`.../replies/{reply}/reject`**
+  (`reason` opcional, máx. 1.000) —ambas con `scopeBindings`: la respuesta
+  tiene que ser de ese email—, **`POST /emails/{id}/replies`** (`body`
+  obligatorio: respuesta propia), **`POST /emails/{id}/close`** (`reason`),
+  **`POST /emails/{id}/reprocess`** y **`PUT /emails/{id}/assignee`**
+  (`user_id` o `null`; solo personas de la empresa con `emails.review`).
+  `EmailPolicy::review` (otra empresa → 404, luego `emails.review`),
+  comprobado en el `authorize()` de los FormRequest (`ReviewEmailRequest` y
+  sus hijas) antes de validar. `ReviewException` → **409** con el motivo.
+  Cada acción devuelve el detalle actualizado
+  (`EmailDetailResource::for()`, que ahora también usa `show`). Detalle
+  ampliado: `awaiting_person`, `send_attempted`, `assignee`/`assigned_at`,
+  `reviews[]` (decisión + etiqueta, editada, motivo, espera, persona,
+  fecha) y en cada respuesta `author`, `original_body`, `edited_by`/
+  `edited_at`, `rejected_by`/`rejected_at`/`rejection_reason`; el listado
+  incluye `assignee`. **Auditoría** `email.reply_approved` (`reply_id`,
+  `edited`), `email.reply_rejected`, `email.replied`, `email.closed`,
+  `email.reprocessed`, `email.assigned` (de quién a quién), **sin el texto
+  de las respuestas ni los motivos**: pueden llevar datos del cliente y la
+  auditoría dura más que el email (`email_reviews` sí guarda el motivo y se
+  borra con él). Tests: `EmailReviewApiTest` (15: cada acción, edición sin
+  datos del cliente en la auditoría, reprocesar tras un envío → 409,
+  asignar/liberar y a quién se puede, 409 si otra persona se adelantó,
+  validación, respuesta de otro email → 404, otra empresa → 404 en todo,
+  sin permiso → 403, 401)
+- [x] 4. **Bandeja de revisión y avisos sobre el texto.** **`GET
+  /api/v1/review-queue`** (`ReviewQueueController`, `emails.view`): emails
+  en `human_review` o `failed`, **urgentes primero** (`urgency` high →
+  normal → low/sin clasificar) y, dentro de cada urgencia, **los que más
+  llevan esperando** (`waiting_since` = fecha del último cambio de estado,
+  subconsulta); cada caso con `waiting_reason` (motivo de ese cambio),
+  `has_draft` (hay propuesta de la IA) y `assignee`; filtros `assigned`
+  (`mine` / `unassigned`), `intent`, `mailbox`, `per_page`; `meta.counts`
+  (total, mías, sin asignar, con error). **Avisos para la persona:**
+  `ReplyContentGuard::problems(..., automatic: false)` omite el límite de
+  longitud y la "promesa de revisión humana" (con una persona revisando ya
+  no aplican) y deja el resto (enlaces y direcciones desconocidos, pedidos
+  e importes que no salen de ningún dato, detalles internos);
+  `HumanReviewService::warnings($email, $body, ?$basedOn)` los calcula
+  contra los datos que consultó la IA para esa propuesta. En el detalle,
+  cada propuesta en borrador de un email que espera a una persona trae
+  `checks[]`; y **`POST /emails/{id}/review-checks`** (`body`, `reply_id`
+  opcional de ese email) comprueba un texto editado antes de enviarlo. Los
+  avisos **no impiden enviar**: decide la persona. Tests:
+  `ReviewQueueApiTest` (7: orden urgencia + espera, propuesta y asignado,
+  filtros y 422, aislamiento, 401, avisos en el detalle, comprobar un texto
+  editado y propuesta de otro email → 422)
+- [x] 5. **Historial de la revisión.** **`GET /api/v1/reviews`**
+  (`ReviewHistoryController`, `emails.view`): decisiones de las personas,
+  la más reciente primero, con el email (id, asunto, remitente, intención,
+  estado) para enlazarlo; filtros `decision`, `user`, `from`/`to`,
+  `per_page`. **`GET /api/v1/reviews/summary?days=7|30|90`**
+  (`App\Automation\Review\ReviewStats`): casos pendientes ahora,
+  decisiones por tipo, resueltos (aprobar, responder, cerrar, reprocesar;
+  descartar una propuesta no resuelve el caso), **espera media y mediana**
+  hasta resolver (`percentile_cont` de PostgreSQL), **qué pasa con las
+  propuestas de la IA** que revisa una persona (aprobadas tal cual,
+  corregidas, descartadas y `unchanged_rate`: la mejor medida de la calidad
+  real de la IA) y **por persona** (total, decisiones, cuántas editó, espera
+  media; `count(*) filter (where …)`). Todo con el scope de tenant. Tests:
+  `ReviewHistoryApiTest` (6: orden y email, filtros y 422, resumen con
+  espera/propuestas/personas y periodo, periodo vacío sin dividir por
+  cero, aislamiento, 401)
+- [x] 6. **Métricas, Grafana y alerta.** Observer
+  `EmailReviewMetricsObserver` (`afterCommit`, sobre `email_reviews`):
+  **`email_reviews_total`** {tenant, decision, edited} y
+  **`email_review_wait_seconds`** {tenant, decision} (intervalos de 1 min
+  a 3 días). Estado actual en `StateMetrics` (sección `emails`):
+  **`email_review_oldest_waiting_seconds`** {tenant} = lo que lleva
+  esperando el caso más antiguo en `human_review`/`failed` (desde su
+  último cambio de estado). Dashboard **Emails**: fila nueva **"Revisión
+  humana"** (esperan a una persona —ámbar ≥ 1—, caso más antiguo —ámbar ≥
+  4 h—, decisiones del periodo, **% de propuestas aprobadas sin cambios**,
+  % de respuestas corregidas, espera mediana hasta resolver; barras de
+  decisiones por intervalo en 4 grupos de color fijo —aprobada, respondida
+  por una persona, propuesta descartada, cerrada o reprocesada— y mediana /
+  p95 de la espera); las filas de debajo se desplazan. Las 9 consultas
+  nuevas se ejecutaron contra un Prometheus real sin errores. Alerta
+  **`CasoSinAtender`** (warning): el caso más antiguo de una empresa pasa
+  de 4 h esperando durante 5 min; probada en `alerts.test.yml` (aún no a
+  los 5 min del `for`, sí después con el texto exacto —`humanizeDuration`
+  → "4h 6m 20s"—, y otra empresa con 3 h no alerta). Tests:
+  `ReviewMetricsTest` (decisiones y espera con sus intervalos, transacción
+  deshecha no cuenta, caso más antiguo por empresa)
+- [x] 7. **Página: bandeja de revisión** (`ReviewQueuePage`, `/revision`,
+  `emails.view`; entrada **"Revisión"** del menú justo después de
+  "Resumen" con el **número de casos pendientes** —`NBadge`— que mantiene
+  el store Pinia `reviewQueue`: lo pide al montar el layout, cada minuto
+  y al cargar la bandeja). Pestañas **Todos / Asignados a mí / Sin
+  asignar** con sus recuentos y filtro de intención, **en la URL**
+  (`?scope=mine&intent=complaint&page=2`; lo inválido se ignora). Tabla:
+  cuánto lleva esperando ("hace 2 h", fecha exacta en el título) +
+  etiqueta "Urgente", asunto (enlace al detalle) con remitente y **motivo
+  de la espera**, intención + confianza, propuesta ("De la IA" / "Sin
+  propuesta" / "Error") y asignado ("Tú", nombre o botón **"Asignarme"**
+  con `emails.review`); clic en la fila → detalle. Cliente
+  `api/reviews.ts` (bandeja, todas las decisiones, comprobación del texto,
+  historial y resumen) y tipos nuevos en `api/types.ts`;
+  `formatDuration()`/`formatSince()` en `utils/format.ts`;
+  `reviewDecisionLabels`. **Arreglado de paso:** `urgencyLabels` tenía
+  `medium`, pero el clasificador devuelve `low`/`normal`/`high` (la
+  urgencia normal salía como "—"). Vitest: `ReviewQueuePage.test.ts` (6:
+  casos con espera/motivo/propuesta/asignado, filtros de la URL a la API,
+  filtros inválidos, asignarse, sin permiso, duraciones) y el menú
+- [x] 8. **Revisión en el detalle del email.** Componente
+  `components/email/ReviewPanel.vue` (tarjeta "Revisión", solo si el email
+  espera a una persona y el usuario tiene `emails.review`): editor que
+  **parte del texto de la IA** (o vacío si no hay propuesta), a quién y
+  desde qué buzón se enviará, botón **"Aprobar y enviar"** que pasa a
+  **"Enviar con mis cambios"** al editar (con confirmación; "Volver al
+  texto de la IA"), **"Descartar propuesta"** y **"Cerrar sin responder"**
+  (diálogo con motivo opcional), **"Reprocesar con la IA"** (oculto si ya
+  se intentó un envío, con aviso de que puede haber llegado) y
+  **asignación** (Asignarme / Quedármelo / Liberar). **Avisos de las
+  comprobaciones automáticas**: los de la propuesta (`checks`) y, al
+  editar, `POST .../review-checks` 600 ms después de dejar de escribir; no
+  impiden enviar. Errores de la API (409 si otra persona se adelantó) como
+  mensaje; cada acción devuelve el email actualizado y refresca el número
+  del menú. `ReplyCard`: "Respuesta de Ana" si la escribió una persona (sin
+  confianza), quién y por qué la descartó, **"Corregida por Ana: ver el
+  texto original de la IA"** (desplegable) y no repite el texto si está en
+  el editor. `EmailPage`: respuestas anteriores en un desplegable y
+  **"Decisiones de las personas"** bajo el historial (decisión, con
+  cambios, quién, cuándo, cuánto esperó, motivo). Auditoría del panel: las
+  6 acciones nuevas en español ("Con cambios en el texto", "Ahora lo tiene
+  Bea"). Vitest: `ReviewPanel.test.ts` (11: aprobar tal cual, corregir con
+  aviso y comprobación, avisos de la propuesta, escribir sin propuesta,
+  descartar con motivo, reprocesar y no tras un envío, asignar/liberar,
+  409, `ReplyCard` con autor/corrección/descarte, auditoría)
+- [x] 9. **Página: historial de la revisión** (`ReviewHistoryPage`,
+  `/revision/historial`, `emails.view`, marca "Revisión" en el menú;
+  enlace "Historial de decisiones" desde la bandeja). Selector 7/30/90
+  días; **4 tarjetas**: esperan a una persona ahora (enlaza a la bandeja),
+  casos resueltos, **espera mediana** (y media), **% de propuestas de la
+  IA aprobadas sin cambios** con el desglose (tal cual / corregidas /
+  descartadas); tabla **por persona** (decisiones, aprobadas, corregidas,
+  respondidas, descartadas, cerradas, espera media); **todas las
+  decisiones** paginadas (cuándo, quién, decisión "(con cambios)", email
+  enlazado con el motivo debajo, cuánto esperó) con filtros de decisión y
+  persona. Sin gráficas (las series temporales están en Grafana, como en
+  el Resumen). Vitest: `ReviewHistoryPage.test.ts` (2: resumen y lista)
+- [x] 10. **`HumanReviewEndToEndTest`** (grupo `greenmail`): la revisión
+  humana de principio a fin con soporte y cliente como cuentas reales de
+  GreenMail y la **IA simulada** (`ai.provider=simulated`, sin coste; la
+  primera vez que un test E2E la usa en vez de `FakeLLMProvider`). El
+  cliente pregunta por envíos a Canarias → `mail:sync` → ingesta →
+  clasificación y agente simulados → empresa en modo borrador →
+  `human_review` con propuesta. Por la API del panel, como Ana (agente):
+  la bandeja la muestra con `has_draft`; **la corrige y la aprueba** → en
+  el buzón del cliente llega "Re: …" del buzón de soporte, en el hilo
+  (`In-Reply-To`), con el texto corregido y **sin `Auto-Submitted`** (la
+  envió una persona); historial processing → ai_review → human_review →
+  approved (Ana) → sent. **Descartar y escribir la suya** → llega su texto
+  (decisiones rejected, replied). **Reprocesar** → la IA simulada prepara
+  una propuesta nueva (cola sync) y la anterior queda descartada; nada
+  enviado
+- [x] Fix detectado en la prueba en el navegador: la IA simulada propone
+  "A member of our team will review your message shortly" y, al revisarla
+  una persona, la promesa de revisión humana no generaba ningún aviso
+  (enviada por la persona solo es cierta si alguien hace ese seguimiento:
+  la incoherencia anotada en la Fase 8). Ahora, para la persona, es un
+  **recordatorio** ("si la envías así, asegúrate de que alguien hará ese
+  seguimiento") y no impide enviar; para el envío automático sigue
+  bloqueando igual. El menú: el número junto a "Revisión" iba pegado a la
+  etiqueta (NMenu pinta la etiqueta fuera del ámbito de los estilos
+  *scoped*): estilo en línea
+- [x] 11. **Prueba en el stack con la IA simulada y README.** App con
+  `php artisan serve` (puerto 8081: en la sesión de la nube el 8080 lo usa
+  la API de GreenMail), Horizon, PostgreSQL y Redis locales, GreenMail con
+  cuentas reales, `AI_PROVIDER=simulated` y `npm run build`. 5 correos por
+  SMTP (pedido, Canarias, doble cobro, lámpara rota en inglés, factura) →
+  `mail:sync` → Horizon → IA simulada → los 5 en `human_review` (modo
+  borrador). Con **Chromium headless** (Playwright) como Lucía (agente):
+  bandeja con espera, motivo, propuesta y "Asignarme"; en el pedido,
+  asignarse, corregir con un pedido inventado (#99999) → aviso; corregir
+  bien y enviar → **llegó al buzón de cliente@cliente.test** ("Re: …",
+  `In-Reply-To` del original, **sin `Auto-Submitted`**, comprobado por
+  IMAP) y el detalle enlaza el texto original de la IA; en la factura,
+  descartar con motivo y escribir la respuesta → llegó a
+  elena@cliente.test; cerrar el doble cobro con motivo. Como propietario:
+  reprocesar la lámpara → propuesta nueva y la anterior en "Respuestas
+  anteriores"; auditoría con las 6 acciones. Historial: decisiones por
+  persona, esperas y % de propuestas sin cambios. Sin errores en la consola.
+  **Grafana** (Prometheus + Grafana temporales contra la app): fila
+  "Revisión humana" con datos → corregido: la serie "Cerrada o
+  reprocesada" salía dos veces (faltaba `sum by (d)` tras el
+  `label_replace`), títulos de tarjetas cortados (acortados, el detalle en
+  la descripción) y decimales en esperas. README: sección **"14. Revisión
+  humana (human in the loop)"** (bandeja, acciones, avisos, 409, historial
+  y métricas, probarlo sin gastar, resultados, actualizar un entorno
+  anterior), estado, introducción, tabla del panel, estructura, API (10
+  endpoints nuevos y el 409), alertas, tests y problemas frecuentes;
+  secciones siguientes renumeradas (API = #16)
+
+- [x] Fix tras el push (CI en rojo): `RetentionTest` (Fase 12)
+  comprobaba que la fila de auditoría de un email borrado no contuviera
+  "ana@" (la remitente), pero esa fila guarda el **email del actor**, y el
+  administrador del test tenía uno aleatorio de Faker: al salir algo como
+  `juliana@example.org`, el test fallaba sin que hubiera datos del cliente.
+  Test **inestable**, no un fallo del código: email fijo para el actor; lo
+  mismo en `EmailReviewApiTest` (comprueba que no aparezca "45821").
+  **Lección:** en aserciones "no contiene X" sobre registros que incluyen
+  datos del actor, fijar esos datos en el test
+
+**Resumen:** 11 tareas en 13 commits (11 + 1 fix encontrado en el
+navegador + 1 fix de un test inestable), 1137 tests PHP (en esta sesión 25 fallan solo por el entorno:
+pgvector 0.6 sin *iterative scans* y helpers compartidos entre archivos al
+ejecutar en paralelo; pasan en el CI) + 85 Vitest en verde, alertas
+probadas con `promtool` (`CasoSinAtender` incluida).
+**Pendiente para dar la Fase 13 por cerrada:** que el usuario revise la
+rama `fase-13-human-in-the-loop`, el CI en verde, la fusione y siga
+"Actualizar un entorno anterior a la Fase 13" del README en su equipo
+(migración, `RolesAndPermissionsSeeder` por el permiso `emails.review`,
+reiniciar Prometheus/Grafana y Horizon).
 
 ### Pendientes anotados para más adelante
 

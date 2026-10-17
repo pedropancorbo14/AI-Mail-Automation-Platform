@@ -18,8 +18,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * Email recibido en un buzón conectado. Lo crea la ingesta
  * (App\Mail\Ingestion), nunca una petición del cliente. status,
- * ingested_at y la clasificación no son asignables en masa: cambian con
- * métodos explícitos.
+ * ingested_at, la clasificación y la asignación no son asignables en masa:
+ * cambian con métodos explícitos.
  *
  * @property EmailStatus $status
  * @property EmailIntent|null $intent
@@ -51,6 +51,7 @@ class Email extends Model
             'injection_suspected' => 'boolean',
             'ai_entities' => 'array',
             'classified_at' => 'datetime',
+            'assigned_at' => 'datetime',
         ];
     }
 
@@ -162,6 +163,18 @@ class Email extends Model
     public function statusChanges(): HasMany
     {
         return $this->hasMany(EmailStatusChange::class)->orderBy('id');
+    }
+
+    /** @return HasMany<EmailReview, $this> Decisiones de las personas que lo revisaron, la más antigua primero. */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(EmailReview::class)->orderBy('id');
+    }
+
+    /** @return BelongsTo<User, $this> Persona que se ha asignado el caso (revisión humana). */
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
     }
 
     /** @return HasMany<EmailRecipient, $this> */

@@ -94,6 +94,15 @@ groups:
           summary: "{{ $labels.tenant }} tiene {{ $value }} emails esperando a una persona"
           description: "La bandeja de revisión crece: falta personal o la automatización deriva demasiado."
 
+      - alert: CasoSinAtender
+        expr: max by (tenant) (aimail_email_review_oldest_waiting_seconds) > 4 * 3600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "El caso más antiguo de {{ $labels.tenant }} lleva {{ $value | humanizeDuration }} esperando a una persona"
+          description: "Abrir la bandeja de revisión del panel: los casos urgentes y los más antiguos salen primero."
+
   - name: ia
     rules:
       - alert: IAConErrores

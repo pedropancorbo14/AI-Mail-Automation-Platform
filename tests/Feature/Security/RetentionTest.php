@@ -160,7 +160,8 @@ it('forgets every email of an address, as sender or recipient, only in that comp
 // --- API ---------------------------------------------------------------------------
 
 it('lets owners and admins delete an email through the api, leaving no personal data in the audit', function () {
-    $admin = User::factory()->for($this->tenant)->admin()->create();
+    // Email fijo: la auditoría guarda el del actor y uno aleatorio podría contener "ana@" (p. ej. juliana@...).
+    $admin = User::factory()->for($this->tenant)->admin()->create(['email' => 'admin@acme.test']);
     $email = fullEmail($this->tenant, ['subject' => 'Mi DNI es 12345678Z']);
 
     $this->actingAs($admin, 'sanctum')->deleteJson("/api/v1/emails/{$email->id}")->assertNoContent();

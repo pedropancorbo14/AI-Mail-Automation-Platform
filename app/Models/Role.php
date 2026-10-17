@@ -40,6 +40,7 @@ class Role extends Model
             Permission::AUTOMATION_MANAGE,
             Permission::AUDIT_VIEW,
             Permission::EMAILS_DELETE,
+            Permission::EMAILS_REVIEW,
         ],
         self::ADMIN => [
             Permission::USERS_VIEW,
@@ -55,6 +56,7 @@ class Role extends Model
             Permission::AUTOMATION_MANAGE,
             Permission::AUDIT_VIEW,
             Permission::EMAILS_DELETE,
+            Permission::EMAILS_REVIEW,
         ],
         self::AGENT => [
             Permission::USERS_VIEW,
@@ -62,6 +64,8 @@ class Role extends Model
             Permission::MAIL_CONNECTIONS_VIEW,
             Permission::DOCUMENTS_VIEW,
             Permission::EMAILS_VIEW,
+            // El trabajo diario de un agente de atención al cliente.
+            Permission::EMAILS_REVIEW,
         ],
     ];
 

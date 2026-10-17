@@ -45,6 +45,12 @@ class Permission extends Model
     public const string EMAILS_DELETE = 'emails.delete';
 
     /**
+     * Revisar emails en revisión humana: aprobar, editar o descartar la
+     * respuesta de la IA, responder, cerrar, reprocesar y asignarse casos.
+     */
+    public const string EMAILS_REVIEW = 'emails.review';
+
+    /**
      * Catálogo completo (nombre => descripción). Cada permiso se registra
      * como Gate en AppServiceProvider y se guarda en BD con el seeder.
      */
@@ -63,6 +69,7 @@ class Permission extends Model
         self::AUTOMATION_MANAGE => 'Configurar la automatización y las herramientas de la IA',
         self::AUDIT_VIEW => 'Ver el registro de auditoría',
         self::EMAILS_DELETE => 'Borrar emails y sus datos',
+        self::EMAILS_REVIEW => 'Revisar, aprobar y responder emails',
     ];
 
     /** @return BelongsToMany<Role, $this> */

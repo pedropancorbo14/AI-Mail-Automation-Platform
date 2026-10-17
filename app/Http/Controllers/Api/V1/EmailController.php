@@ -28,7 +28,7 @@ class EmailController extends Controller
         Gate::authorize('viewAny', Email::class);
 
         $query = Email::query()
-            ->with('mailConnection:id,name,email')
+            ->with(['mailConnection:id,name,email', 'assignee:id,name'])
             ->withCount('attachments')
             ->when($request->validated('status'), fn ($q, $status) => $q->where('status', $status))
             ->when($request->validated('intent'), fn ($q, $intent) => $q->where('intent', $intent))
@@ -51,18 +51,7 @@ class EmailController extends Controller
     {
         Gate::authorize('view', $email);
 
-        $email->load([
-            'mailConnection:id,name,email',
-            'recipients',
-            'attachments',
-            'classificationRequest:id,model',
-            'statusChanges.user:id,name',
-            'replies.approvedBy:id,name',
-            'agentRuns.aiRequests' => fn ($q) => $q->orderBy('id'),
-            'agentRuns.aiRequests.toolCalls' => fn ($q) => $q->orderBy('id'),
-        ])->loadCount('attachments');
-
-        return new EmailDetailResource($email);
+        return EmailDetailResource::for($email);
     }
 
     /**

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue';
+import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import {
+    NBadge,
     NButton,
     NDropdown,
     NIcon,
@@ -16,16 +17,31 @@ import {
 import { ChevronDownOutline, LogOutOutline, MailOutline, PersonCircleOutline } from '@vicons/ionicons5';
 import { menuEntries, roleLabels, visibleMenu } from '@/menu';
 import { useAuthStore } from '@/stores/auth';
+import { useReviewQueueStore } from '@/stores/reviewQueue';
 
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
+const reviewQueue = useReviewQueueStore();
 const collapsed = ref(false);
+
+// Número de casos que esperan a una persona junto a "Revisión".
+onMounted(() => auth.can('emails.view') && reviewQueue.start());
+onBeforeUnmount(() => reviewQueue.stop());
 
 const menuOptions = computed<MenuOption[]>(() =>
     visibleMenu(menuEntries, auth.can).map((entry) => ({
         key: entry.route,
-        label: () => h(RouterLink, { to: { name: entry.route } }, { default: () => entry.label }),
+        label: () =>
+            // Estilo en línea: NMenu pinta la etiqueta fuera del ámbito de los estilos scoped.
+            h(RouterLink, { to: { name: entry.route }, style: 'display: inline-flex; align-items: center; gap: 8px' }, {
+                default: () => [
+                    entry.label,
+                    entry.showsReviewCount && reviewQueue.counts?.total
+                        ? h(NBadge, { value: reviewQueue.counts.total, max: 99, type: 'warning', 'data-test': 'review-count' })
+                        : null,
+                ],
+            }),
         icon: () => h(NIcon, null, { default: () => h(entry.icon) }),
     })),
 );

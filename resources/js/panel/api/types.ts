@@ -11,6 +11,11 @@ export type EmailIntent =
     | 'order_status' | 'return_request' | 'cancellation' | 'invoice_request' | 'billing_issue' | 'product_question'
     | 'technical_support' | 'complaint' | 'sales_inquiry' | 'account_change' | 'feedback' | 'auto_reply' | 'spam' | 'other';
 
+export interface Person {
+    id: number;
+    name: string;
+}
+
 export interface Address {
     email: string | null;
     name: string | null;
@@ -23,6 +28,8 @@ export interface EmailListItem {
     mailbox?: { id: number; name: string; email: string };
     status: EmailStatus;
     status_label: string;
+    /** Persona que se ha asignado el caso (revisión humana). */
+    assignee?: Person | null;
     intent: EmailIntent | null;
     intent_confidence: number | null;
     summary: string | null;
@@ -41,6 +48,12 @@ export interface EmailReply {
     agent_run_id: number | null;
     status: 'draft' | 'approved' | 'sending' | 'rejected' | 'sent' | 'failed';
     body: string;
+    /** Escrita por una persona (null = la IA). */
+    author?: Person | null;
+    /** Texto que propuso la IA, si una persona lo cambió antes de aprobarlo. */
+    original_body: string | null;
+    edited_by?: Person | null;
+    edited_at: string | null;
     language: string | null;
     confidence: number | null;
     needs_human: boolean;
@@ -54,6 +67,11 @@ export interface EmailReply {
     sent_to: string | null;
     sent_at: string | null;
     send_error: string | null;
+    rejected_by?: Person | null;
+    rejected_at: string | null;
+    rejection_reason: string | null;
+    /** Avisos de las comprobaciones automáticas sobre la propuesta pendiente. */
+    checks: string[];
     created_at: string | null;
 }
 
@@ -128,4 +146,54 @@ export interface EmailDetail extends EmailListItem {
     status_history: StatusChange[];
     replies: EmailReply[];
     agent_runs: AgentRun[];
+    /** Espera a una persona (revisión humana o error). */
+    awaiting_person: boolean;
+    /** Ya se intentó enviar una respuesta (puede haber llegado): no se reprocesa con la IA. */
+    send_attempted: boolean;
+    assigned_at: string | null;
+    reviews: Review[];
+}
+
+export type ReviewDecision = 'approved' | 'rejected' | 'replied' | 'closed' | 'reprocessed';
+
+/** Una decisión de una persona sobre un email. */
+export interface Review {
+    id: number;
+    decision: ReviewDecision;
+    decision_label: string;
+    edited: boolean;
+    reason: string | null;
+    waited_seconds: number | null;
+    reply_id?: number | null;
+    user: Person | null;
+    at: string | null;
+}
+
+/** Un caso de la bandeja de revisión. */
+export interface ReviewQueueItem extends EmailListItem {
+    waiting_since: string | null;
+    waiting_reason: string | null;
+    has_draft: boolean;
+}
+
+export interface ReviewQueueCounts {
+    total: number;
+    mine: number;
+    unassigned: number;
+    failed: number;
+}
+
+/** Una decisión del historial, con su email. */
+export interface ReviewHistoryEntry extends Review {
+    email: { id: number; subject: string | null; from: Address; intent: EmailIntent | null; status: EmailStatus } | null;
+}
+
+export interface ReviewSummary {
+    days: number;
+    pending: number;
+    decisions: Record<ReviewDecision, number>;
+    resolved: number;
+    wait_seconds: { average: number | null; median: number | null };
+    ai_proposals: { reviewed: number; approved_unchanged: number; approved_edited: number; rejected: number; unchanged_rate: number | null };
+    people: { user: { id: number; name: string | null }; total: number; decisions: Record<ReviewDecision, number>; edited: number; average_wait_seconds: number | null }[];
 }

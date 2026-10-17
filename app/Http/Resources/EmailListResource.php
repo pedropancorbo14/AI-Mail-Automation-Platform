@@ -25,6 +25,7 @@ class EmailListResource extends JsonResource
             ]),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
+            'assignee' => $this->whenLoaded('assignee', fn () => $this->assignee ? ['id' => $this->assignee->id, 'name' => $this->assignee->name] : null),
             'intent' => $this->intent?->value,
             'intent_confidence' => $this->intent_confidence === null ? null : (float) $this->intent_confidence,
             'summary' => $this->summary,

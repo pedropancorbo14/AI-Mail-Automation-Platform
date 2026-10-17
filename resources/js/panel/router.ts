@@ -20,6 +20,18 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Resumen' },
             },
             {
+                path: 'revision',
+                name: 'review',
+                component: () => import('@/pages/ReviewQueuePage.vue'),
+                meta: { title: 'Bandeja de revisión', permission: 'emails.view' },
+            },
+            {
+                path: 'revision/historial',
+                name: 'review-history',
+                component: () => import('@/pages/ReviewHistoryPage.vue'),
+                meta: { title: 'Historial de la revisión', permission: 'emails.view', menu: 'review' },
+            },
+            {
                 path: 'emails',
                 name: 'emails',
                 component: () => import('@/pages/EmailsPage.vue'),
