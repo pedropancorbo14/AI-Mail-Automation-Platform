@@ -3398,6 +3398,11 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   `tests/fakes.py` (`FakeLLM` guionizado, `FakeAgent`,
   `InMemoryEventBus`) y `tests/support/contracts.py` (validar contra el
   esquema). 104 tests
+- [x] Fix (CI en rojo en la 1.3): `test_defaults_are_safe_for_local_development`
+  leía `AI_SERVICE_ENVIRONMENT=testing` del job. `tests/conftest.py`
+  borra las `AI_SERVICE_*` de quien lanza los tests (salvo
+  `AI_SERVICE_TEST_*` y `AI_SERVICE_CONTRACTS_DIR`). **Lección:** probar en
+  local con las variables del CI exportadas
 - [ ] 1.5 Adaptador de Anthropic (comprobar structured outputs en Opus 5.5)
 - [ ] 1.6 Grafo LangGraph classify → router → draft → validate + `/debug/classify`
 - [ ] 1.7 Adaptador de Redis Streams + consumidor (+ `/ready`)
