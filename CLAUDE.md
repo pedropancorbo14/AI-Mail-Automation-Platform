@@ -3447,7 +3447,33 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   `AI_SERVICE_DEBUG_ENDPOINTS=true` y fuera de producción; agente
   creado al primer uso; sin clave → 503; errores del modelo → 422/502.
   README con el diagrama Mermaid generado por LangGraph. 147 tests
-- [ ] 1.7 Adaptador de Redis Streams + consumidor (+ `/ready`)
+- [x] 1.7 **Redis Streams y worker.** `infrastructure/events/redis_streams.py`:
+  `RedisStreamsEventBus` (implementa `EventBusPort`; stream =
+  `<prefijo><event_type>.v<versión>`, campos `event_id`/`event_type`/
+  `payload`, `MAXLEN ~ 100000`) y `RedisStreamConsumer` (grupo creado con
+  `id=0` + `MKSTREAM`, `XREADGROUP`, `XAUTOCLAIM` + nº de entregas con
+  `XPENDING`, `ack` = `XACK`+`XDEL` en pipeline, `dead_letter` a
+  `<stream>.dlq`, `XTRIM MINID` **exacto** — el aproximado no borraba
+  nada con pocas entradas —, `XINFO GROUPS` pending/lag).
+  `entrypoints/consumer.py` (`EventConsumer`): abandonados primero, luego
+  nuevos (hasta `concurrency`), `gather`; duplicado por `event_id`
+  (`aiservice:processed:<id>`, 24 h) → confirma sin llamar al modelo;
+  contrato roto → DLQ; temporal → sin confirmar (reintento al reclamarlo
+  pasado `claim_idle_ms`); última entrega → `processing_failed`
+  (`timeout`) o `internal` + DLQ; logs con `trace_id`/`tenant_id`/
+  `email_id`/`event_id`; métricas `aiservice_events_total`,
+  `event_processing_seconds`, `decisions_total`, `llm_calls_total`,
+  `llm_tokens_total`, `llm_call_seconds`, `stream_pending`, `stream_lag`,
+  latido. `entrypoints/worker.py` (`ai-service-worker`): consumidor +
+  uvicorn en el mismo bucle (señales propias: se anula
+  `uvicorn.Server.capture_signals`), parada limpia con SIGTERM, `/ready`
+  (Redis + latido < 60 s), sin clave → log `worker_misconfigured` y
+  salida 1. Config `AI_SERVICE_REDIS_URL` (BD 3, sin prefijo) y del
+  consumidor. Tests contra Redis real (`AI_SERVICE_TEST_REDIS_URL`, BD 15
+  vaciada; sin ella se saltan): flujo completo, grupo creado tarde, DLQ,
+  duplicados, fallo definitivo, reintentos con `XAUTOCLAIM`, error
+  inesperado, concurrencia, empresa de cada resultado, recorte, parada y
+  el worker completo con `/ready` y `/metrics`. 161 tests
 - [ ] 1.8 Laravel: `AI_ENGINE`, publicador y reconciliador (Pest)
 - [ ] 1.9 Laravel: consumidor de `email.processed.v1` (Pest)
 - [ ] 1.10 Dockerfile multi-stage, compose, Prometheus/Promtail (el CI se adelantó a la 1.3)

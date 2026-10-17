@@ -7,7 +7,7 @@ envía sola, la revisa una persona o se escala. **Laravel** sigue siendo el
 dueño de todo lo demás: ingesta IMAP, empresas, usuarios, panel, estados
 del email, reglas finales y envío.
 
-> **Estado:** Fase 1, tareas 1.1–1.6 (esqueleto, contrato, dominio, puertos, caso de uso, adaptador de Claude y grafo de LangGraph). Hasta que termine la Fase 1,
+> **Estado:** Fase 1, tareas 1.1–1.7 (esqueleto, contrato, dominio, puertos, caso de uso, adaptador de Claude, grafo de LangGraph y consumidor de Redis Streams). Hasta que termine la Fase 1,
 > Laravel sigue procesando los emails con su propio motor
 > (`AI_ENGINE=laravel`, el único que existe todavía).
 
@@ -287,6 +287,67 @@ SDK reales con un **transporte HTTP simulado** (`httpx2.MockTransport`):
 comprueba la petición exacta (structured outputs, effort, fallbacks, sin
 `tool_choice`) y cada tipo de respuesta y error. Nunca se llama a la API.
 
+## Eventos: Redis Streams y el worker
+
+**Proceso `ai-service-worker`** (`entrypoints/worker.py`): un solo proceso
+asyncio con el **consumidor** y la **app HTTP de operación** (`/health`,
+`/ready`, `/metrics`). Van juntos porque las métricas importantes las
+genera el consumidor; cada réplica expone las suyas.
+
+```mermaid
+sequenceDiagram
+    participant L as Laravel
+    participant R as Redis (BD 3)
+    participant W as ai-service-worker
+    L->>R: XADD email.received.v1 {event_id, event_type, payload}
+    W->>R: XAUTOCLAIM (abandonados) + XREADGROUP ai-service >
+    W->>W: grafo (classify → draft → validate)
+    W->>R: XADD email.processed.v1
+    W->>R: SET aiservice:processed:<event_id> (24 h)
+    W->>R: XACK + XDEL
+    L->>R: XREADGROUP laravel (tarea 1.9)
+```
+
+| Situación | Qué hace el consumidor |
+|---|---|
+| Procesado (o fallo definitivo publicado) | `XACK` + `XDEL` (el cuerpo es dato personal: no se queda en Redis) y marca el `event_id` como procesado |
+| Entrega repetida del mismo `event_id` | Lo confirma **sin volver a pagar** al modelo |
+| No cumple el contrato | A `email.received.v1.dlq` con el motivo; se confirma |
+| Error temporal (red, 429, 529, timeout) | No confirma: pasado `claim_idle_ms` (5 min) otra vuelta o réplica lo reclama con `XAUTOCLAIM`. Esa espera hace de *backoff* |
+| Error temporal en la última entrega (`max_deliveries`, 3) | Publica `email.processing_failed.v1` (`timeout`) y confirma |
+| Error inesperado | Igual; en la última entrega, fallo `internal` + cola de errores |
+
+- **Consumer group** `ai-service` creado desde el principio del stream
+  (`id=0`): lo que Laravel publicó antes de arrancar el servicio también se
+  procesa. Cada réplica es un consumidor distinto (hostname = pod).
+- **Concurrencia:** hasta `concurrency` (4) emails a la vez por réplica
+  (`asyncio.gather`); escalar = más réplicas.
+- **Retención:** `XTRIM MINID` **exacto** cada minuto (7 días) en el stream
+  y en la cola de errores; los eventos que publica se limitan con
+  `MAXLEN ~ 100000`.
+- **Parada limpia:** SIGTERM → deja de leer, termina lo que tiene en curso
+  y cierra la app HTTP (las señales las gestiona el worker, no uvicorn).
+- **`/ready`** = Redis responde **y** el bucle gira (latido de menos de
+  60 s): Kubernetes deja de mandarle tráfico (y, con la *liveness*, lo
+  reinicia) si se cuelga.
+- Sin clave de Anthropic el worker **no arranca** y lo dice en el log.
+
+Métricas nuevas (prefijo `aiservice_`): `events_total{result}`,
+`event_processing_seconds{result}`, `decisions_total{decision,category}`,
+`llm_calls_total{purpose,model,status}`, `llm_tokens_total{purpose,model,type}`,
+`llm_call_seconds{purpose,model}`, `stream_pending`, `stream_lag` y
+`consumer_heartbeat_timestamp_seconds`.
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `AI_SERVICE_REDIS_URL` | `redis://localhost:6379/3` | Redis (BD propia, sin prefijo; en el compose con contraseña) |
+| `AI_SERVICE_STREAM_PREFIX` | vacío | Prefijo de los streams (p. ej. para entornos compartidos) |
+| `AI_SERVICE_CONSUMER_GROUP` / `AI_SERVICE_CONSUMER_NAME` | `ai-service` / hostname | Grupo y nombre del consumidor |
+| `AI_SERVICE_CONCURRENCY` | `4` | Emails en paralelo por réplica |
+| `AI_SERVICE_CLAIM_IDLE_MS` | `300000` | Cuándo se reclama un mensaje abandonado (mayor que el tope del agente) |
+| `AI_SERVICE_MAX_DELIVERIES` | `3` | Entregas antes de darlo por fallido |
+| `AI_SERVICE_STREAM_RETENTION_HOURS` | `168` | Retención en los streams |
+
 ## Cómo ejecutarlo
 
 Requisitos: [uv](https://docs.astral.sh/uv/) (instala él mismo Python 3.12).
@@ -294,7 +355,9 @@ Requisitos: [uv](https://docs.astral.sh/uv/) (instala él mismo Python 3.12).
 ```bash
 cd ai-service
 uv sync                      # crea .venv con dependencias exactas (uv.lock)
-uv run ai-service-http       # app HTTP en http://localhost:8000
+uv run ai-service-http       # solo la app HTTP en http://localhost:8000
+# El worker (consumidor + /health, /ready, /metrics) necesita Redis y la clave:
+AI_SERVICE_ANTHROPIC_API_KEY=sk-ant-... uv run ai-service-worker
 curl localhost:8000/health   # {"status":"ok","service":"ai-service",...}
 curl localhost:8000/metrics  # formato Prometheus
 ```
@@ -346,8 +409,15 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 - `tests/unit/`: sin red ni servicios.
 - `tests/contract/`: los modelos Pydantic frente a los JSON Schema
   compartidos, con los ejemplos de `/contracts/events/examples/`.
-- `tests/integration/`: piezas reales conectadas (app HTTP, y más adelante
-  Redis y PostgreSQL de verdad, como el CI de Laravel).
+- `tests/integration/`: piezas reales conectadas: app HTTP, adaptador de
+  Claude con HTTP simulado y **Redis real** (consumer group, reintentos con
+  `XAUTOCLAIM`, cola de errores, duplicados, recorte, worker completo).
+  Necesitan `AI_SERVICE_TEST_REDIS_URL` (el CI lo define; sin ella se
+  saltan):
+
+  ```bash
+  AI_SERVICE_TEST_REDIS_URL=redis://127.0.0.1:6379/15 uv run pytest
+  ```
 - **El LLM siempre se simula en los tests**: nunca se llama a la API real
   en el CI.
 
@@ -379,6 +449,10 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 | Una `LLMCall` por modelo con fallback | Sumar todo en una | Cada modelo factura a su tarifa: Laravel calcula bien el coste |
 | Router **determinista** | Que el modelo elija el siguiente paso | Predecible, gratis y no manipulable por el contenido del email; la IA se usa donde aporta (clasificar, redactar) |
 | Raíz de composición en `entrypoints/container.py` | Inyección con un framework de DI | Pocas piezas: una función por grafo de objetos basta y se lee de un vistazo |
+| **Redis Streams** con consumer groups | Colas de Laravel (Horizon) compartidas; Kafka; RabbitMQ | Redis ya está en la plataforma; los streams dan grupos, confirmación, reclamación y reproceso sin otra pieza. Kafka sería infraestructura de más para este volumen |
+| Reintento = no confirmar + `XAUTOCLAIM` | Re-publicar el mensaje con un contador | Una sola copia del mensaje; el contador de entregas lo lleva Redis |
+| Idempotencia con `SET event_id` (24 h) además del estado en Laravel | Solo la de Laravel | Si el proceso muere entre publicar y confirmar, no se vuelve a pagar al modelo |
+| Consumidor y HTTP de operación en el mismo proceso | Dos procesos | Las métricas son del consumidor; un contenedor = un proceso = una réplica |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
@@ -407,7 +481,7 @@ Decisiones de diseño acordadas para las siguientes tareas:
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.6 hechas |
+| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.7 hechas |
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | Pendiente |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | Pendiente |
 | 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |

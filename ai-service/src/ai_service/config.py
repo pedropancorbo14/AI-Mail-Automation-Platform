@@ -1,5 +1,6 @@
 """Configuración del servicio, leída de variables de entorno (prefijo AI_SERVICE_)."""
 
+import socket
 from enum import StrEnum
 from functools import lru_cache
 from typing import Literal
@@ -53,6 +54,27 @@ class Settings(BaseSettings):
     min_confidence: float = Field(default=0.85, ge=0, le=1)
     # Tope del grafo entero (incluye los reintentos del SDK de cada llamada).
     agent_timeout_seconds: float = Field(default=240.0, gt=0)
+
+    # --- Eventos (Redis Streams) ---
+    # Base de datos propia (3) y sin prefijo de claves: Laravel usa la misma con
+    # su conexión "streams". En el compose lleva la contraseña de Redis.
+    redis_url: SecretStr = SecretStr("redis://localhost:6379/3")
+    stream_prefix: str = ""
+    consumer_group: str = "ai-service"
+    # Nombre del consumidor dentro del grupo: único por réplica (en Kubernetes, el pod).
+    consumer_name: str = Field(default_factory=socket.gethostname)
+    # Emails que se procesan a la vez por réplica (llamadas al modelo en paralelo).
+    concurrency: int = Field(default=4, ge=1, le=64)
+    read_block_ms: int = Field(default=5000, ge=100)
+    # Un mensaje sin confirmar más de esto se considera abandonado (réplica caída o
+    # error temporal) y otra lo reclama. Mayor que el tope del agente.
+    claim_idle_ms: int = Field(default=300_000, ge=1000)
+    # Entregas antes de darlo por fallido (publica email.processing_failed.v1).
+    max_deliveries: int = Field(default=3, ge=1, le=20)
+    # El cuerpo del email es dato personal: lo que quede en los streams se recorta.
+    stream_retention_hours: int = Field(default=168, ge=1)
+    outgoing_maxlen: int = Field(default=100_000, ge=1000)
+    processed_ttl_seconds: int = Field(default=86_400, ge=60)
 
     # POST /debug/process: procesa un email de prueba con el modelo real (cuesta
     # dinero). Desactivado por defecto y nunca disponible en producción.

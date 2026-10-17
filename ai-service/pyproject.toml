@@ -13,12 +13,14 @@ dependencies = [
     "prometheus-client>=0.26",
     "pydantic>=2.14",
     "pydantic-settings>=2.16",
+    "redis>=5.2",
     "structlog>=26.1",
     "uvicorn[standard]>=0.54",
 ]
 
 [project.scripts]
 ai-service-http = "ai_service.entrypoints.http.app:main"
+ai-service-worker = "ai_service.entrypoints.worker:main"
 
 [dependency-groups]
 dev = [
