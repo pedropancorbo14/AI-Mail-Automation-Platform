@@ -46,6 +46,18 @@ class _Server(uvicorn.Server):
         yield
 
 
+def redis_client(settings: Settings) -> Redis:
+    """El timeout de lectura del socket TIENE que superar el BLOCK de XREADGROUP:
+    redis-py trae uno por defecto y cortaba cada lectura bloqueante (encontrado
+    al probar en el stack con BLOCK 5000)."""
+    return Redis.from_url(
+        settings.redis_url.get_secret_value(),
+        socket_timeout=settings.read_block_ms / 1000 + 10,
+        socket_connect_timeout=5,
+        health_check_interval=30,
+    )
+
+
 def build_consumer(settings: Settings, redis: Redis, metrics: ServiceMetrics) -> EventConsumer:
     bus = RedisStreamsEventBus(
         redis, prefix=settings.stream_prefix, maxlen=settings.outgoing_maxlen
@@ -74,7 +86,7 @@ def build_consumer(settings: Settings, redis: Redis, metrics: ServiceMetrics) ->
 
 async def serve(settings: Settings) -> None:
     metrics = ServiceMetrics(settings.environment.value)
-    redis = Redis.from_url(settings.redis_url.get_secret_value())
+    redis = redis_client(settings)
     consumer = build_consumer(settings, redis, metrics)
     stale_after = max(60.0, settings.read_block_ms / 1000 * 3)
 

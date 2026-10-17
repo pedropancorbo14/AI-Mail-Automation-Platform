@@ -7,9 +7,38 @@ envía sola, la revisa una persona o se escala. **Laravel** sigue siendo el
 dueño de todo lo demás: ingesta IMAP, empresas, usuarios, panel, estados
 del email, reglas finales y envío.
 
-> **Estado:** Fase 1, tareas 1.1–1.10 (servicio completo, integración con Laravel, Docker, Grafana y alertas). Falta la prueba de punta a punta en el stack (1.11). Hasta que termine la Fase 1,
-> Laravel sigue procesando los emails con su propio motor
-> (`AI_ENGINE=laravel`, el único que existe todavía).
+> **Estado:** Fase 1 **completa y probada de punta a punta** (IMAP real →
+> Laravel → Redis Streams → este servicio → Laravel → respuesta por SMTP)
+> con la IA simulada. El motor por defecto sigue siendo el de Laravel
+> (`AI_ENGINE=laravel`): este servicio aún no tiene RAG ni tools (Fases 2
+> y 3), así que se activa con `AI_ENGINE=python` cuando se quiera.
+
+## En una entrevista (resumen de 1 minuto)
+
+- **Qué es:** el "cerebro de IA" de una plataforma de atención al cliente
+  por email, extraído de un monolito Laravel a un microservicio Python.
+- **Cómo se comunica:** eventos versionados (`email.received.v1` →
+  `email.processed.v1`) por **Redis Streams con consumer groups**; contrato
+  en **JSON Schema compartido** y probado en los dos lados con los mismos
+  ejemplos. Entrega al menos una vez → idempotencia en ambos lados.
+- **Arquitectura:** **hexagonal + DDD** (dominio puro sin dependencias,
+  puertos como `Protocol`, adaptadores para Claude y Redis), comprobada
+  por **import-linter** en el CI.
+- **IA:** grafo de **LangGraph** (classify → router determinista → draft →
+  validate) con **Claude** por langchain-anthropic: structured outputs
+  nativos, `effort`, fallbacks de servidor, `stop_reason`.
+- **Seguridad:** la IA **recomienda**, Laravel **decide** (reglas
+  deterministas antes de enviar nada); reglas del dominio que nunca dejan
+  prometer reembolsos; `tenant_id` en cada evento y Laravel rechaza
+  resultados de otra empresa; el cuerpo del email se borra de Redis al
+  confirmarlo.
+- **Operación:** imagen multi-stage sin root, métricas Prometheus,
+  dashboard de Grafana, alertas probadas con `promtool`, logs JSON en Loki
+  con `trace_id` de punta a punta; CI con ruff, mypy estricto, pytest con
+  Redis real, pip-audit y build de la imagen.
+- **Algo que salió al probar de verdad:** redis-py corta las lecturas
+  bloqueantes de `XREADGROUP` con su timeout de socket por defecto; los
+  tests (con `BLOCK` de 100 ms) no lo veían. Ahora hay test de regresión.
 
 ## Índice
 
@@ -276,6 +305,7 @@ Variables nuevas:
 | `AI_SERVICE_ANTHROPIC_FALLBACKS` | `true` | Fallbacks de servidor ante rechazos |
 | `AI_SERVICE_CLASSIFY_EFFORT` / `AI_SERVICE_DRAFT_EFFORT` | `low` / `medium` | `effort` de cada operación |
 | `AI_SERVICE_CLASSIFY_MAX_TOKENS` / `AI_SERVICE_DRAFT_MAX_TOKENS` | `4096` / `8000` | Incluyen el razonamiento |
+| `AI_SERVICE_LLM_PROVIDER` | `anthropic` | `anthropic` o `simulated` (solo local/testing) |
 | `AI_SERVICE_LLM_TIMEOUT_SECONDS` / `AI_SERVICE_LLM_MAX_RETRIES` | `60` / `2` | Timeout y reintentos del SDK (429, 5xx, red) |
 | `AI_SERVICE_MAX_BODY_CHARS` | `20000` | Recorte del cuerpo (avisando al modelo) |
 | `AI_SERVICE_MIN_CONFIDENCE` | `0.85` | Umbral de `DecisionPolicy` |
@@ -530,11 +560,52 @@ Decisiones de diseño acordadas para las siguientes tareas:
   modifican datos. Si se interrumpiera en cada revisión, quedarían miles de
   hilos suspendidos que nadie reanuda (con datos personales).
 
+## Prueba de punta a punta (2026-10-17)
+
+Stack de la sesión: PostgreSQL + Redis + GreenMail reales, Laravel
+(`AI_ENGINE=python`, "Empresa Demo" en modo `auto`, buzón IMAP de
+GreenMail) y el worker con la **IA simulada**
+(`AI_SERVICE_LLM_PROVIDER=simulated`). Cuatro correos por SMTP → `mail:sync`
+→ ingesta → `email.received.v1` → worker → `email.processed.v1` →
+`ai:consume-results`:
+
+| Email | Recomendación de ai-service | Lo que hizo Laravel |
+|---|---|---|
+| "¿Hacéis envíos a Canarias?" | `auto_send` (0,90) | processing → ai_review → approved → **sent**: llegó al buzón del cliente como "Re: …", en el hilo (`In-Reply-To`) y con `Auto-Submitted: auto-replied` |
+| "¿Dónde está mi pedido #45821?" | `human_review` (sin datos del pedido en la Fase 1) | **human_review** con el borrador y los motivos |
+| "Has ganado un premio…" | spam, sin borrador | **ignored** (spam con confianza ≥ 0,8) |
+| "Es inaceptable… mi abogado" | `escalate` (amenaza legal) | **human_review** con todos los motivos, incluido que la empresa no deja responder solas a las quejas |
+
+7 llamadas al modelo registradas en `ai_requests` con su coste (precio
+ficticio del modelo `simulated`). **Bug encontrado y corregido:** el
+timeout de socket de redis-py (ver el resumen de arriba).
+
+Reproducirlo en tu equipo:
+
+```bash
+# .env: AI_ENGINE=python, COMPOSE_PROFILES=ai-service,
+#       AI_SERVICE_ENVIRONMENT=local, AI_SERVICE_LLM_PROVIDER=simulated
+docker compose up -d --build
+docker compose exec app php artisan migrate
+docker compose exec app php artisan ai:automation 1 --mode=auto
+docker compose exec horizon php artisan horizon:terminate
+# Envía un correo a soporte@demo.test (GreenMail, SMTP 127.0.0.1:3025) y mira:
+docker compose logs -f ai-service ai-results
+```
+
+### IA simulada
+
+`AI_SERVICE_LLM_PROVIDER=simulated` (`infrastructure/llm/simulated.py`):
+las mismas reglas por palabras clave que la IA simulada de Laravel, sin red
+ni coste; modelo `simulated` (Laravel le da un precio ficticio para ver
+costes en Grafana). Solo responde con confianza a preguntas generales
+(`product_question`). **Prohibida fuera de `local`/`testing`.**
+
 ## Hoja de ruta
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | 🚧 Tareas 1.1–1.10 hechas |
+| 1 | Camino mínimo: evento → classify → draft → validate → evento → Laravel actualiza el estado | ✅ Hecha (probada de punta a punta con la IA simulada; pendiente de que la pruebes tú) |
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | Pendiente |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | Pendiente |
 | 4 | Checkpointing, `interrupt` y límites del agente | Pendiente |

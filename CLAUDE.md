@@ -3258,7 +3258,7 @@ rama `fase-13-human-in-the-loop`, el CI en verde, la fusione y siga
 (migración, `RolesAndPermissionsSeeder` por el permiso `emails.review`,
 reiniciar Prometheus/Grafana y Horizon).
 
-### AI-Service (microservicio de IA en Python): EN CURSO — Fase 1 (2026-10-17)
+### AI-Service (microservicio de IA en Python): Fase 1 COMPLETADA Y PROBADA DE PUNTA A PUNTA CON LA IA SIMULADA (2026-10-17), pendiente de que la pruebe el usuario
 
 Rama **`fase-ai-service`** (sesión en la nube, como las Fases 11 y 13: los
 commits se suben a esa rama, nunca a `main`; el usuario revisa el CI y la
@@ -3576,7 +3576,35 @@ accesible por el proxy); Docker Hub limitado (429) y sin kind.
   (`/ready`, `/health`, uid 10001). `.env.docker.example`:
   `COMPOSE_PROFILES`, `AI_SERVICE_ENVIRONMENT`, `AI_SERVICE_LLM_PROVIDER`,
   `AI_SERVICE_DEBUG_ENDPOINTS`
-- [ ] 1.11 Prueba de punta a punta en el stack + README final
+- [x] 1.11 **IA simulada, prueba de punta a punta y README.**
+  `infrastructure/llm/simulated.py` (`SimulatedLLM`, mismas reglas por
+  palabras clave que el simulado de Laravel; modelo `simulated`; solo
+  `product_question` con confianza 0,9) y `AI_SERVICE_LLM_PROVIDER`
+  (`build_llm` lo prohíbe fuera de local/testing). **Prueba real en la
+  sesión** (PostgreSQL + Redis + GreenMail, Laravel con
+  `AI_ENGINE=python` en PHP 8.4 contra la BD `app`, worker con la IA
+  simulada): 4 correos por SMTP → `mail:sync` → publicados → procesados
+  → `ai:consume-results`: Canarias **enviada sola** (llegó al cliente con
+  `In-Reply-To` y `Auto-Submitted`), pedido → human_review, spam →
+  ignored, queja con abogado → escalate → human_review (y la empresa no
+  permite `complaint`); 7 `ai_requests` con coste. **Bug encontrado:**
+  redis-py 8 corta `XREADGROUP BLOCK 5000` por su timeout de lectura por
+  defecto (los tests usaban BLOCK 100 ms) → `worker.redis_client()` con
+  `socket_timeout = block + 10 s` + test de regresión (BLOCK 6 s).
+  README del servicio: resumen para entrevista, resultados de la prueba,
+  cómo reproducirla; README raíz (estado y arquitectura). **Lección:**
+  `pkill -f <patrón>` mata también el propio shell si su línea contiene
+  el patrón (guardar el PID). 174 tests de ai-service
+
+**Resumen de la Fase 1:** 11 tareas + 1 fix de CI, 174 tests de Python
+(contrato, dominio, aplicación, grafo, adaptador de Claude con HTTP
+simulado, IA simulada, Redis real, worker), 39 tests nuevos de Pest
+(contrato, publicación y reconciliador, resultados, Redis real) y 6
+alertas probadas con `promtool`. **Pendiente para cerrarla:** que el
+usuario la pruebe en su equipo (ver "Prueba de punta a punta" del README
+del servicio) y, si quiere, con Claude real
+(`AI_SERVICE_LLM_PROVIDER=anthropic`). Siguiente: Fase 2 (RAG) cuando lo
+apruebe.
 
 ### Pendientes anotados para más adelante
 

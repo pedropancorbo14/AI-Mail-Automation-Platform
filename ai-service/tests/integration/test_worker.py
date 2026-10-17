@@ -63,3 +63,21 @@ async def test_the_worker_consumes_serves_ops_endpoints_and_stops(
     task.cancel()  # en producción lo para SIGTERM (stop.set); aquí se cancela
     with contextlib.suppress(asyncio.CancelledError):
         await task
+
+
+async def test_blocking_reads_outlive_the_socket_timeout(redis: Redis) -> None:
+    # Regresión: con el timeout de socket por defecto de redis-py, XREADGROUP con
+    # BLOCK de varios segundos fallaba con "Timeout reading from ...".
+    assert REDIS_URL
+    settings = Settings(_env_file=None, redis_url=SecretStr(REDIS_URL), read_block_ms=6000)
+    client = worker.redis_client(settings)
+    try:
+        await client.xgroup_create("block.v1", "g", id="0", mkstream=True)
+        started = asyncio.get_running_loop().time()
+        result = await client.xreadgroup("g", "c", {"block.v1": ">"}, count=1, block=6000)
+        elapsed = asyncio.get_running_loop().time() - started
+    finally:
+        await client.aclose()
+
+    assert result == []
+    assert elapsed >= 5.9

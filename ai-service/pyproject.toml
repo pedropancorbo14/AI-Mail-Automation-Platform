@@ -57,6 +57,7 @@ select = ["E", "W", "F", "I", "B", "UP", "N", "S", "ASYNC", "SIM", "RUF", "PT", 
 "tests/**" = ["S101"]
 # Texto de prompts: las frases no se parten (cambiarían el hash de la versión).
 "src/ai_service/infrastructure/llm/prompts.py" = ["E501"]
+"src/ai_service/infrastructure/llm/simulated.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

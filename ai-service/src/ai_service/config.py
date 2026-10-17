@@ -34,7 +34,12 @@ class Settings(BaseSettings):
     http_host: str = "0.0.0.0"  # noqa: S104 - dentro del contenedor; el compose no lo publica
     http_port: int = Field(default=8000, ge=1, le=65535)
 
-    # --- Modelo (Claude) ---
+    # --- Modelo ---
+    # anthropic (Claude real) o simulated (reglas por palabras clave, sin coste;
+    # solo en local y testing: nunca responde emails reales sin modelo).
+    llm_provider: Literal["anthropic", "simulated"] = "anthropic"
+    simulated_delay_ms: int = Field(default=300, ge=0, le=10_000)
+
     # Sin clave el consumidor no arranca con el proveedor anthropic (se dice claro).
     anthropic_api_key: SecretStr | None = None
     anthropic_model: str = "claude-opus-5-5"
