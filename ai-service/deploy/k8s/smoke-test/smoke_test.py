@@ -55,6 +55,8 @@ def main() -> int:
         "subject": "Mi pedido",
         "body": "Hola, ¿cuándo llega mi pedido? Gracias, Laura",
         "received_at": now(),
+        # La empresa tiene activadas las herramientas de pedidos (las decide Laravel).
+        "enabled_tools": ["get_customer_orders", "get_order"],
     }
     # Leer desde el último resultado que ya existe: solo cuenta el nuestro.
     last = client.xrevrange("email.processed.v1", count=1)

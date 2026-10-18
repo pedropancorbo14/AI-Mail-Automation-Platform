@@ -4705,6 +4705,13 @@ trabajar pedido por el usuario:** cuando todo esté hecho y el CI en verde,
   de descarga en reintento y, al agotarlo, el código salía `embeddings`
   (ahora el error temporal lleva su propio código). 438 tests de Python
 
+- [x] Fix (CI en rojo en R1.1, job `kubernetes`): la prueba de humo
+  publicaba un `email.received.v1` sin `enabled_tools` y, con el cambio de
+  R1.1, solo valía la búsqueda: no se consultaban pedidos. Ahora la prueba
+  activa `get_customer_orders` y `get_order` como haría Laravel.
+  **Lección:** al cambiar el contrato, buscar también los productores de
+  eventos fuera de los tests (la prueba de humo de Kubernetes)
+
 **Decisiones abiertas que había (ya resueltas arriba):**
 1. Frontera: las reglas de envío y el control de gasto se quedan en
    Laravel (recomendado).
