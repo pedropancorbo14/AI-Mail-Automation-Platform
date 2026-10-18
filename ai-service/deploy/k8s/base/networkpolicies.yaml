@@ -1,0 +1,83 @@
+# Red del namespace: todo denegado salvo lo que se abre aquí. Si un pod se
+# ve comprometido (p. ej. por una dependencia), no puede hablar con nada que
+# no necesite: ai-mcp solo recibe de ai-service y no sale a ningún sitio.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# DNS para todos los pods del namespace (CoreDNS de kube-system).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# ai-service: entra solo Prometheus (métricas) y sale a lo que usa.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-service
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ai-service
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - {protocol: TCP, port: 8000}
+  egress:
+    # Servidor MCP del namespace.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ai-mcp
+      ports:
+        - {protocol: TCP, port: 8100}
+    # Redis, PostgreSQL y Ollama: en producción son de la plataforma (fuera de
+    # este namespace y con IP que no conoce el manifiesto), así que se abre el
+    # puerto, no el destino. La API de Anthropic, por HTTPS.
+    - ports:
+        - {protocol: TCP, port: 6379}
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 11434}
+        - {protocol: TCP, port: 443}
+---
+# ai-mcp: solo ai-service puede llamarlo; no sale a ningún sitio (solo DNS).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-mcp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ai-mcp
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ai-service
+      ports:
+        - {protocol: TCP, port: 8100}

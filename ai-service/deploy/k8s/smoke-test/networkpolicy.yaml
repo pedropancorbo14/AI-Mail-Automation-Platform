@@ -1,0 +1,13 @@
+# La prueba de humo solo necesita Redis (la red del namespace deniega el resto).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-service-smoke-test
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ai-service-smoke-test
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - {protocol: TCP, port: 6379}

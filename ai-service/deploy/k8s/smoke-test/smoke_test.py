@@ -26,8 +26,22 @@ def now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def main() -> int:
+def connect() -> redis.Redis:
+    """Redis puede rechazar los primeros segundos: con NetworkPolicies, el
+    controlador de red tarda un momento en dar de alta la IP de un pod nuevo."""
     client = redis.Redis.from_url(os.environ["AI_SERVICE_REDIS_URL"], decode_responses=True)
+    for _ in range(30):
+        try:
+            client.ping()
+            return client
+        except redis.ConnectionError:
+            time.sleep(1)
+    client.ping()  # el último intento lanza el error real
+    return client
+
+
+def main() -> int:
+    client = connect()
     event_id = str(uuid.uuid4())
     event = {
         "event_id": event_id,

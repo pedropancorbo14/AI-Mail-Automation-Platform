@@ -4357,7 +4357,22 @@ el equipo del usuario y en el CI, kind funciona sin nada de esto.
   `classification`). CI: paso **kubeconform** (Kubernetes 1.33, estricto)
   sobre el overlay local y la prueba de humo. `deploy/` fuera de la imagen
   (`.dockerignore`). README del servicio: sección "Kubernetes (Fase 6)"
-- [ ] 6.2 NetworkPolicies (denegar por defecto) probadas en el clúster
+- [x] 6.2 **NetworkPolicies.** Base: `default-deny` (entrada y salida de
+  todo el namespace), `allow-dns` (CoreDNS de kube-system), `ai-service`
+  (entra solo Prometheus por 8000 desde cualquier namespace; sale a
+  `ai-mcp`:8100 y, **por puerto**, a 6379/5432/11434/443: en producción
+  Redis, PostgreSQL y Ollama están fuera del namespace con IP desconocida, y
+  Anthropic por HTTPS) y `ai-mcp` (solo recibe de `ai-service`; sin salida
+  salvo DNS). Overlay local: Redis acepta a `ai-service` y a la prueba de
+  humo; PostgreSQL, solo a `ai-service`. Prueba de humo con su política de
+  salida a 6379. **Encontrado al probar en k3s:** el Job fallaba con
+  "connection refused" aunque las políticas eran correctas: el controlador
+  de red (kube-router) tarda un momento en dar de alta la IP de un pod
+  recién creado y el script conectaba al arrancar → reintenta la conexión
+  inicial 30 s. **Pruebas negativas en el clúster:** desde `ai-mcp` y desde
+  un pod sin etiquetas, Redis, PostgreSQL, `ai-mcp`, `ai-service` e internet
+  (1.1.1.1:443) → rechazados; desde `ai-service`, Redis/PostgreSQL/`ai-mcp`
+  → abiertos; prueba de humo OK con todo aplicado
 - [ ] 6.3 Overlay de producción (réplicas, PDB, reparto entre nodos,
   secretos fuera del repositorio)
 - [ ] 6.4 CI: desplegar en kind y pasar la prueba de humo

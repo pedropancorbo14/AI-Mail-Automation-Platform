@@ -748,7 +748,7 @@ Laravel ya descarta cualquier resultado en modo sombra sin tocar el email.
 
 ## Kubernetes (Fase 6)
 
-> En curso. Hecho: base, overlay local y prueba de humo (tarea 6.1).
+> En curso. Hecho: base, overlay local, prueba de humo (6.1) y red (6.2).
 
 Solo el microservicio va a Kubernetes (el worker `ai-service` y el servidor
 MCP `ai-mcp`); Laravel sigue en Docker Compose. En producción los dos
@@ -785,6 +785,12 @@ servicio se distribuyera a terceros.
 - `ai-mcp` con **una réplica** a propósito (los tickets de demostración
   viven en memoria) y sin acceso a la clave de Anthropic ni a Redis: solo
   recibe su token.
+- **Red denegada por defecto** (NetworkPolicies): cada pod solo habla con lo
+  que necesita. `ai-mcp` solo recibe de `ai-service` y no sale a ningún
+  sitio (solo DNS); `ai-service` recibe solo de Prometheus (métricas) y sale
+  a `ai-mcp`, a Redis/PostgreSQL/Ollama por puerto (en producción están fuera
+  del namespace, con IP que el manifiesto no conoce) y a HTTPS (Anthropic).
+  En el overlay local, Redis y PostgreSQL solo aceptan a quien los usa.
 - Configuración en un ConfigMap generado (nombre con hash del contenido:
   cambiar un valor reinicia los pods); secretos en `ai-service-secrets`,
   que pone cada overlay.
@@ -810,7 +816,10 @@ kubectl -n aimail-ai logs job/ai-service-smoke-test
 El Job publica un `email.received.v1` (Laura: "¿cuándo llega mi pedido?") y
 espera su `email.processed.v1`: debe consultar la lista de pedidos en
 `ai-mcp` (plan), pedir el detalle del más reciente (IA simulada) y
-recomendar `auto_send`. Para repetirlo:
+recomendar `auto_send`. Reintenta la conexión a Redis unos segundos al
+empezar: con NetworkPolicies, el controlador de red tarda un momento en dar
+de alta la IP de un pod recién creado (sin el reintento, el Job fallaba con
+"connection refused"). Para repetirlo:
 `kubectl -n aimail-ai delete job ai-service-smoke-test` y volver a
 aplicarlo.
 
@@ -819,6 +828,9 @@ ese entorno): los 4 pods con Pod Security `restricted` sin avisos, `/ready`
 con Redis, consumidores y checkpoints en verde, las tablas de checkpoints
 creadas en el esquema `ai_service` y la prueba de humo en verde
 (`get_customer_orders` del plan + `get_order` pedido por la IA → `auto_send`).
+Con las NetworkPolicies aplicadas, desde `ai-mcp` y desde un pod cualquiera
+del namespace las conexiones a Redis, PostgreSQL, `ai-mcp`, `ai-service` e
+internet se rechazan, y `ai-service` sigue llegando a las tres dependencias.
 En el CI, kubeconform valida los manifiestos renderizados contra el esquema
 de Kubernetes 1.33.
 

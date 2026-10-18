@@ -19,6 +19,7 @@ resources:
   - serviceaccounts.yaml
   - ai-service.yaml
   - ai-mcp.yaml
+  - networkpolicies.yaml
 
 # Configuración no secreta. El nombre lleva un hash del contenido: cambiar un
 # valor crea un ConfigMap nuevo y reinicia los pods que lo usan.

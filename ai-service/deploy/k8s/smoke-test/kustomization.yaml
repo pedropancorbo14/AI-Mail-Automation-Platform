@@ -10,6 +10,7 @@ namespace: aimail-ai
 
 resources:
   - job.yaml
+  - networkpolicy.yaml
 
 configMapGenerator:
   - name: ai-service-smoke-test
