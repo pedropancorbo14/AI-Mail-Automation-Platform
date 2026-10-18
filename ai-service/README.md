@@ -55,6 +55,11 @@ del email, reglas finales y envío.
   dashboard de Grafana, alertas probadas con `promtool`, logs JSON en Loki
   con `trace_id` de punta a punta; CI con ruff, mypy estricto, pytest con
   Redis real, pip-audit y build de la imagen.
+- **Kubernetes:** manifiestos con Kustomize (base + overlays local y
+  producción), Pod Security `restricted`, NetworkPolicies con todo denegado
+  por defecto, sondas `/health`/`/ready`, despliegues sin cortes, PDB y
+  escalado horizontal por consumer group. El CI crea un clúster **kind** en
+  cada push, despliega y pasa una prueba de humo de punta a punta.
 - **Algo que salió al probar de verdad:** redis-py corta las lecturas
   bloqueantes de `XREADGROUP` con su timeout de socket por defecto; los
   tests (con `BLOCK` de 100 ms) no lo veían. Ahora hay test de regresión.
@@ -64,7 +69,7 @@ del email, reglas finales y envío.
 1. [Por qué un microservicio](#por-qué-un-microservicio)
 2. [Arquitectura](#arquitectura)
 3. [Contrato de eventos](#contrato-de-eventos)
-4. [Cómo ejecutarlo](#cómo-ejecutarlo) · [Kubernetes](#kubernetes-fase-6) · [**Probarlo en tu equipo (lista completa)**](#probarlo-en-tu-equipo-fases-15)
+4. [Cómo ejecutarlo](#cómo-ejecutarlo) · [Kubernetes](#kubernetes-fase-6) · [Kubernetes en tu equipo](#kubernetes-en-tu-equipo-kind) · [**Probarlo en tu equipo (lista completa)**](#probarlo-en-tu-equipo-fases-15)
 5. [Calidad: tests, tipos y reglas de capas](#calidad-tests-tipos-y-reglas-de-capas)
 6. [Observabilidad](#observabilidad)
 7. [Decisiones tomadas](#decisiones-tomadas)
@@ -748,8 +753,9 @@ Laravel ya descarta cualquier resultado en modo sombra sin tocar el email.
 
 ## Kubernetes (Fase 6)
 
-> En curso. Hecho: base, overlay local, prueba de humo (6.1), red (6.2),
-> overlay de producción (6.3) y despliegue en kind en el CI (6.4).
+> Hecha y probada en un clúster real (k3s en la sesión y kind en el CI en
+> cada push). Para probarla en tu equipo:
+> [Kubernetes en tu equipo (kind)](#kubernetes-en-tu-equipo-kind).
 
 Solo el microservicio va a Kubernetes (el worker `ai-service` y el servidor
 MCP `ai-mcp`); Laravel sigue en Docker Compose. En producción los dos
@@ -1018,6 +1024,35 @@ ai_service_checkpoints PASSWORD '...'`); los emails se quedan en
 `processing` → `ai-results` no está levantado o Horizon no recogió
 `AI_ENGINE` (`horizon:terminate`).
 
+### Kubernetes en tu equipo (kind)
+
+En Windows con Docker Desktop (también vale el Kubernetes que trae Docker
+Desktop, sin `kind load`). Instala [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
+y `kubectl` (con winget: `winget install Kubernetes.kind Kubernetes.kubectl`).
+Desde la raíz del proyecto, en PowerShell:
+
+```powershell
+kind create cluster --name aimail --image kindest/node:v1.33.1
+docker build -t aimail/ai-service:dev ai-service
+kind load docker-image aimail/ai-service:dev --name aimail
+kubectl kustomize --load-restrictor LoadRestrictionsNone ai-service/deploy/k8s/overlays/local | kubectl apply -f -
+kubectl -n aimail-ai rollout status deploy/redis deploy/postgres deploy/ai-mcp deploy/ai-service
+kubectl apply -k ai-service/deploy/k8s/smoke-test
+kubectl -n aimail-ai wait --for=condition=complete job/ai-service-smoke-test --timeout=180s
+kubectl -n aimail-ai logs job/ai-service-smoke-test     # OK: ai-service y ai-mcp responden de punta a punta
+```
+
+Para curiosear: `kubectl -n aimail-ai get pods,networkpolicies`,
+`kubectl -n aimail-ai logs deploy/ai-service` y
+`kubectl -n aimail-ai port-forward svc/ai-service 8000:8000` (luego
+`http://localhost:8000/ready` y `/metrics`). Tras cambiar el código:
+`docker build`, `kind load` y `kubectl -n aimail-ai rollout restart deploy/ai-service deploy/ai-mcp`.
+Para repetir la prueba de humo, `kubectl -n aimail-ai delete job ai-service-smoke-test`
+y volver a aplicarla. Borrarlo todo: `kind delete cluster --name aimail`.
+
+Es independiente de Docker Compose: el clúster tiene su propio Redis y
+PostgreSQL de pruebas y el Job hace de Laravel. No hace falta parar el stack.
+
 ## Cómo ejecutarlo
 
 Requisitos: [uv](https://docs.astral.sh/uv/) (instala él mismo Python 3.12).
@@ -1196,6 +1231,9 @@ la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root).
 | Plan de herramientas **determinista** por intención | Tool calling de Claude (el modelo elige) | Predecible, una sola llamada de redacción (más barato y rápido), auditable y no manipulable; con Opus 5.5 además no se puede forzar `tool_choice`. Desde la Fase 5 el modelo **puede pedir** consultas extra de solo lectura de los especialistas del email, con límites (casi nunca hace falta: el plan ya trae los datos) |
 | Supervisor **determinista** por intención y datos extraídos | Supervisor con una llamada al modelo | Sin coste ni latencia extra, predecible y un email no puede "pedir" un especialista con más herramientas; la clasificación ya es una llamada con structured outputs |
 | Modo sombra que compara **recomendación con recomendación** | Comparar lo que pasó con el email | El modo de la empresa (borrador o automático) y `AutoSendPolicy` aplican igual a los dos motores; así también se ve si Python habría enviado sola una respuesta en una empresa en borrador |
+| **Kustomize** (base + overlays) | Helm | Viene en `kubectl`, YAML normal sin lenguaje de plantillas; Helm compensaría para distribuir el servicio a terceros |
+| Pod Security **`restricted`** en el namespace | Revisar cada manifiesto a mano | El API server rechaza cualquier pod con root, capacidades o sin seccomp: imposible desplegar uno inseguro por descuido |
+| Escalar **a mano** (réplicas) | HPA por CPU; KEDA | El worker casi siempre espera a la IA: la CPU no dice nada. KEDA por mensajes pendientes del stream cuando haya volumen real |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
@@ -1335,4 +1373,4 @@ costes en Grafana). Solo responde con confianza a preguntas generales
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | ✅ Hecha (probada de punta a punta con la IA simulada y el servidor MCP en Docker) |
 | 4 | Checkpointing, `interrupt` (acciones con aprobación humana), reprocesar con una indicación y límites del agente | ✅ Hecha (probada de punta a punta con la IA simulada, la API del panel y un reinicio del worker en mitad de la pausa) |
 | 5 | Supervisor con especialistas en paralelo, redactor agéntico y modo *shadow* (comparar con el motor de Laravel) | ✅ Hecha (probada de punta a punta con la IA simulada, el servidor MCP y los dos motores) |
-| 6 | Kubernetes (Kustomize; probado en un clúster real) | En curso |
+| 6 | Kubernetes (Kustomize, Pod Security restricted, NetworkPolicies, overlays local y producción) | ✅ Hecha (probada en k3s en la sesión y en kind en el CI en cada push) |

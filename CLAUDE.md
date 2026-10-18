@@ -4298,7 +4298,7 @@ correos de prueba con lo que debe pasar, modo sombra y problemas típicos),
 enlazada desde el README raíz; sustituye al bloque desfasado de la Fase 1.
 Siguiente: Fase 6 (Kubernetes) cuando lo apruebe.
 
-### AI-Service, Fase 6 (Kubernetes): EN CURSO (2026-10-18)
+### AI-Service, Fase 6 (Kubernetes): COMPLETADA Y PROBADA EN UN CLÚSTER REAL (k3s en la sesión, kind en el CI) (2026-10-18), pendiente de que la pruebe el usuario
 
 Misma rama `fase-ai-service`, misma forma de trabajo (un commit por tarea,
 tests en verde, CI comprobado tras cada push, documentación al día).
@@ -4404,7 +4404,31 @@ el equipo del usuario y en el CI, kind funciona sin nada de esto.
   NetworkPolicies con kindnet), espera los 4 despliegues y pasa la prueba de
   humo; si falla, vuelca pods, jobs, eventos, `describe` y logs del worker,
   del MCP y del Job
-- [ ] 6.5 README, guía para kind en el equipo del usuario y cierre
+- [x] 6.5 **README y cierre.** CI de la 6.4 en verde a la primera: en kind
+  los 4 despliegues arrancan, se crean las NetworkPolicies (kindnet) y la
+  prueba de humo dice OK (`get_customer_orders` del plan + `get_order` de la
+  IA → `auto_send`; comprobado en el log del job). README del servicio:
+  sección "Kubernetes (Fase 6)" como hecha, **"Kubernetes en tu equipo
+  (kind)"** (Windows + Docker Desktop: `winget install Kubernetes.kind
+  Kubernetes.kubectl`, crear el clúster, construir y cargar la imagen,
+  aplicar el overlay local, prueba de humo, curiosear, repetir y borrar; en
+  PowerShell, sin `\` de continuación), resumen de entrevista con
+  Kubernetes, decisiones (Kustomize frente a Helm, PSS restricted, escalar
+  a mano frente a HPA/KEDA) y hoja de ruta. README raíz: las 6 fases hechas
+
+**Resumen de la Fase 6:** 5 tareas en 5 commits, manifiestos en
+`ai-service/deploy/k8s` (base, overlays local y producción, prueba de
+humo), probados en k3s real en la sesión (con las pruebas negativas de las
+NetworkPolicies) y en **kind en el CI en cada push** (job `kubernetes`) +
+kubeconform. 1 arreglo de código encontrado al desplegar (consumidores
+muertos en el grupo de Redis), 373 tests de Python. **Pendiente para
+cerrarla:** que el usuario revise la rama `fase-ai-service`, el CI en verde
+y, si quiere, lo pruebe en su equipo con "Kubernetes en tu equipo (kind)"
+del README del servicio. **Con esto termina el plan de 6 fases del
+microservicio.** Siguientes pasos posibles (a decidir con el usuario):
+fusionar la rama, probar con Claude real (`AI_SERVICE_LLM_PROVIDER=
+anthropic`), retirar el motor de IA de Laravel cuando ai-service lo iguale,
+o seguir con las fases 14–17 de la plataforma.
 
 ### Pendientes anotados para más adelante
 
