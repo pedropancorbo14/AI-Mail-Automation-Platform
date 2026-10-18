@@ -1,0 +1,421 @@
+{
+ "date": "2026-10-18",
+ "model": "Claude (el mismo modelo en los dos motores)",
+ "emails": [
+  {
+   "subject": "¿Dónde está mi pedido #45821?",
+   "from": "cliente@cliente.test",
+   "expected_intent": "order_status",
+   "compared": true,
+   "laravel": {
+    "intent": "order_status",
+    "decision": "human_review",
+    "cost_usd": 0.061084
+   },
+   "python": {
+    "intent": "order_status",
+    "decision": "human_review",
+    "confidence": 0.95,
+    "cost_usd": 0.054732,
+    "reasons": [
+     "La confianza en la respuesta (0,60) es menor que el mínimo (0,85).",
+     "El pedido lleva 17 días de retraso sobre la fecha estimada (01/10/2026) y no figura como entregado. Hay que abrir una incidencia con SEUR, y eso no se puede hacer desde aquí. Además, puede acabar en reenvío o reembolso si el paquete se da por perdido.",
+     "Requiere acciones que solo puede hacer una persona: Abrir una incidencia con SEUR por el pedido #45821 (seguimiento SEU123456789ES); Responder al cliente en un plazo de 24 horas laborables con el resultado de la incidencia; Si SEUR da el paquete por perdido, gestionar el reenvío sin coste o el reembolso, según lo que elija el cliente."
+    ]
+   }
+  },
+  {
+   "subject": "Pedido 44102",
+   "from": "cliente@cliente.test",
+   "expected_intent": "order_status",
+   "compared": true,
+   "laravel": {
+    "intent": "order_status",
+    "decision": "auto_send",
+    "cost_usd": 0.063856
+   },
+   "python": {
+    "intent": "order_status",
+    "decision": "human_review",
+    "confidence": 0.95,
+    "cost_usd": 0.04576,
+    "reasons": [
+     "La confianza en la respuesta (0,80) es menor que el mínimo (0,85)."
+    ]
+   }
+  },
+  {
+   "subject": "Mi pedido",
+   "from": "laura@cliente.test",
+   "expected_intent": "order_status",
+   "compared": true,
+   "laravel": {
+    "intent": "order_status",
+    "decision": "human_review",
+    "cost_usd": 0.090628
+   },
+   "python": {
+    "intent": "order_status",
+    "decision": "human_review",
+    "confidence": 0.92,
+    "cost_usd": 0.067952,
+    "reasons": [
+     "La confianza en la respuesta (0,50) es menor que el mínimo (0,85).",
+     "El pedido 78123 se hizo el 5 de octubre y el 18 de octubre sigue «En preparación», sin envío asignado. Para la península, el plazo de entrega es de 24 a 48 horas laborables, así que el retraso es anómalo. Hay que revisarlo con el almacén y quizá darle al cliente información o alternativas.",
+     "Requiere acciones que solo puede hacer una persona: Revisar con el almacén por qué el pedido 78123 sigue en preparación desde el 5 de octubre; Contestar a la clienta con la fecha prevista de envío o las alternativas posibles."
+    ]
+   }
+  },
+  {
+   "subject": "Order 75555",
+   "from": "john@customer.test",
+   "expected_intent": "order_status",
+   "compared": true,
+   "laravel": {
+    "intent": "order_status",
+    "decision": "auto_send",
+    "cost_usd": 0.042728
+   },
+   "python": {
+    "intent": "order_status",
+    "decision": "auto_send",
+    "confidence": 0.97,
+    "cost_usd": 0.03278,
+    "reasons": []
+   }
+  },
+  {
+   "subject": "Pedido 45821",
+   "from": "marcos@cliente.test",
+   "expected_intent": "order_status",
+   "compared": true,
+   "laravel": {
+    "intent": "order_status",
+    "decision": "human_review",
+    "cost_usd": 0.050944
+   },
+   "python": {
+    "intent": "order_status",
+    "decision": "human_review",
+    "confidence": 0.88,
+    "cost_usd": 0.0441,
+    "reasons": [
+     "La consulta get_order no fue bien: No hay ningún pedido con ese número asociado a este cliente.",
+     "El pedido está a nombre de un tercero, por lo que hay que verificar si se puede dar información sobre él al remitente.",
+     "La confianza en la respuesta (0,50) es menor que el mínimo (0,85).",
+     "El pedido 45821 no aparece asociado al cliente que escribe (la consulta devolvió un error), y el cliente dice que está a nombre de otra persona. La documentación no explica cómo atender consultas sobre pedidos de otras personas. Conviene que alguien revise si se le puede dar algún dato o si hay que mantener la respuesta sin información del pedido."
+    ]
+   }
+  },
+  {
+   "subject": "Devolver robot",
+   "from": "marcos@cliente.test",
+   "expected_intent": "return_request",
+   "compared": true,
+   "laravel": {
+    "intent": "return_request",
+    "decision": "human_review",
+    "cost_usd": 0.10918
+   },
+   "python": {
+    "intent": "return_request",
+    "decision": "human_review",
+    "confidence": 0.95,
+    "cost_usd": 0.075456,
+    "reasons": [
+     "La confianza en la respuesta (0,40) es menor que el mínimo (0,85).",
+     "El cliente dice que quiere devolver un robot aspirador del pedido 76540, pero ese pedido solo tiene un sofá (SOF-2P) y no tiene más pedidos en su cuenta. Además, la documentación consultada no explica cómo se solicita o gestiona una devolución, solo da plazos y condiciones.",
+     "Requiere acciones que solo puede hacer una persona: Confirmar con el cliente el pedido correcto del robot aspirador, o si se compró con otra cuenta; Comprobar si está dentro del plazo de 30 días desde la entrega y, si procede, gestionar la solicitud de devolución."
+    ]
+   }
+  },
+  {
+   "subject": "Devolución sillas",
+   "from": "laura@cliente.test",
+   "expected_intent": "return_request",
+   "compared": true,
+   "laravel": {
+    "intent": "return_request",
+    "decision": "human_review",
+    "cost_usd": 0.074944
+   },
+   "python": {
+    "intent": "return_request",
+    "decision": "human_review",
+    "confidence": 0.93,
+    "cost_usd": 0.073084,
+    "reasons": [
+     "La confianza en la respuesta (0,60) es menor que el mínimo (0,85).",
+     "La clienta pide una devolución, pero el pedido 78123 sigue en preparación y no se ha enviado. Lo que encaja es una cancelación, que tiene que gestionar una persona y es urgente, porque solo sale sin coste mientras el pedido no haya salido del almacén.",
+     "Requiere acciones que solo puede hacer una persona: Confirmar con la clienta si quiere cancelar el pedido 78123; Si lo confirma, gestionar la cancelación del pedido 78123 antes de que salga del almacén; Si el pedido se envía antes de la cancelación, gestionar la devolución cuando lo reciba (pedir el motivo y enviar la etiqueta)."
+    ]
+   }
+  },
+  {
+   "subject": "Broken lamp",
+   "from": "john@customer.test",
+   "expected_intent": "return_request",
+   "compared": true,
+   "laravel": {
+    "intent": "return_request",
+    "decision": "human_review",
+    "cost_usd": 0.080876
+   },
+   "python": {
+    "intent": "return_request",
+    "decision": "human_review",
+    "confidence": 0.93,
+    "cost_usd": 0.05504,
+    "reasons": [
+     "La confianza en la respuesta (0,30) es menor que el mínimo (0,85).",
+     "We have no documents on returns or items damaged on arrival. A search of the documents found nothing on the return process, deadlines or conditions, so the reply doesn't include any of those details. Someone needs to decide how to handle the return. Order 75555 was delivered on 2026-09-23, and the customer wrote 25 days later, on 2026-10-18.",
+     "Requiere acciones que solo puede hacer una persona: Review the return request for the damaged lamp (order 75555, SKU LMP-200, 59.90 EUR) and send the customer the return steps; Check whether the customer's request falls within the return deadline and conditions, since the order was delivered on 2026-09-23."
+    ]
+   }
+  },
+  {
+   "subject": "Cancelar pedido 78123",
+   "from": "laura@cliente.test",
+   "expected_intent": "cancellation",
+   "compared": true,
+   "laravel": {
+    "intent": "cancellation",
+    "decision": "human_review",
+    "cost_usd": 0.070116
+   },
+   "python": {
+    "intent": "cancellation",
+    "decision": "human_review",
+    "confidence": 0.95,
+    "cost_usd": 0.041852,
+    "reasons": [
+     "La confianza en la respuesta (0,80) es menor que el mínimo (0,85).",
+     "La clienta pide cancelar el pedido 78123, que está en preparación y aún no se ha enviado. Alguien del equipo tiene que hacer la cancelación y confirmársela.",
+     "Requiere acciones que solo puede hacer una persona: Cancelar el pedido 78123 (estado: en preparación, sin envío) antes de que salga del almacén y confirmar la cancelación a la clienta; Si el pedido ya hubiera salido, informar a la clienta del procedimiento de devolución."
+    ]
+   }
+  },
+  {
+   "subject": "Anular pedido",
+   "from": "cliente@cliente.test",
+   "expected_intent": "cancellation",
+   "compared": true,
+   "laravel": {
+    "intent": "cancellation",
+    "decision": "human_review",
+    "cost_usd": 0.09158
+   },
+   "python": {
+    "intent": "cancellation",
+    "decision": "human_review",
+    "confidence": 0.95,
+    "cost_usd": 0.055428,
+    "reasons": [
+     "La confianza en la respuesta (0,55) es menor que el mínimo (0,85).",
+     "El cliente quiere cancelar, pero el pedido ya está enviado y no se puede cancelar. Además, la entrega estaba prevista para el 2026-10-01 y a 2026-10-18 sigue sin entregarse (17 días de retraso). Hay que revisar si el paquete se ha perdido y abrir una incidencia con SEUR. Si se da por perdido, la documentación contempla reenviarlo o devolver el importe. Eso lo tiene que decidir una persona.",
+     "Requiere acciones que solo puede hacer una persona: Revisar con SEUR el estado del envío SEU123456789ES y, si procede, abrir una incidencia con la empresa de transporte (respuesta al cliente en 24 h laborables); Si el paquete se da por perdido, decidir con el cliente si se le envía uno nuevo o se le devuelve el importe (el cliente quería anular el pedido); Si el cliente recibe el pedido, gestionar la devolución."
+    ]
+   }
+  },
+  {
+   "subject": "Factura pedido 77001",
+   "from": "contabilidad@talleresruiz.test",
+   "expected_intent": "invoice_request",
+   "compared": true,
+   "laravel": {
+    "intent": "invoice_request",
+    "decision": "auto_send",
+    "cost_usd": 0.05644
+   },
+   "python": {
+    "intent": "invoice_request",
+    "decision": "human_review",
+    "confidence": 0.95,
+    "cost_usd": 0.052884,
+    "reasons": [
+     "La confianza en la respuesta (0,75) es menor que el mínimo (0,85).",
+     "Requiere acciones que solo puede hacer una persona: Cuando el cliente envíe su dirección fiscal a facturacion@demo.test, emitir la factura del pedido 77001 a nombre de Talleres Ruiz SL (CIF B12345678) y enviársela.."
+    ]
+   }
+  },
+  {
+   "subject": "Factura",
+   "from": "cliente@cliente.test",
+   "expected_intent": "invoice_request",
+   "compared": true,
+   "laravel": {
+    "intent": "invoice_request",
+    "decision": "human_review",
+    "cost_usd": 0.054992
+   },
+   "python": {
+    "intent": "invoice_request",
+    "decision": "human_review",
+    "confidence": 0.95,
+    "cost_usd": 0.05284,
+    "reasons": [
+     "La confianza en la respuesta (0,60) es menor que el mínimo (0,85).",
+     "El cliente pide que le reenviemos la factura FAC-44102. La documentación no explica cómo se reenvía una factura y desde aquí no se puede adjuntar ni enviar. Alguien del equipo tiene que reenviarla.",
+     "Requiere acciones que solo puede hacer una persona: Reenviar la factura FAC-44102 (pedido 44102) a cliente@cliente.test."
+    ]
+   }
+  },
+  {
+   "subject": "Cobro duplicado",
+   "from": "marcos@cliente.test",
+   "expected_intent": "billing_issue",
+   "compared": true,
+   "laravel": {
+    "intent": "billing_issue",
+    "decision": "human_review",
+    "cost_usd": 0.025548
+   },
+   "python": {
+    "intent": "billing_issue",
+    "decision": "human_review",
+    "confidence": 0.93,
+    "cost_usd": 0.05132,
+    "reasons": [
+     "El cliente menciona acciones legales.",
+     "Amenaza con denuncia y acciones legales, y pide la devolución de un cargo duplicado de 349 €.",
+     "La confianza en la respuesta (0,45) es menor que el mínimo (0,85).",
+     "El cliente dice que le cobraron dos veces el pedido 76540, pero solo aparece una factura de 349 € (FAC-76540), así que no podemos confirmar el duplicado. Además, amenaza con acciones legales y exige el reembolso en 48 horas, un plazo que no podemos comprometer.",
+     "Requiere acciones que solo puede hacer una persona: Pedir al cliente la captura del extracto bancario con los dos cargos o comprobar directamente la pasarela de pago del pedido 76540; Comprobar si existe un segundo cargo de 349 € y, si se confirma, tramitar la devolución; Revisar el caso por la amenaza de acciones legales."
+    ]
+   }
+  },
+  {
+   "subject": "Cobro de pedido cancelado",
+   "from": "laura@cliente.test",
+   "expected_intent": "billing_issue",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Envíos a Canarias",
+   "from": "elena@nueva.test",
+   "expected_intent": "product_question",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Shipping to Lisbon",
+   "from": "john@customer.test",
+   "expected_intent": "product_question",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Plazo de devolución",
+   "from": "elena@nueva.test",
+   "expected_intent": "product_question",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Garantía",
+   "from": "elena@nueva.test",
+   "expected_intent": "product_question",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Formas de pago",
+   "from": "elena@nueva.test",
+   "expected_intent": "product_question",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Tienda física",
+   "from": "elena@nueva.test",
+   "expected_intent": "product_question",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "El robot no enciende",
+   "from": "marcos@cliente.test",
+   "expected_intent": "technical_support",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Bombillas no funcionan",
+   "from": "cliente@cliente.test",
+   "expected_intent": "technical_support",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Muy mal servicio",
+   "from": "laura@cliente.test",
+   "expected_intent": "complaint",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Calidad",
+   "from": "contabilidad@talleresruiz.test",
+   "expected_intent": "complaint",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Pedido grande",
+   "from": "contabilidad@talleresruiz.test",
+   "expected_intent": "sales_inquiry",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Cambiar dirección",
+   "from": "laura@cliente.test",
+   "expected_intent": "account_change",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Cambiar email",
+   "from": "cliente@cliente.test",
+   "expected_intent": "account_change",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Thanks!",
+   "from": "john@customer.test",
+   "expected_intent": "feedback",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Fuera de la oficina",
+   "from": "contabilidad@talleresruiz.test",
+   "expected_intent": "auto_reply",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "¡Gana 5000€ al mes!",
+   "from": "elena@nueva.test",
+   "expected_intent": "spam",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Trabajo",
+   "from": "elena@nueva.test",
+   "expected_intent": "other",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  },
+  {
+   "subject": "Consulta",
+   "from": "cliente@cliente.test",
+   "expected_intent": "injection",
+   "compared": false,
+   "note": "Sin comparar: se agotó el saldo de la cuenta de Anthropic."
+  }
+ ]
+}

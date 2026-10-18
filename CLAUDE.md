@@ -4430,7 +4430,7 @@ fusionar la rama, probar con Claude real (`AI_SERVICE_LLM_PROVIDER=
 anthropic`), retirar el motor de IA de Laravel cuando ai-service lo iguale,
 o seguir con las fases 14–17 de la plataforma.
 
-### Retirada del motor de IA de Laravel: PLANIFICADA (2026-10-18), pendiente de que el usuario apruebe las decisiones abiertas
+### Retirada del motor de IA de Laravel: EN CURSO (2026-10-18), rama `retirada-motor-laravel`
 
 Pedido por el usuario: **toda la lógica de la IA en el microservicio**.
 Hoy conviven dos motores que hacen lo mismo (`AI_ENGINE=laravel|python`,
@@ -4575,7 +4575,48 @@ desde `fase-ai-service`, que aún no está fusionada):
 mitigado con el modo degradado de R1.4, réplicas y alertas que ya existen);
 más piezas en marcha en local; reindexar todos los documentos una vez.
 
-**Decisiones abiertas (las decide el usuario):**
+**Decisiones (aprobadas por el usuario el 2026-10-18: "haz todo lo
+recomendado"):** las reglas de envío y el control de gasto se quedan en
+Laravel; el fichero a indexar llega por **URL firmada temporal**; puerta de
+calidad con Claude real antes de cambiar de motor; rama
+`retirada-motor-laravel` desde `fase-ai-service`. **Cambio en la forma de
+trabajar pedido por el usuario:** cuando todo esté hecho y el CI en verde,
+**push a `main`** con todo (fast-forward; `main` es ancestro de la rama).
+
+**Estado de las tareas:**
+- [x] **R3. Puerta de calidad con Claude real** (hecha primero: la clave
+  que dio el usuario caducaba en un día y hacían falta los dos motores).
+  Prueba previa por `/debug/process`: ai-service con Claude real funciona,
+  incluido el redactor agéntico (el modelo pide `get_order`, dos rondas,
+  structured outputs + herramientas sin ningún 400). Después modo sombra con
+  el conjunto de 32 correos de `ai-service/evals/gate_dataset.py` (14
+  intenciones), mismo modelo en los dos motores, búsqueda con un servidor
+  de embeddings de bolsa de palabras **solo de la sesión** (bge-m3 no se
+  puede descargar aquí: registro de Ollama y Hugging Face bloqueados) igual
+  para los dos. **Se agotó el saldo de la cuenta tras 13 correos** (pedidos
+  ×5, devoluciones ×3, cancelaciones ×2, facturas ×2, cobro duplicado): el
+  resto falló en los dos motores con "credit balance is too low".
+  Resultados de los 13 (`ai-service/evals/retirement-gate-2026-10-18.json`):
+  **misma intención 13/13 (100 %)**, **misma decisión 11/13 (84,6 %)**, por
+  debajo del umbral del 90 %: en los 2 desacuerdos **ai-service es más
+  prudente** (pide una persona donde Laravel enviaría) por su umbral de
+  confianza 0,85 frente al 0,75 de Laravel (#27 confianza 0,80; #36 0,75 +
+  acciones pendientes); **ningún envío automático de ai-service donde
+  Laravel pide una persona**; coste medio **0,054 $ frente a 0,067 $**
+  (−19 %). Se mantiene el umbral 0,85 (más revisión humana, más seguro) y se
+  sigue con la retirada por decisión del usuario. **Pendiente:** completar
+  la puerta con saldo (los 19 correos sin comparar: preguntas de producto,
+  soporte, quejas, spam, inyección…) con
+  `python ai-service/evals/gate_dataset.py` y `ai:shadow-report` antes de
+  usarlo en producción. Gasto total de la prueba ≈ 4,5 $ (incluye una
+  primera pasada inválida: en el PostgreSQL de la sesión, pgvector 0.6, la
+  búsqueda de Laravel fallaba; se repitió en un PostgreSQL con pgvector 0.8).
+  **Lecciones:** `docker kill` filtrando por la columna del comando no
+  encuentra los contenedores (sale recortada: filtrar por imagen); un
+  `mail:sync` parado deja el bloqueo de `ShouldBeUnique` en Redis (claves con
+  `\`: borrarlas con `EVAL` y `KEYS`, `read` sin `-r` se come las barras)
+
+**Decisiones abiertas que había (ya resueltas arriba):**
 1. Frontera: las reglas de envío y el control de gasto se quedan en
    Laravel (recomendado).
 2. Cómo le llega a ai-service el fichero a indexar: **URL firmada temporal
