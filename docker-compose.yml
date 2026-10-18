@@ -132,7 +132,8 @@ services:
 
   # ---------------------------------------------------------------
   # Microservicio de IA en Python (ai-service) + consumidor de sus
-  # resultados en Laravel. Solo con el perfil "ai-service" (AI_ENGINE=python):
+  # resultados en Laravel. Solo con el perfil "ai-service" (AI_ENGINE=python,
+  # o AI_ENGINE=laravel con el modo sombra AI_SHADOW_ENABLED=true):
   #   COMPOSE_PROFILES=ai-service en .env, o docker compose --profile ai-service up -d
   # ---------------------------------------------------------------
   ai-service:

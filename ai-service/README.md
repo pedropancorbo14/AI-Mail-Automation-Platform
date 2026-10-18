@@ -29,6 +29,17 @@ del email, reglas finales y envío.
   draft → validate) con **Claude** por langchain-anthropic: structured
   outputs nativos, `effort`, fallbacks de servidor, `stop_reason`. La
   validación solo deja citar lo que se consultó de verdad.
+- **Supervisor y especialistas:** un supervisor **determinista** (sin
+  llamada extra al modelo) reparte el email entre especialistas de
+  pedidos, facturación y soporte, que son **subgrafos lanzados en paralelo
+  con `Send`**; cada herramienta es de un solo dominio. El **redactor es
+  agéntico**: puede pedir consultas extra de solo lectura (tool calling
+  estricto, historial solo-añadir, límites de rondas y consultas) y cada
+  consulta queda auditada con su origen (plan, modelo o persona).
+- **Modo sombra:** con el motor de Laravel en producción, una muestra de
+  emails pasa también por este servicio **sin efectos**; se compara la
+  recomendación de los dos motores (intención, decisión, coste, tiempo) en
+  Grafana y con un informe antes de cambiar de motor.
 - **Human in the loop de verdad:** si el agente quiere **modificar datos**
   (abrir un ticket), el grafo se para con **`interrupt`**, su estado queda
   en **PostgreSQL** (checkpointer de LangGraph, esquema y rol propios) y una
@@ -470,8 +481,9 @@ un `httpx2.AsyncClient` que lleva el token):
 - **Plan determinista** (`application/services/tool_planner.py`): qué
   consultar sale de la intención y de los números de pedido que extrajo la
   clasificación. Un email no puede conseguir que se llame a otra
-  herramienta ni elegir de quién son los datos. El tool calling decidido
-  por el modelo llega con los subagentes (Fase 5).
+  herramienta ni elegir de quién son los datos. Desde la Fase 5 el
+  redactor puede pedir además consultas extra de solo lectura (redactor
+  agéntico, con límites).
 - **Prompt `email_draft@3`**: los resultados van en un bloque `<datos>`
   (una `<consulta nombre="get_order" estado="success">` con el JSON por
   herramienta; las etiquetas `<datos>`, `<consulta>` y `<email>` del
@@ -650,7 +662,8 @@ hilo ya terminado (`expired`).
 
 ## Supervisor, especialistas y modo sombra (Fase 5)
 
-> En curso. Diseño:
+> Hecha y probada de punta a punta con la IA simulada (ver
+> [Prueba de punta a punta](#prueba-de-punta-a-punta-2026-10-17)).
 
 - **Supervisor determinista** (sin llamada extra al modelo): con la
   clasificación (que ya es una llamada con structured outputs) decide qué
@@ -969,7 +982,9 @@ la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root).
 | El contexto (empresa, cliente) lo inyecta el cliente MCP | Que el modelo pase el email del cliente | Un email malicioso no puede pedir datos de otro cliente: el modelo no controla esos argumentos |
 | Checkpoints en **PostgreSQL** (esquema y rol propios) | Redis (`langgraph-checkpoint-redis`); SQLite | El Redis del stack no tiene los módulos que exige (RedisJSON/RediSearch) y su política `maxmemory` podría expulsar estado; PostgreSQL ya está, es durable y con backups. Rol aparte: el estado de la IA no se mezcla con las tablas de Laravel |
 | `interrupt` solo para **acciones que modifican datos** | Pausar en cada revisión humana | Una revisión puede tardar días: reanudar respondería con datos viejos y quedarían miles de hilos en pausa con datos personales. Reprocesar con una indicación vuelve a empezar el grafo con datos frescos |
-| Plan de herramientas **determinista** por intención | Tool calling de Claude (el modelo elige) | Predecible, una sola llamada de redacción (más barato y rápido), auditable y no manipulable; con Opus 5.5 además no se puede forzar `tool_choice`. El modelo elegirá herramientas cuando haya subagentes (Fase 5) |
+| Plan de herramientas **determinista** por intención | Tool calling de Claude (el modelo elige) | Predecible, una sola llamada de redacción (más barato y rápido), auditable y no manipulable; con Opus 5.5 además no se puede forzar `tool_choice`. Desde la Fase 5 el modelo **puede pedir** consultas extra de solo lectura de los especialistas del email, con límites (casi nunca hace falta: el plan ya trae los datos) |
+| Supervisor **determinista** por intención y datos extraídos | Supervisor con una llamada al modelo | Sin coste ni latencia extra, predecible y un email no puede "pedir" un especialista con más herramientas; la clasificación ya es una llamada con structured outputs |
+| Modo sombra que compara **recomendación con recomendación** | Comparar lo que pasó con el email | El modo de la empresa (borrador o automático) y `AutoSendPolicy` aplican igual a los dos motores; así también se ve si Python habría enviado sola una respuesta en una empresa en borrador |
 | Registro de métricas **propio** por app | Registro global de `prometheus_client` | Tests aislados, sin "métrica duplicada" |
 | **import-linter** para las capas | Revisión manual | La arquitectura hexagonal se rompe en silencio; así falla el CI |
 | mypy **estricto** con plugin de Pydantic, también en los tests | Solo `src`, modo normal | Los tests son código: un fake mal tipado oculta errores |
@@ -995,6 +1010,39 @@ Decisiones de diseño acordadas para las siguientes tareas:
   hilos suspendidos que nadie reanuda (con datos personales).
 
 ## Prueba de punta a punta (2026-10-17)
+
+### Fase 5: especialistas, redactor agéntico y modo sombra
+
+Stack de la sesión: PostgreSQL (BD de desarrollo con las migraciones de la
+Fase 5), Redis, GreenMail, servidor MCP y worker (IA simulada, checkpoints
+en PostgreSQL). "Empresa Demo" en modo `auto`.
+
+**Motor de Python** (`AI_ENGINE=python`), tres correos por SMTP →
+`mail:sync` → worker → `ai:consume-results`:
+
+| Email | Especialistas | Consultas (origen) | Resultado |
+|---|---|---|---|
+| Laura: "¿cuándo llega mi pedido?" (sin número) | pedidos | `get_customer_orders` (plan) → `get_order` 78123 (**pedida por el modelo**) | **Enviada sola** con el estado del pedido, citando el pedido |
+| Cliente Pérez: "la factura FAC-44102 del pedido 44102" | facturación (principal) + pedidos | `get_invoice` y `get_order` (plan, en paralelo) | Borrador que cita pedido y factura; **revisión humana** porque la empresa no deja responder solas a `invoice_request` |
+| Marcos: "el robot del pedido 76540 no enciende" | soporte (principal) + pedidos | `get_customer_tickets` y `get_order` (plan, en paralelo) | **Pausa** con `create_support_ticket` esperando aprobación (Fase 4) |
+
+**Modo sombra** (`AI_ENGINE=laravel`, `AI_SHADOW_ENABLED=true`,
+`AI_SHADOW_SAMPLE_RATE=1`, IA simulada también en Laravel), cuatro correos:
+el motor de Laravel los procesa como siempre y cada uno se publica además en
+sombra; `ai:consume-results` guarda las cuatro copias (`→ shadow`) sin tocar
+ningún email, y `ai:shadow-compare` las compara:
+
+| Email | Laravel hizo | ai-service recomendó | ¿Coinciden? |
+|---|---|---|---|
+| Pedido #45821 del propio cliente | enviada sola (`auto_send`) | `auto_send` (pedidos) | intención ✓ decisión ✓ |
+| "¿Envíos a Canarias?" (sin documentación disponible en la sesión) | revisión humana | `human_review` (general) | ✓ ✓ |
+| Spam | ignorado | spam → `ignore` | ✓ ✓ |
+| Queja con amenaza legal (pedido 44102) | revisión humana | `escalate` → `human_review` (soporte + pedidos) | ✓ ✓ |
+
+`ai:shadow-report`: 4 copias, 100 % misma intención y decisión, coste
+medio 0,0197 $ (Laravel) frente a 0,0066 $ (ai-service: el plan
+determinista evita la llamada del agente que pide herramientas) y 0,5 s
+frente a 0,2 s hasta decidir (precio ficticio del modelo `simulated`).
 
 ### Fase 4: aprobación humana
 
@@ -1085,5 +1133,5 @@ costes en Grafana). Solo responde con confianza a preguntas generales
 | 2 | RAG con pgvector (rol de solo lectura, RLS por empresa) | ✅ Hecha (tests contra PostgreSQL real; Ollama simulado en los tests) |
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | ✅ Hecha (probada de punta a punta con la IA simulada y el servidor MCP en Docker) |
 | 4 | Checkpointing, `interrupt` (acciones con aprobación humana), reprocesar con una indicación y límites del agente | ✅ Hecha (probada de punta a punta con la IA simulada, la API del panel y un reinicio del worker en mitad de la pausa) |
-| 5 | Supervisor con subagentes y modo *shadow* (comparar con el motor de Laravel) | Pendiente |
+| 5 | Supervisor con especialistas en paralelo, redactor agéntico y modo *shadow* (comparar con el motor de Laravel) | ✅ Hecha (probada de punta a punta con la IA simulada, el servidor MCP y los dos motores) |
 | 6 | Kubernetes (probado en kind) | Pendiente |

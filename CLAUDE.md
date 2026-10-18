@@ -4033,7 +4033,7 @@ ai-results` y un correo de soporte técnico de un cliente sin ticket
 abierto (p. ej. marcos@cliente.test). Siguiente: Fase 5 (supervisor con
 subagentes y modo *shadow*) cuando lo apruebe.
 
-### AI-Service, Fase 5 (supervisor con especialistas y modo sombra): EN CURSO (2026-10-17)
+### AI-Service, Fase 5 (supervisor con especialistas y modo sombra): COMPLETADA Y PROBADA DE PUNTA A PUNTA CON LA IA SIMULADA (2026-10-18), pendiente de que la pruebe el usuario
 
 Misma rama `fase-ai-service`, misma forma de trabajo (un commit por tarea,
 tests en verde, CI comprobado tras cada push, documentación al día).
@@ -4049,7 +4049,8 @@ el de Python afecte a nada.
   clasificación (ya es una llamada con structured outputs): especialista
   principal por intención (`orders`: order_status, return_request,
   cancellation; `billing`: invoice_request, billing_issue; `support`:
-  technical_support, complaint, product_question; `general`: el resto) y
+  technical_support, complaint; `general`: el resto, también
+  product_question) y
   secundarios si el email menciona pedidos (`orders`) o facturas
   (`billing`). Se descartó un supervisor LLM: una llamada más por email
   (presupuesto ajustado), menos predecible y un email malicioso podría
@@ -4253,7 +4254,43 @@ el de Python afecte a nada.
   humana con distinta intención, spam ignorado por los dos, email aún en
   marcha sin comparar, métricas), copia sin respuesta → fallo de
   ai-service, informe y programación
-- [ ] 5.8 Compose, CI, README y prueba de punta a punta
+- [x] 5.8 **Compose, CI, README y prueba de punta a punta.** Compose y CI
+  ya cubrían la fase (la sombra usa el perfil `ai-service` y `ai-results`;
+  las variables `AI_SHADOW_*` en `.env.docker.example` desde la 5.6):
+  comentarios aclarando que el perfil también hace falta con el modo sombra
+  (`AI_ENGINE=laravel`). **Prueba en la sesión** (BD de desarrollo con las
+  migraciones de la fase, Redis, GreenMail, servidor MCP y worker con IA
+  simulada y checkpoints; empresa en `auto`). Motor de Python: Laura "¿cuándo
+  llega mi pedido?" → pedidos, `get_customer_orders` (plan) + `get_order`
+  78123 **pedida por el modelo** → enviada sola citando el pedido; factura
+  FAC-44102 → facturación + pedidos en paralelo, cita pedido y factura →
+  revisión (la empresa no permite `invoice_request`); Marcos "no enciende
+  pedido 76540" → soporte + pedidos → pausa con `create_support_ticket`.
+  Modo sombra (`AI_ENGINE=laravel`, `AI_SHADOW_ENABLED=true`,
+  `AI_SHADOW_SAMPLE_RATE=1`, IA simulada en Laravel): 4 correos (pedido
+  propio, Canarias, spam, queja con abogado) procesados por Laravel como
+  siempre y cada uno copiado en sombra; `ai:consume-results` → 4 `shadow`
+  sin tocar ningún email; `ai:shadow-compare` → 4 comparadas, 100 % misma
+  intención y decisión (escalate = human_review, spam = ignore);
+  `ai:shadow-report` con coste medio 0,0197 $ (Laravel) frente a 0,0066 $
+  (ai-service) y 0,5 s frente a 0,2 s (precio ficticio de `simulated`).
+  **Corregido en la documentación:** este archivo decía que
+  `product_question` iba a `support`; el código (y sus tests) la mandan a
+  `general`. README del servicio (sección de la fase como hecha, resumen de
+  entrevista con supervisor/redactor agéntico/sombra, decisiones nuevas,
+  prueba de punta a punta, hoja de ruta) y README raíz
+
+**Resumen de la Fase 5:** 8 tareas, 371 tests de Python (supervisor,
+especialistas en paralelo, redactor agéntico con la API de Claude simulada,
+modo sombra, MCP con facturas), 12 tests Pest de modo sombra + los de
+orígenes y especialistas, 89 Vitest, fila "Modo sombra" en Grafana con
+consultas probadas contra Prometheus. **Pendiente para cerrarla:** que el
+usuario revise la rama `fase-ai-service`, el CI en verde y lo pruebe en su
+equipo: `migrate` (`ai_tool_calls.origin`, `ai_shadow_runs`), reconstruir
+`ai-service`/`ai-mcp` y, para la sombra, `AI_ENGINE=laravel` +
+`AI_SHADOW_ENABLED=true` con el perfil `ai-service` levantado y después
+`php artisan ai:shadow-report`. Siguiente: Fase 6 (Kubernetes) cuando lo
+apruebe.
 
 ### Pendientes anotados para más adelante
 
