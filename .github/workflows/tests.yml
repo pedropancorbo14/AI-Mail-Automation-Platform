@@ -283,3 +283,47 @@ jobs:
             kubectl kustomize --load-restrictor LoadRestrictionsNone "deploy/k8s/$dir" \
               | /tmp/kubeconform -strict -summary -kubernetes-version 1.33.0
           done
+
+  # ai-service en un Kubernetes real (kind): construye la imagen, despliega el
+  # overlay local (Redis y PostgreSQL de pruebas, IA simulada, NetworkPolicies)
+  # y pasa la prueba de humo de punta a punta.
+  kubernetes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Construir la imagen
+        run: docker build -t aimail/ai-service:dev ai-service
+
+      - name: Crear el clúster (kind)
+        uses: helm/kind-action@v1.12.0
+        with:
+          version: v0.29.0
+          node_image: kindest/node:v1.33.1
+          cluster_name: aimail
+
+      - name: Cargar la imagen en el clúster
+        run: kind load docker-image aimail/ai-service:dev --name aimail
+
+      - name: Desplegar el overlay local
+        run: |
+          kubectl kustomize --load-restrictor LoadRestrictionsNone ai-service/deploy/k8s/overlays/local \
+            | kubectl apply -f -
+          kubectl -n aimail-ai rollout status deploy/redis deploy/postgres deploy/ai-mcp deploy/ai-service --timeout=300s
+
+      - name: Prueba de humo
+        run: |
+          kubectl apply -k ai-service/deploy/k8s/smoke-test
+          kubectl -n aimail-ai wait --for=condition=complete job/ai-service-smoke-test --timeout=240s
+          kubectl -n aimail-ai logs job/ai-service-smoke-test
+
+      - name: Diagnóstico si algo falla
+        if: failure()
+        run: |
+          kubectl -n aimail-ai get pods,jobs,events --sort-by=.lastTimestamp || true
+          kubectl -n aimail-ai describe pods || true
+          kubectl -n aimail-ai logs job/ai-service-smoke-test || true
+          kubectl -n aimail-ai logs deploy/ai-service --tail=200 || true
+          kubectl -n aimail-ai logs deploy/ai-mcp --tail=100 || true

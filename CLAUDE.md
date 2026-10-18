@@ -4396,7 +4396,14 @@ el equipo del usuario y en el CI, kind funciona sin nada de esto.
   1 baja permitida, `/ready` en verde; vuelta al overlay local y prueba de
   humo OK con la imagen nueva. CI: kubeconform también sobre producción.
   373 tests de Python
-- [ ] 6.4 CI: desplegar en kind y pasar la prueba de humo
+- [x] 6.4 **Despliegue en kind en el CI.** Job nuevo **`kubernetes`**:
+  construye la imagen (`aimail/ai-service:dev`), crea el clúster con
+  `helm/kind-action@v1.12.0` (kind v0.29.0, `kindest/node:v1.33.1`; las
+  versiones comprobadas con `git ls-remote`), `kind load docker-image`,
+  aplica el overlay local (Redis y PostgreSQL desde Docker Hub,
+  NetworkPolicies con kindnet), espera los 4 despliegues y pasa la prueba de
+  humo; si falla, vuelca pods, jobs, eventos, `describe` y logs del worker,
+  del MCP y del Job
 - [ ] 6.5 README, guía para kind en el equipo del usuario y cierre
 
 ### Pendientes anotados para más adelante

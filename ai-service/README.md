@@ -748,8 +748,8 @@ Laravel ya descarta cualquier resultado en modo sombra sin tocar el email.
 
 ## Kubernetes (Fase 6)
 
-> En curso. Hecho: base, overlay local, prueba de humo (6.1), red (6.2) y
-> overlay de producción (6.3).
+> En curso. Hecho: base, overlay local, prueba de humo (6.1), red (6.2),
+> overlay de producción (6.3) y despliegue en kind en el CI (6.4).
 
 Solo el microservicio va a Kubernetes (el worker `ai-service` y el servidor
 MCP `ai-mcp`); Laravel sigue en Docker Compose. En producción los dos
@@ -859,7 +859,11 @@ El overlay de producción también se desplegó en el mismo clúster (imagen
 local y una clave de Anthropic ficticia): 2 réplicas listas, cada una
 consumidor del grupo con su nombre de pod, PDB con 1 baja permitida y
 `/ready` en verde. En el CI, kubeconform valida los manifiestos renderizados
-(local, producción y prueba de humo) contra el esquema de Kubernetes 1.33.
+(local, producción y prueba de humo) contra el esquema de Kubernetes 1.33,
+y el job **`kubernetes`** crea en cada push un clúster **kind** (v0.29,
+Kubernetes 1.33), carga la imagen recién construida, despliega el overlay
+local con sus NetworkPolicies y pasa la prueba de humo; si algo falla,
+vuelca pods, eventos y logs.
 
 ## Eventos: Redis Streams y el worker
 
