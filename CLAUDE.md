@@ -4430,6 +4430,163 @@ fusionar la rama, probar con Claude real (`AI_SERVICE_LLM_PROVIDER=
 anthropic`), retirar el motor de IA de Laravel cuando ai-service lo iguale,
 o seguir con las fases 14–17 de la plataforma.
 
+### Retirada del motor de IA de Laravel: PLANIFICADA (2026-10-18), pendiente de que el usuario apruebe las decisiones abiertas
+
+Pedido por el usuario: **toda la lógica de la IA en el microservicio**.
+Hoy conviven dos motores que hacen lo mismo (`AI_ENGINE=laravel|python`,
+Laravel por defecto): dos copias de prompts, clasificación, agente,
+herramientas y RAG, doble mantenimiento y riesgo de que respondan distinto.
+Objetivo: `ai-service` es el **único motor de IA**; en Laravel no queda
+ninguna llamada a un modelo ni a embeddings (ni `ANTHROPIC_API_KEY`: la
+clave solo vive en ai-service). Misma forma de trabajo: un commit por
+tarea, tests en verde, CI comprobado tras cada push, documentación al día.
+
+**Frontera (propuesta): qué es "lógica de IA" y qué no.**
+- **A ai-service:** clasificación, agente, prompts, herramientas (MCP),
+  búsqueda semántica, embeddings, **extracción + troceado + indexado** de
+  documentos, IA simulada, comandos de depuración de la IA.
+- **Se queda en Laravel (no es IA, son datos y reglas de la plataforma):**
+  - **Configuración de cada empresa** (modo de automatización, intenciones,
+    herramientas activadas, presupuesto): Laravel la guarda y la **envía en
+    el evento**; ai-service la aplica.
+  - **Las reglas de envío** `AutoSendPolicy` y `ReplyContentGuard`
+    (deterministas, sin modelo): quien envía comprueba lo que envía; si
+    ai-service tuviera un fallo, no puede enviar nada que Laravel no
+    apruebe (defensa en profundidad, decisión de la Fase 1 del servicio).
+    `AiSpendGuard` también: es control de gasto en dólares y los precios
+    están en Laravel.
+  - **Registro y costes:** `ai_requests`, `ai_tool_calls`, `ai_agent_runs`
+    desde los eventos y `CostCalculator` (una sola tabla de precios).
+  - **Documentos como ficheros:** subida, fichero original, permisos,
+    estado y panel (`documents`).
+  - El catálogo de intenciones (`EmailIntent`) como espejo del contrato
+    (ya validado por test).
+
+**Etapas y tareas** (rama propuesta: **`retirada-motor-laravel`**, creada
+desde `fase-ai-service`, que aún no está fusionada):
+
+- **R1. Paridad funcional en ai-service** (el motor de Laravel sigue por
+  defecto):
+  - R1.1 **Herramientas por empresa.** Catálogo único de herramientas en
+    `contracts/tools/catalog.json` (nombre, etiqueta, descripción,
+    lectura/escritura, especialista, activada por defecto) que usan el
+    panel y ai-service (test: catálogo = herramientas del servidor MCP).
+    `email.received.v1` con `enabled_tools` (opcional; sin él, solo las
+    activadas por defecto). Laravel lo calcula con `tenant_tools`;
+    ai-service solo planifica, ofrece al modelo y ejecuta esas.
+  - R1.2 **API interna síncrona de ai-service** (FastAPI, token de
+    servicio, solo red interna; NetworkPolicy y compose):
+    `POST /internal/v1/knowledge/search` (la "Probar la búsqueda" del panel
+    y `kb:search`) y `GET /internal/v1/tools?tenant_id=` (catálogo +
+    disponibilidad por empresa, que hoy calcula `OrderProvider::
+    isConfigured()`). Cliente `AiServiceClient` en Laravel con timeout;
+    caído → 503 como ahora con Ollama.
+  - R1.3 **Depuración sin el motor de Laravel:** `ai:process {email}
+    --now` con el motor remoto publica y **espera el resultado** (máx. N s)
+    mostrando la traza ya guardada (`ai_agent_runs` → pasos →
+    herramientas); sustituye a `ai:classify` y `ai:reply`. Comando de
+    Python `ai-service-tool` (ejecutar una herramienta MCP con empresa y
+    cliente) en lugar de `ai:tool`.
+  - R1.4 **Modo degradado:** si ai-service no responde, un email no debe
+    acabar en `failed` sin más: tras `max_publish_attempts` el
+    reconciliador lo pasa a **`human_review`** ("La IA no está disponible")
+    para que una persona pueda contestar.
+- **R2. Indexado de documentos en ai-service:**
+  - R2.1 Contrato: `document.uploaded.v1` (Laravel → ai-service: empresa,
+    documento, título, tipo, tamaño, sha256 y **URL firmada temporal**
+    para descargar el original), `document.indexed.v1` (nº de fragmentos,
+    modelo, uso de embeddings → `ai_requests` con propósito
+    `document_indexing`) y `document.indexing_failed.v1` (mensaje para el
+    usuario: "PDF sin texto"…); `document.deleted.v1` para borrar sus
+    fragmentos (borrado y retención).
+  - R2.2 Los fragmentos pasan a ser **de ai-service**: tabla propia en su
+    esquema `ai_service` (rol propio con escritura solo ahí; el de los
+    checkpoints o uno nuevo), filtro por empresa en cada consulta y tests de
+    aislamiento. Así se cumple "Python no escribe tablas de Laravel" y el
+    rol de solo lectura con RLS sobre tablas de Laravel deja de hacer falta.
+  - R2.3 Python: descarga (máx. 20 MB, solo la URL firmada de Laravel),
+    extracción (PDF por página, Markdown por encabezado, HTML, TXT; mismos
+    errores), troceado (mismos parámetros que `TextChunker`), embeddings
+    bge-m3 y guardado; búsqueda del grafo y de la API interna sobre su
+    tabla. Tests portados de Laravel (`Pdf::make` → generador en Python).
+  - R2.4 Laravel: ruta interna firmada de descarga, publicador (subir y
+    reindexar publican el evento) y consumidor de `document.indexed.v1` /
+    `indexing_failed.v1` (estado del documento como ahora en el panel).
+  - R2.5 Migración: `kb:reindex --all` publica todos los documentos; cuando
+    estén indexados en ai-service, la búsqueda deja de usar
+    `document_chunks`.
+- **R3. Puerta de calidad con Claude real (modo sombra).** Antes de
+  cambiar nada por defecto: probar ai-service con Claude
+  (`AI_SERVICE_LLM_PROVIDER=anthropic`) en 1–2 emails y después modo sombra
+  con `AI_SHADOW_SAMPLE_RATE=1` sobre **30–50 emails** que cubran las 14
+  intenciones (los de la BD de desarrollo + nuevos por SMTP). Coste
+  estimado **3–5 $** (los dos motores). Umbrales fijados antes de mirar:
+  **≥ 90 % misma intención y misma decisión**, ningún `auto_send` de
+  ai-service donde Laravel pide persona por seguridad (injection, amenaza
+  legal, acciones), coste por email ≤ el de Laravel; revisar a mano cada
+  desacuerdo y ajustar prompts si hace falta. Indexado y búsqueda con
+  Ollama real (no hay Ollama en la sesión de la nube): en el equipo del
+  usuario.
+- **R4. Cambio de motor:** `AI_ENGINE=python` por defecto; `ai-service`,
+  `ai-mcp` y `ai-results` dejan de ser un perfil opcional del compose;
+  `ANTHROPIC_API_KEY` sale del `.env` de Laravel; modo sombra apagado.
+  **Periodo de respaldo** (a decidir; p. ej. dos semanas de uso) con
+  `AI_ENGINE=laravel` aún posible.
+- **R5. Borrado del motor de Laravel** (por partes, cada una con la suite
+  en verde):
+  - `app/AI`: `AIService`, `LLMProvider` y DTOs `LLM*`/`AIResult`,
+    proveedores Anthropic y simulado, `Prompts/`, `EmailClassifier`,
+    `ClassifyEmailJob`, `EmailClassificationPrompt`, `Agent/`
+    (`AgentService`, `AgentDecision`, `EmailAgentPrompt`,
+    `EmailAgentContext`, `AgentReply`, `AgentResult`), `Embeddings/`,
+    excepciones `LLM*`, `AIEngine` y todo el modo sombra (publicador,
+    comparador, consumidor, tabla `ai_shadow_runs`, comandos, fila de
+    Grafana). Se quedan `EmailIntent`, `EmailClassification` (lo usa
+    `recordClassification`) y los enums de las tablas de auditoría
+    (`AgentRunStatus`, `AgentStopReason`, `ToolCallStatus` →
+    `app/AI/Enums`).
+  - `app/Tools` (salvo la configuración por empresa, que pasa a leer el
+    catálogo del contrato) y `app/ERP` entero (`orders.json` se mueve a los
+    datos del servidor MCP; compose y Kubernetes apuntan allí).
+  - `app/Documents`: `Extraction/`, `Chunking/`, `Search/`,
+    `KnowledgeBaseService`, `KnowledgeContext` y el procesado de
+    `ProcessDocumentJob`; tabla `document_chunks` (tras R2.5).
+  - `EmailProcessor` sin el camino local; comandos `ai:classify`,
+    `ai:reply`, `ai:tool`, `ai:shadow-*`; `config/ai.php` limpio (se quedan
+    precios, automatización y límites) y `config/erp.php` fuera;
+    `composer remove anthropic-ai/sdk smalot/pdfparser` (`opis/json-schema`
+    se queda: valida los contratos); Horizon sin `redis-long` para la IA.
+  - Tests: fuera los ~20 archivos del motor local; los E2E
+    (`AutomationEndToEndTest`, `HumanReviewEndToEndTest`) y los que usan
+    `FakeLLMProvider` (procesador, métricas, gasto, detalle) pasan al flujo
+    remoto con resultados válidos según el contrato. **Job E2E nuevo en el
+    CI:** compose con Laravel + ai-service (IA simulada) + `ai-mcp` +
+    GreenMail, de un correo SMTP a la respuesta en el buzón del cliente.
+    `ArchitectureTest`: prohibido cualquier SDK de modelos o cliente de
+    embeddings en Laravel.
+  - `ai_prompt_versions` se conserva (historial de peticiones antiguas),
+    sin escrituras nuevas.
+- **R6. Documentación:** README (secciones 6–10 describen el motor de
+  Laravel), README del servicio, CLAUDE.md. Consecuencias anotadas: las
+  integraciones reales de la Fase 14 (CRM, ERP, helpdesk) van al servidor
+  MCP, y la evaluación de la Fase 15 se hace en Python.
+
+**Riesgos:** ai-service pasa a ser imprescindible (sin él no hay IA:
+mitigado con el modo degradado de R1.4, réplicas y alertas que ya existen);
+más piezas en marcha en local; reindexar todos los documentos una vez.
+
+**Decisiones abiertas (las decide el usuario):**
+1. Frontera: las reglas de envío y el control de gasto se quedan en
+   Laravel (recomendado).
+2. Cómo le llega a ai-service el fichero a indexar: **URL firmada temporal
+   de Laravel** (recomendado: nada nuevo que desplegar) frente a
+   almacenamiento compartido (volumen o S3/MinIO; más infraestructura).
+3. Puerta de calidad con Claude real (3–5 $) antes de cambiar de motor
+   (recomendado) o cambiar solo con la IA simulada (no recomendado: nunca
+   se ha medido ai-service con Claude).
+4. Rama nueva `retirada-motor-laravel` desde `fase-ai-service`
+   (recomendado) o seguir en `fase-ai-service`.
+
 ### Pendientes anotados para más adelante
 
 - **Herramientas por tipo de negocio (Fase 14, integraciones)** — pedido
