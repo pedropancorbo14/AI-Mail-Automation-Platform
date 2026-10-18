@@ -4648,6 +4648,20 @@ trabajar pedido por el usuario:** cuando todo esté hecho y el CI en verde,
   en el puerto 5433): desaparecen los 25 fallos de entorno; quedan 8 que
   solo fallan en paralelo (helpers entre archivos, nombre de la BD)
 
+- [x] **R1.3 Depuración sin el motor de Laravel.** `php artisan ai:trace
+  {email}` (lo que hizo la IA, la última ejecución guardada: pasos,
+  herramientas, propuesta, decisión y coste; sale de `ai:reply --last`, que se
+  borra en R5). `ai:process {email} --now` con el motor remoto publica y
+  **espera** el resultado (`--wait`, 120 s por defecto; lo aplica
+  `ai:consume-results`, otro proceso) y si no llega lo dice. Python:
+  **`ai-service-tool`** (`--list`; `<herramienta> --tenant --customer --args`)
+  por el mismo `McpToolClient` que la IA (sustituye a `ai:tool`). Tests: Pest
+  (`ai:trace`, espera sin respuesta) y Python contra el servidor MCP real
+- [x] **R1.4 Modo degradado:** el reconciliador, agotados los intentos de
+  publicación, pasa el email a **revisión humana** ("El servicio de IA no
+  respondió tras N intentos: lo atiende una persona.") en vez de `failed`:
+  sin IA una persona sigue pudiendo contestar
+
 **Decisiones abiertas que había (ya resueltas arriba):**
 1. Frontera: las reglas de envío y el control de gasto se quedan en
    Laravel (recomendado).

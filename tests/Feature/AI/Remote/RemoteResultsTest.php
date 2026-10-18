@@ -340,3 +340,24 @@ it('does not let a reply quote amounts that are not in what the AI consulted', f
     expect($this->email->fresh()->status)->toBe(EmailStatus::HumanReview)
         ->and(lastStatusReasonOf($this->email))->toContain('9,99');
 });
+
+it('shows what ai-service did with ai:trace, without calling the ai', function () {
+    deliverResult(processedEvent($this->email));
+
+    $this->artisan('ai:trace', ['email' => $this->email->id])
+        ->expectsOutputToContain('Pasos del agente')
+        ->expectsOutputToContain('Propuesta de respuesta:')
+        ->assertSuccessful();
+    $this->artisan('ai:trace', ['email' => 999999])->expectsOutputToContain('No existe ese email.')->assertFailed();
+});
+
+it('ai:process --now publishes and waits for ai-service, and says so when it does not answer', function () {
+    $email = inTenant($this->tenant, fn () => Email::factory()->create(['from_email' => 'cliente@cliente.test', 'ingested_at' => now()]));
+
+    $this->artisan('ai:process', ['email' => $email->id, '--now' => true, '--wait' => 0])
+        ->expectsOutputToContain('esperando el resultado')
+        ->expectsOutputToContain('ai-service no respondió a tiempo')
+        ->assertSuccessful();
+    expect($this->streams->entries['email.received.v1'])->toHaveCount(2)
+        ->and($email->fresh()->status)->toBe(EmailStatus::Processing);
+});

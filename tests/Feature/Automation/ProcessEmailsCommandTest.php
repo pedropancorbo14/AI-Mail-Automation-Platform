@@ -32,7 +32,7 @@ it('processes an email at once and shows how it went', function () {
         ->expectsOutputToContain('Estado actual: Revisión humana (human_review)')
         ->expectsOutputToContain('Respuesta propuesta por la IA (confianza 0.90)')
         ->expectsOutputToContain('Borradores')
-        ->expectsOutputToContain("ai:reply {$this->email->id} --last")
+        ->expectsOutputToContain("ai:trace {$this->email->id}")
         ->assertSuccessful();
 });
 

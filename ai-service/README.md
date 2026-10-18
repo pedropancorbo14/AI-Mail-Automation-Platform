@@ -920,6 +920,23 @@ búsqueda vuelve en la respuesta y Laravel la guarda en `ai_requests` como las
 demás. El servidor MCP expone `GET /capabilities?tenant_id=` (con su token)
 para saber qué herramientas tienen datos.
 
+### Depuración y modo degradado
+
+- `php artisan ai:process {email} --now` publica el email y **espera** el
+  resultado de ai-service (`--wait=120`); `php artisan ai:trace {email}`
+  muestra lo que hizo la IA (pasos, herramientas, propuesta, coste).
+- `ai-service-tool` ejecuta una herramienta a mano por el mismo cliente que
+  la IA (solo lectura, contexto inyectado, mismo recorte):
+
+  ```bash
+  docker compose exec ai-service ai-service-tool --list
+  docker compose exec ai-service ai-service-tool get_order --tenant 1 \
+    --customer cliente@cliente.test --args '{"order_number": "45821"}'
+  ```
+- Si ai-service no responde tras `AI_REMOTE_MAX_ATTEMPTS` publicaciones, el
+  reconciliador de Laravel pasa el email a **revisión humana**: sin IA, el
+  equipo sigue pudiendo contestar.
+
 ## Eventos: Redis Streams y el worker
 
 **Proceso `ai-service-worker`** (`entrypoints/worker.py`): un solo proceso

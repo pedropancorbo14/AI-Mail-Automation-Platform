@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\AI\AIService;
 use App\AI\Exceptions\LLMException;
+use App\AI\Remote\AIEngine;
 use App\Automation\EmailProcessor;
 use App\Automation\ProcessEmailJob;
 use App\Mail\Enums\EmailStatus;
@@ -27,7 +28,8 @@ use Illuminate\Database\Eloquent\Builder;
     {--now : Procesarlo al momento y mostrar el resultado}
     {--reprocess : Volver a procesar un email ya decidido (revisión humana, sin respuesta o error)}
     {--pending : Encolar todos los emails recibidos que siguen sin procesar}
-    {--failed : Volver a encolar los emails que fallaron al procesarse}')]
+    {--failed : Volver a encolar los emails que fallaron al procesarse}
+    {--wait=120 : Con --now y el motor remoto, segundos que se espera el resultado de ai-service}')]
 #[Description('Procesa emails con la IA: clasificación, propuesta de respuesta y envío o revisión humana')]
 class ProcessEmails extends Command
 {
@@ -64,11 +66,12 @@ class ProcessEmails extends Command
             return self::SUCCESS;
         }
 
-        if (! AIService::enabled()) {
+        $remote = AIEngine::current()->isRemote();
+        if (! $remote && ! AIService::enabled()) {
             $this->warn('La IA no está configurada (ANTHROPIC_API_KEY): el email irá a revisión humana.');
         }
 
-        return $tenants->runAs($email->tenant, function () use ($processor, $email, $reprocess) {
+        return $tenants->runAs($email->tenant, function () use ($processor, $email, $reprocess, $remote) {
             $email = Email::findOrFail($email->id);
             $this->line("Procesando «{$email->subject}» de {$email->from_email} (estado: {$email->status->label()})...");
 
@@ -88,6 +91,10 @@ class ProcessEmails extends Command
                     $reprocess => "No se puede reprocesar un email en «{$email->status->label()}».",
                     default => "El email ya está en «{$email->status->label()}»: usa --reprocess para volver a procesarlo.",
                 });
+            }
+
+            if ($remote && $status === EmailStatus::Processing) {
+                $status = $this->waitForAiService($email);
             }
 
             $this->history($email->fresh());
@@ -112,8 +119,30 @@ class ProcessEmails extends Command
         }
 
         if ($email->agentRuns()->exists()) {
-            $this->line("  Traza del agente: php artisan ai:reply {$email->id} --last");
+            $this->line("  Traza de la IA: php artisan ai:trace {$email->id}");
         }
+    }
+
+    /**
+     * El email se publicó a ai-service: el resultado lo aplica ai:consume-results
+     * (otro proceso). Se espera a que el email deje «Procesando».
+     */
+    private function waitForAiService(Email $email): ?EmailStatus
+    {
+        $seconds = max(0, (int) $this->option('wait'));
+        $this->line("Publicado para ai-service; esperando el resultado (máx. {$seconds} s)...");
+        $deadline = microtime(true) + $seconds;
+        do {
+            $status = $email->fresh()->status;
+            if ($status !== EmailStatus::Processing) {
+                return $status;
+            }
+            usleep(500_000);
+        } while (microtime(true) < $deadline);
+
+        $this->warn('ai-service no respondió a tiempo. ¿Están en marcha ai-service y ai:consume-results? El email sigue en «Procesando» (el reconciliador lo reintentará).');
+
+        return EmailStatus::Processing;
     }
 
     /** @param  \Closure(Builder<Email>): Builder<Email>  $filter */
