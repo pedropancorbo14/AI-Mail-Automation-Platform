@@ -64,7 +64,7 @@ del email, reglas finales y envío.
 1. [Por qué un microservicio](#por-qué-un-microservicio)
 2. [Arquitectura](#arquitectura)
 3. [Contrato de eventos](#contrato-de-eventos)
-4. [Cómo ejecutarlo](#cómo-ejecutarlo)
+4. [Cómo ejecutarlo](#cómo-ejecutarlo) · [**Probarlo en tu equipo (lista completa)**](#probarlo-en-tu-equipo-fases-15)
 5. [Calidad: tests, tipos y reglas de capas](#calidad-tests-tipos-y-reglas-de-capas)
 6. [Observabilidad](#observabilidad)
 7. [Decisiones tomadas](#decisiones-tomadas)
@@ -807,6 +807,98 @@ Métricas nuevas (prefijo `aiservice_`): `events_total{result}`,
 | `AI_SERVICE_MAX_DELIVERIES` | `3` | Entregas antes de darlo por fallido |
 | `AI_SERVICE_STREAM_RETENTION_HOURS` | `168` | Retención en los streams |
 
+## Probarlo en tu equipo (Fases 1–5)
+
+Todo lo que hay que hacer en un equipo con el stack de Docker ya montado
+(Fases 1–13 de la plataforma) para probar el microservicio. Sin API key:
+con la **IA simulada** no se gasta nada.
+
+**1. Traer la rama y añadir al `.env`** (raíz del proyecto; los valores
+son los de `.env.docker.example`):
+
+```bash
+git fetch origin fase-ai-service && git checkout fase-ai-service
+```
+
+```dotenv
+AI_ENGINE=python
+COMPOSE_PROFILES=ai-service
+AI_SERVICE_ENVIRONMENT=local
+AI_SERVICE_LLM_PROVIDER=simulated        # anthropic para usar Claude real (ANTHROPIC_API_KEY)
+AI_SERVICE_DB_PASSWORD=reader-secret      # rol de solo lectura del RAG (Fase 2)
+AI_SERVICE_CHECKPOINTS_DB_PASSWORD=checkpoints-secret   # pausas de LangGraph (Fase 4)
+AI_SERVICE_MCP_TOKEN=local-mcp-token      # ai-service ↔ servidor MCP (Fase 3)
+REDIS_STREAMS_DB=3
+AI_SHADOW_ENABLED=false                   # modo sombra (paso 5)
+AI_SHADOW_SAMPLE_RATE=0.1
+```
+
+**2. Migrar, construir y arrancar:**
+
+```bash
+docker compose exec app composer install          # dependencias nuevas de PHP, si faltan
+docker compose exec app php artisan migrate       # columnas de emails, ai_tool_calls.origin, ai_shadow_runs,
+                                                  # roles ai_service_reader y ai_service_checkpoints, esquema ai_service
+docker compose exec app php artisan db:seed --class=RolesAndPermissionsSeeder
+docker compose exec ollama ollama pull bge-m3     # una vez, si no lo tenías (RAG)
+docker compose up -d --build ai-service ai-mcp ai-results
+docker compose exec horizon php artisan horizon:terminate   # recoge AI_ENGINE
+docker compose restart prometheus grafana promtail          # alertas, dashboard y logs nuevos
+curl -s 127.0.0.1:8001/ready    # {"status":"ok","checks":{"redis":true,"consumer":true,"checkpoints":true}}
+```
+
+**3. Preparar la empresa de prueba** (envío automático y las intenciones
+que verás en la prueba):
+
+```bash
+docker compose exec app php artisan ai:automation 1 --mode=auto \
+  --intents=order_status,product_question,technical_support
+```
+
+**4. Probar el motor de Python.** Envía correos a `soporte@demo.test`
+(GreenMail, SMTP `127.0.0.1:3025`, sin contraseña) desde los clientes de
+los pedidos de demostración y sigue los logs con
+`docker compose logs -f ai-service ai-results`:
+
+| Remitente | Texto | Qué debería pasar |
+|---|---|---|
+| `laura@cliente.test` | "¿Cuándo llega mi pedido?" | Especialista de pedidos; la IA pide el detalle del pedido 78123 por su cuenta → **enviada sola** |
+| `cliente@cliente.test` | "La factura FAC-44102 del pedido 44102" | Facturación + pedidos; cita pedido y factura → revisión (facturas no se envían solas) |
+| `marcos@cliente.test` | "El robot del pedido 76540 no enciende" | Soporte + pedidos → **pausa**: en el panel, "La IA propone: crear un ticket" → **Aprobar acción** → respuesta con el ticket |
+| `cliente@cliente.test` | "¿Dónde está mi pedido #76540?" (de otro cliente) | Revisión humana, sin ningún dato del pedido ajeno |
+
+En el panel (`http://localhost:8080`, `test@example.com` / `password`),
+"Lo que hizo la IA" muestra los especialistas y qué consultas pidió la IA.
+En Grafana, dashboard **"AI Mail · ai-service"**.
+
+**5. Probar el modo sombra** (el motor de Laravel decide y ai-service solo
+recomienda, sin tocar nada):
+
+```dotenv
+AI_ENGINE=laravel
+AI_SHADOW_ENABLED=true
+AI_SHADOW_SAMPLE_RATE=1       # todos los emails, solo para la prueba
+AI_PROVIDER=simulated         # IA simulada también en Laravel (si no, usa Claude)
+```
+
+```bash
+docker compose up -d app horizon scheduler ai-results     # recogen el .env
+docker compose exec horizon php artisan horizon:terminate
+# envía unos cuantos correos como en el paso 4 y, pasados unos minutos:
+docker compose exec app php artisan ai:shadow-compare     # (también corre solo cada 5 min)
+docker compose exec app php artisan ai:shadow-report
+```
+
+Deja `AI_SHADOW_ENABLED=false` (o una muestra pequeña) al terminar: con
+Claude real cada copia se paga.
+
+**Problemas típicos:** `/ready` con `checkpoints: false` → la contraseña
+`AI_SERVICE_CHECKPOINTS_DB_PASSWORD` no coincide con la del rol (la crea
+`migrate` con la del `.env`; si la cambias después, `ALTER ROLE
+ai_service_checkpoints PASSWORD '...'`); los emails se quedan en
+`processing` → `ai-results` no está levantado o Horizon no recogió
+`AI_ENGINE` (`horizon:terminate`).
+
 ## Cómo ejecutarlo
 
 Requisitos: [uv](https://docs.astral.sh/uv/) (instala él mismo Python 3.12).
@@ -1104,18 +1196,8 @@ GreenMail) y el worker con la **IA simulada**
 ficticio del modelo `simulated`). **Bug encontrado y corregido:** el
 timeout de socket de redis-py (ver el resumen de arriba).
 
-Reproducirlo en tu equipo:
-
-```bash
-# .env: AI_ENGINE=python, COMPOSE_PROFILES=ai-service,
-#       AI_SERVICE_ENVIRONMENT=local, AI_SERVICE_LLM_PROVIDER=simulated
-docker compose up -d --build
-docker compose exec app php artisan migrate
-docker compose exec app php artisan ai:automation 1 --mode=auto
-docker compose exec horizon php artisan horizon:terminate
-# Envía un correo a soporte@demo.test (GreenMail, SMTP 127.0.0.1:3025) y mira:
-docker compose logs -f ai-service ai-results
-```
+Reproducirlo en tu equipo: ver
+[Probarlo en tu equipo](#probarlo-en-tu-equipo-fases-15).
 
 ### IA simulada
 

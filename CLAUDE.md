@@ -4289,8 +4289,14 @@ usuario revise la rama `fase-ai-service`, el CI en verde y lo pruebe en su
 equipo: `migrate` (`ai_tool_calls.origin`, `ai_shadow_runs`), reconstruir
 `ai-service`/`ai-mcp` y, para la sombra, `AI_ENGINE=laravel` +
 `AI_SHADOW_ENABLED=true` con el perfil `ai-service` levantado y después
-`php artisan ai:shadow-report`. Siguiente: Fase 6 (Kubernetes) cuando lo
-apruebe.
+`php artisan ai:shadow-report`. **Todos los pasos de las Fases 1–5 en un
+solo sitio** (2026-10-18, pedido por el usuario): sección "Probarlo en tu
+equipo (Fases 1–5)" de `ai-service/README.md` (variables del `.env`,
+migración + seeder de permisos, `ollama pull`, construir los tres
+servicios, `horizon:terminate`, reiniciar la observabilidad, `ai:automation`,
+correos de prueba con lo que debe pasar, modo sombra y problemas típicos),
+enlazada desde el README raíz; sustituye al bloque desfasado de la Fase 1.
+Siguiente: Fase 6 (Kubernetes) cuando lo apruebe.
 
 ### Pendientes anotados para más adelante
 

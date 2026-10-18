@@ -910,6 +910,10 @@ los desacuerdos; en Grafana, fila "Modo sombra" del dashboard de ai-service.
 Las llamadas a la IA se pagan dos veces: cuenta para el presupuesto diario
 de cada empresa.
 
+**Probar el microservicio en tu equipo** (variables del `.env`, migraciones,
+servicios, correos de prueba y modo sombra): lista completa en
+[ai-service/README.md → Probarlo en tu equipo](ai-service/README.md#probarlo-en-tu-equipo-fases-15).
+
 Cada cambio de estado se guarda en **`email_status_changes`** con su motivo
 y quién lo decidió (null = la plataforma; una persona en la Fase 13). Un
 email no puede saltarse pasos: las transiciones válidas están en
