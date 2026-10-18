@@ -186,14 +186,16 @@ describe('ai:reconcile-remote', function () {
             ->and($email->status)->toBe(EmailStatus::Processing);
     });
 
-    it('gives up after the maximum attempts', function () {
+    it('hands the email to a person after the maximum attempts (degraded mode)', function () {
         processRemote($this->email);
         ageRequest($this->email, 20, attempts: 3);
 
-        $this->artisan('ai:reconcile-remote')->expectsOutputToContain('Fallidos: 1');
+        $this->artisan('ai:reconcile-remote')->expectsOutputToContain('A una persona (sin IA): 1');
 
-        expect($this->email->fresh()->status)->toBe(EmailStatus::Failed)
-            ->and(remoteStatusPath($this->email))->toBe(['processing', 'failed']);
+        expect($this->email->fresh()->status)->toBe(EmailStatus::HumanReview)
+            ->and(remoteStatusPath($this->email))->toBe(['processing', 'human_review'])
+            ->and(inTenant($this->tenant, fn () => $this->email->statusChanges()->get()->last()->reason))
+            ->toContain('lo atiende una persona');
     });
 
     it('leaves recent requests alone and works across companies', function () {

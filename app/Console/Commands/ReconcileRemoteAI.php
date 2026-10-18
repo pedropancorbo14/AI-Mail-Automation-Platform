@@ -19,7 +19,8 @@ use Illuminate\Support\Facades\Log;
  * resultado (servicio caído, Redis caído al publicar, evento perdido):
  *
  *  - Con AI_ENGINE=python se vuelven a publicar (evento nuevo) hasta
- *    ai.remote.max_publish_attempts; agotados → failed.
+ *    ai.remote.max_publish_attempts; agotados → revisión humana (modo
+ *    degradado: sin IA, una persona puede contestar igualmente).
  *  - Si una persona ya decidió la acción pendiente de ai-service, se vuelve
  *    a publicar su decisión (email.review_resumed.v1), no el email: el grafo
  *    sigue en pausa esperándola.
@@ -29,14 +30,14 @@ class ReconcileRemoteAI extends Command
 {
     protected $signature = 'ai:reconcile-remote';
 
-    protected $description = 'Vuelve a publicar (o da por fallidos) los emails sin respuesta del servicio de IA';
+    protected $description = 'Vuelve a publicar (o pasa a una persona) los emails sin respuesta del servicio de IA';
 
     public function handle(EmailEventPublisher $publisher, ReviewResumedPublisher $resumes, TenantService $tenants): int
     {
         $limit = now()->subMinutes((int) config('ai.remote.reconcile_after_minutes'));
         $maxAttempts = (int) config('ai.remote.max_publish_attempts');
         $remote = AIEngine::current()->isRemote();
-        $counts = ['republished' => 0, 'failed' => 0, 'local' => 0];
+        $counts = ['republished' => 0, 'to_person' => 0, 'local' => 0];
 
         // Consulta global deliberada: el comando revisa todas las empresas.
         Email::withoutGlobalScope(TenantScope::class)
@@ -55,8 +56,9 @@ class ReconcileRemoteAI extends Command
                         }
 
                         if ($email->ai_request_attempts >= $maxAttempts) {
-                            $email->transitionTo(EmailStatus::Failed, "El servicio de IA no respondió tras {$email->ai_request_attempts} intentos.");
-                            $counts['failed']++;
+                            // Modo degradado: el email no se pierde ni se queda en error; lo atiende una persona.
+                            $email->transitionTo(EmailStatus::HumanReview, "El servicio de IA no respondió tras {$email->ai_request_attempts} intentos: lo atiende una persona.");
+                            $counts['to_person']++;
 
                             return;
                         }
@@ -83,9 +85,9 @@ class ReconcileRemoteAI extends Command
         }
 
         $this->info(sprintf(
-            'Republicados: %d · Fallidos: %d · Al motor de Laravel: %d',
+            'Republicados: %d · A una persona (sin IA): %d · Al motor de Laravel: %d',
             $counts['republished'],
-            $counts['failed'],
+            $counts['to_person'],
             $counts['local'],
         ));
 
