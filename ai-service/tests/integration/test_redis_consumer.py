@@ -275,6 +275,38 @@ async def test_old_entries_are_trimmed(redis: Redis) -> None:
     assert await redis.xlen(RECEIVED) == 1
 
 
+async def test_dead_consumers_without_pending_messages_are_pruned(redis: Redis) -> None:
+    """En Kubernetes cada pod es un consumidor nuevo: los de pods que ya no
+    existen se borran, salvo si dejaron mensajes sin confirmar."""
+    _, stream, _ = build(redis, FakeAgent())
+    await stream.ensure_group()
+    await publish_received(redis)
+    # Un pod antiguo leyó un mensaje y murió sin confirmarlo; otro murió sin nada.
+    await redis.xreadgroup("ai-service", "old-pod-busy", {RECEIVED: ">"}, count=1)
+    await redis.xgroup_createconsumer(RECEIVED, "ai-service", "old-pod-idle")
+    await redis.xgroup_createconsumer(RECEIVED, "ai-service", "test-1")  # este pod, vivo
+    await asyncio.sleep(0.05)
+
+    pruned = await stream.prune_consumers(max_idle_ms=10)
+
+    assert pruned == ["old-pod-idle"]
+    names = {_name(c) for c in await redis.xinfo_consumers(RECEIVED, "ai-service")}
+    assert names == {"old-pod-busy", "test-1"}  # el pendiente se reclamará; él no se borra
+
+
+async def test_live_consumers_are_never_pruned(redis: Redis) -> None:
+    _, stream, _ = build(redis, FakeAgent())
+    await stream.ensure_group()
+    await redis.xgroup_createconsumer(RECEIVED, "ai-service", "other-pod")
+
+    assert await stream.prune_consumers(max_idle_ms=3_600_000) == []
+
+
+def _name(consumer: dict[Any, Any]) -> str:
+    name = consumer["name"]
+    return name.decode() if isinstance(name, bytes) else str(name)
+
+
 async def test_the_loop_stops_cleanly(redis: Redis) -> None:
     agent = FakeAgent(outcome=outcome())
     consumer, _, _ = build(redis, agent)

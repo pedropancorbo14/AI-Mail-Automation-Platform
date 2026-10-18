@@ -748,7 +748,8 @@ Laravel ya descarta cualquier resultado en modo sombra sin tocar el email.
 
 ## Kubernetes (Fase 6)
 
-> En curso. Hecho: base, overlay local, prueba de humo (6.1) y red (6.2).
+> En curso. Hecho: base, overlay local, prueba de humo (6.1), red (6.2) y
+> overlay de producción (6.3).
 
 Solo el microservicio va a Kubernetes (el worker `ai-service` y el servidor
 MCP `ai-mcp`); Laravel sigue en Docker Compose. En producción los dos
@@ -758,6 +759,7 @@ comparten Redis (los streams) y PostgreSQL (lectura del RAG y checkpoints).
 ai-service/deploy/k8s/
 ├── base/               # Namespace, ServiceAccounts, Deployments, Services, ConfigMaps
 ├── overlays/local/     # kind / k3s / Docker Desktop: Redis + PostgreSQL de pruebas, IA simulada
+├── overlays/production # 2 réplicas, PDB, reparto entre nodos, imagen versionada, secretos fuera del repo
 └── smoke-test/         # Job que hace de Laravel y comprueba el flujo de punta a punta
 ```
 
@@ -781,7 +783,10 @@ servicio se distribuyera a terceros.
   (`terminationGracePeriodSeconds: 60`). Lo que quede a medias lo reclama
   otra réplica (`XAUTOCLAIM`).
 - **Escala en horizontal sin coordinación**: cada réplica es un consumidor
-  del mismo grupo de Redis Streams (su nombre es el del pod).
+  del mismo grupo de Redis Streams (su nombre es el del pod). Como cada pod
+  nuevo es un consumidor nuevo y Redis no los olvida, el mantenimiento del
+  worker borra los del grupo **sin pendientes y más de 1 h sin leer** (pods
+  que ya no existen; lo que dejaron a medias lo reclama antes otra réplica).
 - `ai-mcp` con **una réplica** a propósito (los tickets de demostración
   viven en memoria) y sin acceso a la clave de Anthropic ni a Redis: solo
   recibe su token.
@@ -798,6 +803,25 @@ servicio se distribuyera a terceros.
   que usa Laravel (una sola copia). Por eso se renderiza con
   `--load-restrictor LoadRestrictionsNone`: kustomize no lee por defecto
   ficheros fuera de su carpeta.
+
+**Producción** (`overlays/production`): 2 réplicas del worker repartidas
+entre nodos (`topologySpreadConstraints`), **PodDisruptionBudget**
+`minAvailable: 1` (al vaciar un nodo siempre queda uno procesando), imagen
+de un registro con **versión fija** (`kustomize edit set image`) y Ollama de
+la plataforma. El Secret `ai-service-secrets` **no está en el repositorio**:
+se crea antes con las claves de `secrets.example.env` (o con el gestor de
+secretos del clúster: External Secrets, Sealed Secrets…).
+
+```bash
+kubectl -n aimail-ai create secret generic ai-service-secrets --from-env-file=secrets.env
+kubectl kustomize --load-restrictor LoadRestrictionsNone \
+  ai-service/deploy/k8s/overlays/production | kubectl apply -f -
+```
+
+Escalar más allá de 2 réplicas a mano es cambiar `replicas`. Un autoescalado
+por CPU no tiene sentido aquí (el worker casi siempre espera a la IA); lo
+correcto sería escalar por los mensajes pendientes del stream con **KEDA**
+(escalador de Redis Streams), que se valorará cuando haya volumen real.
 
 **Probarlo en local** (kind, k3s o el Kubernetes de Docker Desktop):
 
@@ -831,8 +855,11 @@ creadas en el esquema `ai_service` y la prueba de humo en verde
 Con las NetworkPolicies aplicadas, desde `ai-mcp` y desde un pod cualquiera
 del namespace las conexiones a Redis, PostgreSQL, `ai-mcp`, `ai-service` e
 internet se rechazan, y `ai-service` sigue llegando a las tres dependencias.
-En el CI, kubeconform valida los manifiestos renderizados contra el esquema
-de Kubernetes 1.33.
+El overlay de producción también se desplegó en el mismo clúster (imagen
+local y una clave de Anthropic ficticia): 2 réplicas listas, cada una
+consumidor del grupo con su nombre de pod, PDB con 1 baja permitida y
+`/ready` en verde. En el CI, kubeconform valida los manifiestos renderizados
+(local, producción y prueba de humo) contra el esquema de Kubernetes 1.33.
 
 ## Eventos: Redis Streams y el worker
 

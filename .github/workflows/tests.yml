@@ -279,7 +279,7 @@ jobs:
         run: |
           curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
             | tar xz -C /tmp kubeconform
-          for dir in overlays/local smoke-test; do
+          for dir in overlays/local overlays/production smoke-test; do
             kubectl kustomize --load-restrictor LoadRestrictionsNone "deploy/k8s/$dir" \
               | /tmp/kubeconform -strict -summary -kubernetes-version 1.33.0
           done

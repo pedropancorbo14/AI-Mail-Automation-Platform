@@ -165,6 +165,27 @@ class RedisStreamConsumer:
         for stream in (self.stream, self.dead_letter_stream):
             await self.redis.xtrim(stream, minid=f"{min_id}-0", approximate=False)
 
+    async def prune_consumers(self, max_idle_ms: int) -> list[str]:
+        """Borra del grupo los consumidores muertos: sin mensajes pendientes y
+        más de `max_idle_ms` sin leer (uno vivo lee cada pocos segundos). En
+        Kubernetes cada pod es un consumidor con nombre nuevo y Redis no los
+        olvida nunca. Los pendientes de uno caído los reclama antes otra réplica
+        (`claim_abandoned`), así que nunca se borra uno con trabajo sin terminar."""
+        try:
+            consumers = await self.redis.xinfo_consumers(self.stream, self.group)
+        except ResponseError:
+            return []
+        pruned: list[str] = []
+        for consumer in consumers:
+            name = _id(consumer.get("name"))
+            dead = int(consumer.get("pending") or 0) == 0 and int(consumer.get("idle") or 0) > (
+                max_idle_ms
+            )
+            if dead and name != self.consumer:
+                await self.redis.xgroup_delconsumer(self.stream, self.group, name)
+                pruned.append(name)
+        return pruned
+
     async def lag(self) -> tuple[int, int]:
         """(pendientes sin confirmar, entradas aún no leídas por el grupo)."""
         try:

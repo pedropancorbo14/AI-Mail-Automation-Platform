@@ -4373,8 +4373,29 @@ el equipo del usuario y en el CI, kind funciona sin nada de esto.
   un pod sin etiquetas, Redis, PostgreSQL, `ai-mcp`, `ai-service` e internet
   (1.1.1.1:443) → rechazados; desde `ai-service`, Redis/PostgreSQL/`ai-mcp`
   → abiertos; prueba de humo OK con todo aplicado
-- [ ] 6.3 Overlay de producción (réplicas, PDB, reparto entre nodos,
-  secretos fuera del repositorio)
+- [x] 6.3 **Overlay de producción.** `overlays/production`: 2 réplicas del
+  worker con `topologySpreadConstraints` por nodo (ScheduleAnyway),
+  **PodDisruptionBudget** `minAvailable: 1`, imagen
+  `registry.example.com/aimail/ai-service:1.0.0` (placeholder; se cambia
+  con `kustomize edit set image`), Ollama de la plataforma en el ConfigMap,
+  y el Secret `ai-service-secrets` **fuera del repositorio**:
+  `secrets.example.env` con las claves (Redis, Anthropic, token MCP, roles
+  de lectura y de checkpoints) y `secrets.env` en `.gitignore`. Escalado
+  por CPU descartado (el worker espera a la IA); KEDA por mensajes
+  pendientes del stream, anotado para cuando haya volumen. **Encontrado al
+  desplegarlo:** cada pod nuevo es un consumidor nuevo del grupo de Redis y
+  los de pods muertos se quedaban para siempre → `RedisStreamConsumer.
+  prune_consumers()` (en el mantenimiento del consumidor, cada minuto):
+  borra los que no tienen pendientes y llevan más de 1 h sin leer
+  (`ConsumerOptions.prune_consumers_idle_ms`), nunca a sí mismo; los
+  pendientes de uno caído los reclama antes `XAUTOCLAIM`. Tests con Redis
+  real (muerto sin pendientes → borrado; con pendientes y el propio → se
+  quedan; vivos nunca). **Lección:** en Redis 7.0 un `XREADGROUP` sin
+  mensajes no registra al consumidor (en el test, `XGROUP CREATECONSUMER`).
+  **Probado en k3s:** 2 réplicas listas y registradas en el grupo, PDB con
+  1 baja permitida, `/ready` en verde; vuelta al overlay local y prueba de
+  humo OK con la imagen nueva. CI: kubeconform también sobre producción.
+  373 tests de Python
 - [ ] 6.4 CI: desplegar en kind y pasar la prueba de humo
 - [ ] 6.5 README, guía para kind en el equipo del usuario y cierre
 

@@ -1,0 +1,50 @@
+# Overlay de producción. Redis y PostgreSQL son los de la plataforma (los mismos
+# que usa Laravel); los secretos NO están en el repositorio: el Secret
+# ai-service-secrets se crea antes de aplicar (ver secrets.example.env).
+#
+#   kubectl create namespace aimail-ai   # o lo crea el primer apply
+#   kubectl -n aimail-ai create secret generic ai-service-secrets --from-env-file=secrets.env
+#   kubectl kustomize --load-restrictor LoadRestrictionsNone \
+#     ai-service/deploy/k8s/overlays/production | kubectl apply -f -
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aimail-ai
+
+resources:
+  - ../../base
+  - pdb.yaml
+
+# Imagen del registro con versión fija (nunca "latest"): cambiarla es un
+# despliegue. Con la versión real:
+#   cd ai-service/deploy/k8s/overlays/production && kustomize edit set image aimail/ai-service=REGISTRO/ai-service:VERSION
+images:
+  - name: aimail/ai-service
+    newName: registry.example.com/aimail/ai-service
+    newTag: "1.0.0"
+
+configMapGenerator:
+  - name: ai-service-config
+    behavior: merge
+    literals:
+      # Ollama de la plataforma (embeddings del RAG, mismo modelo que Laravel).
+      - AI_SERVICE_OLLAMA_URL=http://ollama.aimail-platform.svc.cluster.local:11434
+
+patches:
+  # Dos réplicas del worker, en nodos distintos si los hay: una puede caer o
+  # reiniciarse (despliegue, mantenimiento del nodo) sin dejar de procesar.
+  - target:
+      kind: Deployment
+      name: ai-service
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+      - op: add
+        path: /spec/template/spec/topologySpreadConstraints
+        value:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: ai-service

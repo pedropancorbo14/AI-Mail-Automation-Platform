@@ -1,0 +1,11 @@
+# Al vaciar un nodo (mantenimiento, actualización del clúster) siempre queda
+# al menos un worker procesando emails.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-service

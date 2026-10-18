@@ -61,6 +61,9 @@ class ConsumerOptions:
     processed_ttl_seconds: int = 86_400
     maintenance_every_seconds: float = 60.0
     checkpoint_ttl_hours: int = 336
+    # Consumidores del grupo sin pendientes y sin leer desde hace más de esto:
+    # pods que ya no existen (en Kubernetes cada pod tiene un nombre nuevo).
+    prune_consumers_idle_ms: int = 3_600_000
 
 
 class EventConsumer:
@@ -236,6 +239,9 @@ class EventConsumer:
             pending, lag = await self._stream.lag()
             self._metrics.stream_pending.set(pending)
             self._metrics.stream_lag.set(lag)
+            pruned = await self._stream.prune_consumers(self._options.prune_consumers_idle_ms)
+            if pruned:
+                log.info("stream_consumers_pruned", consumers=pruned)
             if self._checkpoints is not None:
                 # Acciones que nadie aprobó ni rechazó a tiempo (datos personales).
                 await self._checkpoints.purge(self._options.checkpoint_ttl_hours)
