@@ -2,41 +2,57 @@
 
 namespace App\Documents;
 
-use App\AI\Embeddings\EmbeddingInputType;
-use App\AI\Embeddings\EmbeddingService;
-use App\AI\Exceptions\LLMException;
-use App\AI\Remote\AIEngine;
 use App\AI\Remote\DocumentIndexPublisher;
-use App\Documents\Chunking\TextChunk;
 use App\Documents\Enums\DocumentStatus;
-use App\Documents\Chunking\TextChunker;
 use App\Documents\Exceptions\DocumentProcessingException;
-use App\Documents\Extraction\DocumentTextExtractor;
 use App\Models\Document;
 use App\Models\User;
 use App\Tenancy\TenantService;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
  * Ciclo de vida de los documentos de la base de conocimiento:
- * upload() guarda el original (disco privado) y encola el indexado;
- * process() extrae el texto, lo trocea, calcula los embeddings y guarda los
- * trozos; delete() borra fichero, trozos y documento. Siempre dentro del
- * tenant del documento.
+ * upload() guarda el original (disco privado) y pide el indexado a
+ * ai-service (document.uploaded.v1: extrae, trocea y calcula los embeddings);
+ * delete() borra fichero y documento y avisa a ai-service para que borre sus
+ * fragmentos. Siempre dentro del tenant del documento.
  */
 class DocumentService
 {
+    /** Extensiones admitidas → tipo (los navegadores mandan text/plain para .md). */
+    public const array EXTENSIONS = [
+        'pdf' => 'application/pdf',
+        'txt' => 'text/plain',
+        'md' => 'text/markdown',
+        'markdown' => 'text/markdown',
+        'html' => 'text/html',
+        'htm' => 'text/html',
+    ];
+
+    /** Tipos MIME admitidos (los de document.uploaded.v1) y sus alias. */
+    private const array MIME_TYPES = [
+        'application/pdf' => 'application/pdf',
+        'text/plain' => 'text/plain',
+        'text/markdown' => 'text/markdown',
+        'text/x-markdown' => 'text/markdown',
+        'text/html' => 'text/html',
+    ];
+
     public function __construct(
         private readonly TenantService $tenants,
-        private readonly DocumentTextExtractor $extractor,
-        private readonly TextChunker $chunker,
-        private readonly EmbeddingService $embeddings,
+        private readonly DocumentIndexPublisher $publisher,
     ) {
+    }
+
+    /** Tipo MIME efectivo a partir del nombre (manda la extensión) o del tipo detectado. */
+    public static function mimeFor(string $filename, ?string $detectedMime = null): ?string
+    {
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+        return self::EXTENSIONS[$extension] ?? self::MIME_TYPES[(string) $detectedMime] ?? null;
     }
 
     /**
@@ -45,7 +61,7 @@ class DocumentService
     public function upload(string $content, string $filename, ?string $title = null, ?User $uploader = null, ?string $detectedMime = null): Document
     {
         $tenant = $this->tenants->currentOrFail();
-        $mime = DocumentTextExtractor::mimeFor($filename, $detectedMime)
+        $mime = self::mimeFor($filename, $detectedMime)
             ?? throw new DocumentProcessingException('Formato no soportado. Se admiten PDF, TXT, Markdown y HTML.');
 
         $maxMb = (int) config('ai.rag.max_upload_mb');
@@ -90,7 +106,7 @@ class DocumentService
             throw new DocumentProcessingException('Este documento ya está subido.');
         }
 
-        $this->queueIndexing($document);
+        $this->publisher->upload($document);
 
         return $document;
     }
@@ -99,105 +115,14 @@ class DocumentService
     public function reindex(Document $document): void
     {
         $document->forceFill(['status' => DocumentStatus::Pending, 'error' => null])->save();
-        $this->queueIndexing($document);
-    }
-
-    /** Con el motor remoto lo indexa ai-service; si no, el trabajo de Laravel. */
-    private function queueIndexing(Document $document): void
-    {
-        if (AIEngine::current()->isRemote()) {
-            app(DocumentIndexPublisher::class)->upload($document);
-
-            return;
-        }
-
-        ProcessDocumentJob::dispatch($document->tenant_id, $document->id);
-    }
-
-    /**
-     * Indexa (o reindexa) el documento. Errores del documento → failed (no
-     * se reintenta); errores temporales del proveedor de embeddings → se
-     * relanzan para que la cola reintente.
-     *
-     * @throws LLMException reintentable.
-     */
-    public function process(Document $document): void
-    {
-        $document->markProcessing();
-
-        try {
-            $content = Storage::disk($document->disk)->get($document->path)
-                ?? throw new DocumentProcessingException('No se encuentra el fichero del documento.');
-
-            $chunks = $this->chunker->chunk($this->extractor->extract($content, $document->mime_type));
-
-            $vectors = $this->embeddings->embed(
-                array_map(fn (TextChunk $chunk) => self::embeddingText($document, $chunk), $chunks),
-                EmbeddingInputType::Document,
-                EmbeddingService::PURPOSE_INDEXING,
-            );
-        } catch (DocumentProcessingException $e) {
-            $this->failed($document, $e->getMessage());
-
-            return;
-        } catch (LLMException $e) {
-            if ($e->retryable) {
-                throw $e;
-            }
-
-            $this->failed($document, $e->getMessage());
-
-            return;
-        }
-
-        // Reemplazo atómico: nunca queda un documento con trozos a medias.
-        DB::transaction(function () use ($document, $chunks, $vectors) {
-            $document->chunks()->delete();
-
-            foreach ($chunks as $position => $chunk) {
-                $document->chunks()->create([
-                    'position' => $position,
-                    'content' => $chunk->text,
-                    'token_count' => $chunk->estimatedTokens,
-                    'metadata' => $chunk->metadata ?: null,
-                    'embedding' => $vectors->vectors[$position],
-                ]);
-            }
-
-            $document->markReady(count($chunks), $vectors->model);
-        });
-
-        Log::info('Documento indexado', ['document_id' => $document->id, 'chunks' => count($chunks), 'model' => $vectors->model]);
+        $this->publisher->upload($document);
     }
 
     public function delete(Document $document): void
     {
-        $document->delete();   // los trozos de Laravel se borran en cascada
+        $document->delete();
         Storage::disk($document->disk)->delete($document->path);
-
-        // Los fragmentos de ai-service también (se publica aunque el motor actual
-        // sea el de Laravel: pudo indexarse antes con el remoto).
-        if (AIEngine::current()->isRemote() || $document->index_event_id !== null) {
-            app(DocumentIndexPublisher::class)->deleted($document->tenant_id, $document->id);
-        }
-    }
-
-    /** Texto que se convierte en vector: el trozo con su contexto (título y sección). */
-    public static function embeddingText(Document $document, TextChunk $chunk): string
-    {
-        $header = "Documento: {$document->title}";
-
-        if (isset($chunk->metadata['heading'])) {
-            $header .= "\nSección: {$chunk->metadata['heading']}";
-        }
-
-        return $header . "\n\n" . $chunk->text;
-    }
-
-    private function failed(Document $document, string $error): void
-    {
-        $document->markFailed($error);
-        Log::warning('No se pudo indexar el documento', ['document_id' => $document->id, 'error' => $error]);
+        $this->publisher->deleted($document->tenant_id, $document->id);
     }
 
     private static function title(?string $title, string $filename): string

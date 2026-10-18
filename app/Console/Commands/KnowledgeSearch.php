@@ -2,29 +2,23 @@
 
 namespace App\Console\Commands;
 
-use App\AI\Exceptions\LLMException;
-use App\AI\Remote\AIEngine;
 use App\AI\Remote\AiServiceClient;
 use App\AI\Remote\Exceptions\AiServiceUnavailableException;
-use App\Documents\Search\SearchResult;
-use App\Documents\Search\SemanticSearchService;
 use App\Models\Tenant;
-use App\Tenancy\TenantService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
-/** Prueba la búsqueda semántica en la documentación de una empresa. */
+/** Prueba la búsqueda semántica de ai-service en la documentación de una empresa. */
 #[Signature('kb:search
     {query : Pregunta a buscar}
     {--tenant= : Id de la empresa}
-    {--limit= : Número de resultados}
-    {--min= : Similitud mínima (0–1)}')]
+    {--limit= : Número de resultados}')]
 #[Description('Busca por significado en la base de conocimiento de una empresa')]
 class KnowledgeSearch extends Command
 {
-    public function handle(TenantService $tenants, SemanticSearchService $search): int
+    public function handle(AiServiceClient $client): int
     {
         $tenant = Tenant::find($this->option('tenant'));
 
@@ -34,36 +28,20 @@ class KnowledgeSearch extends Command
             return self::FAILURE;
         }
 
-        if (AIEngine::current()->isRemote()) {
-            // La búsqueda es de ai-service (su umbral de similitud, no --min).
-            try {
-                $remote = app(AiServiceClient::class)->searchKnowledge(
-                    $tenant,
-                    (string) $this->argument('query'),
-                    $this->option('limit') !== null ? (int) $this->option('limit') : null,
-                );
-            } catch (AiServiceUnavailableException $e) {
-                $this->error($e->getMessage());
-
-                return self::FAILURE;
-            }
-
-            return $this->show(array_map(fn (array $r) => [$r['similarity'], $r['source'], $r['content']], $remote));
-        }
-
+        // Con el umbral de similitud de ai-service.
         try {
-            $results = $tenants->runAs($tenant, fn () => $search->search(
+            $results = $client->searchKnowledge(
+                $tenant,
                 (string) $this->argument('query'),
                 $this->option('limit') !== null ? (int) $this->option('limit') : null,
-                $this->option('min') !== null ? (float) $this->option('min') : null,
-            ));
-        } catch (LLMException $e) {
+            );
+        } catch (AiServiceUnavailableException $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;
         }
 
-        return $this->show(array_map(fn (SearchResult $r) => [$r->similarity, $r->source(), $r->content], $results));
+        return $this->show(array_map(fn (array $r) => [$r['similarity'], $r['source'], $r['content']], $results));
     }
 
     /** @param  list<array{0: float, 1: string, 2: string}>  $rows */

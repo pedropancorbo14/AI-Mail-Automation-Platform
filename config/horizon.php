@@ -99,8 +99,7 @@ return [
     'waits' => [
         'redis:default' => 60,
         'redis:mail' => 120,
-        'redis-long:ai' => 300,
-        'redis-long:documents' => 900,
+        'redis:ai' => 120,
     ],
 
     /*
@@ -231,12 +230,10 @@ return [
             'nice' => 0,
         ],
 
-        // Llamadas a la IA (ClassifyEmailJob...): supervisor propio para que la
-        // latencia de la IA no frene la ingesta ni el resto de jobs. Pocos
-        // procesos a propósito: limita el gasto y los 429 del proveedor.
+        // ProcessEmailJob: filtros baratos y publicación para ai-service (la IA
+        // la hace ai-service). Supervisor propio para no mezclarlo con la ingesta.
         'supervisor-ai' => [
-            // redis-long (retry_after 1900): procesar un email puede tardar minutos.
-            'connection' => 'redis-long',
+            'connection' => 'redis',
             'queue' => ['ai'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
@@ -244,25 +241,8 @@ return [
             'maxTime' => 0,
             'maxJobs' => 0,
             'memory' => 256,
-            'tries' => 4,
-            'timeout' => 650,
-            'nice' => 0,
-        ],
-
-        // Indexado de documentos (ProcessDocumentJob): conexión redis-long
-        // (retry_after 1900 s) y timeout amplio; aparte para no frenar la
-        // clasificación de emails mientras se indexa un PDF grande.
-        'supervisor-documents' => [
-            'connection' => 'redis-long',
-            'queue' => ['documents'],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'maxProcesses' => 1,
-            'maxTime' => 0,
-            'maxJobs' => 0,
-            'memory' => 512,
             'tries' => 3,
-            'timeout' => 1850,
+            'timeout' => 150,
             'nice' => 0,
         ],
     ],
@@ -285,10 +265,6 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 3,
             ],
-            'supervisor-documents' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 2,
-            ],
         ],
 
         'local' => [
@@ -305,10 +281,6 @@ return [
                 'maxProcesses' => 2,
             ],
             'supervisor-ai' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 1,
-            ],
-            'supervisor-documents' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],

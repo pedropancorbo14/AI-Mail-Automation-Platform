@@ -6,9 +6,10 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Versión de un prompt tal como se envió al modelo. Inmutable: la crea
- * App\AI\Prompts\PromptRegistry al usar un prompt por primera vez. Sin
- * tenant: los prompts son de la plataforma, no de cada empresa.
+ * Versión de un prompt del antiguo motor de IA de Laravel, tal como se envió al
+ * modelo. Solo historial (lo enlazan peticiones antiguas de ai_requests): ya no
+ * se crean filas; los prompts viven en ai-service (`clave@versión` en
+ * `ai_requests.response.prompt`).
  */
 #[Fillable(['key', 'version', 'system_prompt', 'output_schema', 'content_hash'])]
 class AiPromptVersion extends Model

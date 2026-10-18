@@ -1,8 +1,6 @@
 <?php
 
 use App\AI\Agent\Enums\EmailReplyStatus;
-use App\AI\Contracts\LLMProvider;
-use App\AI\Embeddings\EmbeddingProvider;
 use App\Mail\Data\MailMessage;
 use App\Mail\Enums\EmailStatus;
 use App\Mail\Enums\MailConnectionStatus;
@@ -13,26 +11,18 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Mime\Email as MimeEmail;
-use Tests\Fakes\FakeEmbeddingProvider;
 use Tests\Support\GreenMail;
 
 /*
  * La revisión humana de principio a fin contra un servidor de correo real
- * (GreenMail) y con la IA SIMULADA (AI_PROVIDER=simulated, sin coste): el
- * cliente escribe → mail:sync → ingesta → clasificación y agente simulados →
- * la empresa está en modo borrador → revisión humana → una persona decide por
- * la API del panel → SMTP → la respuesta llega al buzón del cliente.
+ * (GreenMail), con el resultado de ai-service simulado: el cliente escribe →
+ * mail:sync → ingesta → email.received.v1 → resultado de ai-service → la
+ * empresa está en modo borrador → revisión humana → una persona decide por la
+ * API del panel → SMTP → la respuesta llega al buzón del cliente.
  */
 
 beforeEach(function () {
-    config([
-        'mail_connections.allow_private_hosts' => true,
-        'ai.provider' => 'simulated',
-        'ai.simulated.delay_ms' => 0,
-        'ai.anthropic.api_key' => '',
-    ]);
-    app()->forgetInstance(LLMProvider::class);
-    app()->instance(EmbeddingProvider::class, new FakeEmbeddingProvider());
+    config(['mail_connections.allow_private_hosts' => true]);
     Storage::fake('local');
 
     $this->tenant = Tenant::factory()->create(['slug' => 'empresa-demo']); // modo borrador por defecto
@@ -49,7 +39,7 @@ beforeEach(function () {
 
     $this->artisan('mail:sync')->assertSuccessful(); // primera pasada: punto de partida
 
-    // El cliente pregunta por envíos: la IA simulada busca en la documentación (vacía) y no puede responder sola.
+    // El cliente pregunta por envíos; ai-service propone una respuesta.
     $email = (new MimeEmail())
         ->from($this->customer)
         ->to($this->support)
@@ -60,6 +50,8 @@ beforeEach(function () {
 
     $this->artisan('mail:sync')->assertSuccessful();
     $this->email = inTenant($this->tenant, fn () => Email::sole());
+    applyAiResult(processedEvent($this->email, ['draft' => "Hola:\n\nSí, enviamos a Canarias.\n\nUn saludo"]));
+    $this->email = $this->email->fresh();
 });
 
 /** @return list<MailMessage> */
@@ -128,14 +120,16 @@ it('lets the person discard the proposal and write the reply', function () {
         ->and(inTenant($this->tenant, fn () => $this->email->reviews()->pluck('decision')->map->value->all()))->toBe(['rejected', 'replied']);
 })->group('greenmail');
 
-it('sends the email back to the simulated ai, which prepares a new proposal', function () {
+it('sends the email back to ai-service, which prepares a new proposal', function () {
     $old = inTenant($this->tenant, fn () => $this->email->replies()->sole());
 
     $this->actingAs($this->ana, 'sanctum')
         ->postJson("/api/v1/emails/{$this->email->id}/reprocess")
         ->assertOk();
 
-    // Cola sync: el reproceso ya ha terminado (vuelve a revisión humana con una propuesta nueva).
+    // Cola sync: ya se ha publicado otra vez; ai-service responde con una propuesta nueva.
+    expect($this->email->fresh()->status)->toBe(EmailStatus::Processing);
+    applyAiResult(processedEvent($this->email, ['draft' => "Hola:\n\nSí, enviamos a Canarias (de 5 a 7 días).\n\nUn saludo"]));
     $replies = inTenant($this->tenant, fn () => $this->email->replies()->get());
 
     expect($this->email->fresh()->status)->toBe(EmailStatus::HumanReview)

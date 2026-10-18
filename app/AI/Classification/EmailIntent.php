@@ -3,8 +3,9 @@
 namespace App\AI\Classification;
 
 /**
- * Intenciones que reconoce el clasificador. Añadir una nueva exige subir la
- * versión de EmailClassificationPrompt (cambia el esquema y el texto).
+ * Intenciones que reconoce el clasificador de ai-service: espejo de
+ * `category` en contracts/events/common.schema.json (un test lo comprueba).
+ * Añadir una exige cambiar el contrato y el prompt de ai-service.
  */
 enum EmailIntent: string
 {

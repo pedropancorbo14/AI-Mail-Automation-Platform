@@ -3,7 +3,6 @@
 namespace App\Automation\Review;
 
 use App\AI\Agent\Enums\EmailReplyStatus;
-use App\AI\Remote\AIEngine;
 use App\AI\Remote\ReviewResumedPublisher;
 use App\Automation\EmailProcessor;
 use App\Automation\ProcessEmailJob;
@@ -195,10 +194,6 @@ class HumanReviewService
     public function decideAction(Email $email, User $by, bool $approved): void
     {
         $email = $this->reviewableEmail($email);
-
-        if (! AIEngine::current()->isRemote()) {
-            throw ReviewException::remoteEngineOff();
-        }
 
         if (($action = $email->undecidedAction()) === null) {
             throw ReviewException::noPendingAction();

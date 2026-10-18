@@ -1,22 +1,17 @@
 <?php
 
-use App\AI\Embeddings\EmbeddingProvider;
-use App\AI\Exceptions\LLMUnavailableException;
 use App\Documents\DocumentService;
-use App\Documents\ProcessDocumentJob;
 use App\Models\Document;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
-use Tests\Fakes\FakeEmbeddingProvider;
 
 beforeEach(function () {
     Storage::fake('local');
-    config(['ai.rag.min_similarity' => 0.1]);
-    $this->embeddings = new FakeEmbeddingProvider();
-    app()->instance(EmbeddingProvider::class, $this->embeddings);
+    // La búsqueda la hace ai-service (sus casos, en AiServiceApiTest): aquí no encuentra nada.
+    Http::fake(['ai-service.test/*' => Http::response(['results' => [], 'calls' => []])]);
 
     $this->tenant = Tenant::factory()->create();
     $this->admin = User::factory()->for($this->tenant)->admin()->create();
@@ -33,30 +28,17 @@ function documentOf(Tenant $tenant, string $content = 'Envíos en 24-48 horas.',
     return inTenant($tenant, fn () => app(DocumentService::class)->upload($content, $filename, 'Envíos'));
 }
 
-it('uploads and indexes a document of the user company', function () {
+it('uploads a document of the user company and leaves it indexing in ai-service', function () {
     $response = $this->actingAs($this->admin, 'sanctum')
         ->postJson('/api/v1/documents', ['file' => policyFile(), 'title' => 'Política de devoluciones'])
         ->assertCreated()
         ->assertJsonPath('data.title', 'Política de devoluciones')
         ->assertJsonPath('data.mime_type', 'text/markdown')
-        ->assertJsonPath('data.status', 'ready')
-        ->assertJsonPath('data.chunks_count', 1)
+        ->assertJsonPath('data.status', 'processing')
         ->assertJsonPath('data.uploaded_by', $this->admin->id);
 
     expect($response->json('data'))->not->toHaveKeys(['path', 'disk', 'sha256'])
         ->and(inTenant($this->tenant, fn () => Document::sole()->tenant_id))->toBe($this->tenant->id);
-});
-
-it('returns the document as pending while the queue indexes it', function () {
-    Queue::fake();
-
-    $this->actingAs($this->admin, 'sanctum')
-        ->postJson('/api/v1/documents', ['file' => policyFile()])
-        ->assertCreated()
-        ->assertJsonPath('data.status', 'pending')
-        ->assertJsonPath('data.title', 'politica');
-
-    Queue::assertPushed(ProcessDocumentJob::class);
 });
 
 it('explains why a file is rejected', function (UploadedFile $file, string $message) {
@@ -84,12 +66,10 @@ it('lists, shows, reindexes and deletes documents', function () {
     $this->actingAs($this->agent, 'sanctum')->getJson('/api/v1/documents')
         ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $document->id);
     $this->actingAs($this->agent, 'sanctum')->getJson("/api/v1/documents/{$document->id}")
-        ->assertOk()->assertJsonPath('data.status', 'ready');
+        ->assertOk()->assertJsonPath('data.status', 'processing');
 
-    Queue::fake();
     $this->actingAs($this->admin, 'sanctum')->postJson("/api/v1/documents/{$document->id}/reindex")
-        ->assertOk()->assertJsonPath('data.status', 'pending');
-    Queue::assertPushed(ProcessDocumentJob::class, fn ($job) => $job->documentId === $document->id);
+        ->assertOk()->assertJsonPath('data.status', 'processing');
 
     $this->actingAs($this->admin, 'sanctum')->deleteJson("/api/v1/documents/{$document->id}")->assertNoContent();
     expect(Document::withoutGlobalScopes()->count())->toBe(0);
@@ -104,31 +84,11 @@ it('lets agents read and search but not manage', function () {
     $this->actingAs($this->agent, 'sanctum')->postJson('/api/v1/knowledge-base/search', ['query' => 'envíos'])->assertOk();
 });
 
-it('searches the documentation with sources', function () {
-    documentOf($this->tenant, "# Devoluciones\n\nTienes 30 días para devolver cualquier producto.", 'politica.md');
-
-    $this->actingAs($this->agent, 'sanctum')
-        ->postJson('/api/v1/knowledge-base/search', ['query' => '¿Cuántos días tengo para devolver un producto?', 'limit' => 3])
-        ->assertOk()
-        ->assertJsonPath('data.0.source', 'Envíos, sección «Devoluciones»')
-        ->assertJsonPath('data.0.metadata.heading', 'Devoluciones')
-        ->assertJsonStructure(['data' => [['source', 'document_id', 'document_title', 'content', 'metadata', 'similarity']]]);
-});
-
 it('validates the search', function () {
     $this->actingAs($this->agent, 'sanctum')
         ->postJson('/api/v1/knowledge-base/search', ['query' => '', 'limit' => 50])
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['query', 'limit']);
-});
-
-it('answers 503 when the embedding model is not available', function () {
-    $this->embeddings->failWith = new LLMUnavailableException('No se pudo conectar con Ollama.');
-
-    $this->actingAs($this->agent, 'sanctum')
-        ->postJson('/api/v1/knowledge-base/search', ['query' => 'envíos'])
-        ->assertStatus(503)
-        ->assertJsonPath('message', 'La búsqueda no está disponible en este momento.');
 });
 
 // --- Aislamiento -------------------------------------------------------------
@@ -141,11 +101,9 @@ it('cannot see, reindex or delete documents of another company', function () {
     $this->actingAs($this->admin, 'sanctum')->postJson("/api/v1/documents/{$foreign->id}/reindex")->assertNotFound();
     $this->actingAs($this->admin, 'sanctum')->deleteJson("/api/v1/documents/{$foreign->id}")->assertNotFound();
 
-    $results = $this->actingAs($this->admin, 'sanctum')
-        ->postJson('/api/v1/knowledge-base/search', ['query' => 'SECRETO Globex'])
-        ->json('data');
-
-    expect($results)->toBe([]);
+    // La búsqueda va a ai-service siempre con la empresa del usuario.
+    $this->actingAs($this->admin, 'sanctum')->postJson('/api/v1/knowledge-base/search', ['query' => 'SECRETO Globex'])->assertOk();
+    Http::assertSent(fn ($request) => $request['tenant_id'] === $this->tenant->id);
 });
 
 it('requires authentication', function () {

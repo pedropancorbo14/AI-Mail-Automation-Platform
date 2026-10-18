@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 
 /**
  * Última palabra antes de enviar una respuesta sin revisión humana. Se suma
- * a AgentDecision (que ya marca needs_human): aquí van las reglas de la
+ * a la decisión de ai-service (que ya marca needs_human): aquí van las reglas de la
  * empresa y las protecciones contra bucles. Basta un motivo para que la
  * respuesta vaya a una persona; se devuelven todos. Dentro del tenant.
  */

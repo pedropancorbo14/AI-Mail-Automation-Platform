@@ -2,35 +2,16 @@
 
 namespace App\AI;
 
-use App\AI\Data\LLMResponse;
 use App\AI\Data\LLMUsage;
 
 /**
  * Coste en USD de una llamada a partir de los precios de config/ai.php
  * (USD por millón de tokens). Con fallbacks, cada modelo factura sus propios
- * tokens a su tarifa. Si falta el precio de algún modelo el coste es null
+ * tokens a su tarifa (ai-service envía una llamada por modelo). Si falta el precio de algún modelo el coste es null
  * (desconocido), nunca 0: así no parece gratis en los informes.
  */
 class CostCalculator
 {
-    public function forResponse(LLMResponse $response): ?string
-    {
-        $parts = $response->usageByModel ?: [['model' => $response->model, 'usage' => $response->usage]];
-        $total = 0.0;
-
-        foreach ($parts as $part) {
-            $cost = $this->microUsd($part['model'], $part['usage']);
-
-            if ($cost === null) {
-                return null;
-            }
-
-            $total += $cost;
-        }
-
-        return self::format($total);
-    }
-
     public function forUsage(string $model, LLMUsage $usage): ?string
     {
         $cost = $this->microUsd($model, $usage);

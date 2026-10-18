@@ -2,39 +2,37 @@
 
 namespace App\Tools;
 
+use App\AI\Remote\AiServiceClient;
 use App\AI\ToolCatalog;
 use App\Models\Tenant;
 use App\Models\TenantTool;
 use App\Tenancy\TenantService;
-use App\Tools\Contracts\AITool;
-use App\Tools\Contracts\HasAvailability;
 use InvalidArgumentException;
 
 /**
- * Qué herramientas puede usar la IA en cada empresa: las del catálogo
- * (ToolRegistry) que estén activadas para ella (tabla tenant_tools; sin
- * fila, config ai.tools.default_enabled) y disponibles (si dependen de una
- * fuente de datos, que la empresa la tenga configurada).
+ * Qué herramientas puede usar la IA (ai-service) en cada empresa: las del
+ * catálogo compartido (contracts/tools/catalog.json) activadas para ella
+ * (tabla tenant_tools; sin fila, las activadas por defecto en el catálogo).
+ * Si tienen datos que consultar lo sabe ai-service.
  */
 class TenantToolService
 {
     public function __construct(
-        private readonly ToolRegistry $registry,
         private readonly TenantService $tenants,
         private readonly ToolCatalog $catalog,
+        private readonly AiServiceClient $client,
     ) {
     }
 
     /**
-     * Herramientas del catálogo activadas en la empresa (tenant_tools; sin
-     * fila, las activadas por defecto en el catálogo), en orden alfabético.
-     * Se mandan a ai-service en cada evento: solo usa estas.
+     * Herramientas activadas en la empresa, en orden alfabético. Se mandan a
+     * ai-service en cada evento: solo usa estas.
      *
      * @return list<string>
      */
     public function enabledNames(Tenant $tenant): array
     {
-        $settings = $this->tenants->runAs($tenant, fn () => TenantTool::pluck('enabled', 'tool')->all());
+        $settings = $this->settings($tenant);
         $defaults = $this->catalog->defaults();
         $names = array_values(array_filter(
             $this->catalog->names(),
@@ -45,64 +43,18 @@ class TenantToolService
         return $names;
     }
 
-    /** @return list<AITool> Herramientas que se ofrecen a la IA en esta empresa (orden estable). */
-    public function toolsFor(Tenant $tenant): array
-    {
-        return $this->tenants->runAs($tenant, function () {
-            $settings = TenantTool::pluck('enabled', 'tool')->all();
-
-            $tools = array_values(array_filter(
-                $this->registry->all(),
-                fn (AITool $tool) => $this->enabled($tool, $settings) && $this->available($tool),
-            ));
-            usort($tools, fn (AITool $a, AITool $b) => strcmp($a->name(), $b->name()));
-
-            return $tools;
-        });
-    }
-
-    public function isUsable(Tenant $tenant, string $name): bool
-    {
-        foreach ($this->toolsFor($tenant) as $tool) {
-            if ($tool->name() === $name) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /**
-     * Estado de cada herramienta del catálogo para la empresa (para el comando y el panel).
-     *
-     * @return list<array{tool: string, enabled: bool, available: bool, source: string}>
-     */
-    public function statusFor(Tenant $tenant): array
-    {
-        return $this->tenants->runAs($tenant, function () {
-            $settings = TenantTool::pluck('enabled', 'tool')->all();
-
-            return array_map(fn (AITool $tool) => [
-                'tool' => $tool->name(),
-                'enabled' => $this->enabled($tool, $settings),
-                'available' => $this->available($tool),
-                'source' => array_key_exists($tool->name(), $settings) ? 'empresa' : 'por defecto',
-            ], $this->registry->all());
-        });
-    }
-
-    /**
-     * Estado de cada herramienta del catálogo compartido con ai-service (motor
-     * remoto): activada en la empresa y, según ai-service, si tiene datos que
-     * consultar (null = ai-service no responde).
+     * Estado de cada herramienta del catálogo para la empresa (comando y
+     * panel): activada y, según ai-service, si tiene datos que consultar
+     * (null = ai-service no responde).
      *
      * @return list<array{tool: string, enabled: bool, available: bool|null, source: string}>
      */
-    public function catalogStatusFor(Tenant $tenant): array
+    public function statusFor(Tenant $tenant): array
     {
-        $settings = $this->tenants->runAs($tenant, fn () => TenantTool::pluck('enabled', 'tool')->all());
+        $settings = $this->settings($tenant);
         $enabled = $this->enabledNames($tenant);
-        $availability = app(\App\AI\Remote\AiServiceClient::class)->toolAvailability($tenant);
+        $availability = $this->client->toolAvailability($tenant);
 
         return array_map(fn (string $name) => [
             'tool' => $name,
@@ -124,21 +76,16 @@ class TenantToolService
 
     private function set(Tenant $tenant, string $name, bool $enabled): void
     {
-        if (! $this->registry->has($name) && ! $this->catalog->has($name)) {
+        if (! $this->catalog->has($name)) {
             throw new InvalidArgumentException("La herramienta {$name} no existe.");
         }
 
         $this->tenants->runAs($tenant, fn () => TenantTool::updateOrCreate(['tool' => $name], ['enabled' => $enabled]));
     }
 
-    /** @param  array<string, bool>  $settings */
-    private function enabled(AITool $tool, array $settings): bool
+    /** @return array<string, bool> */
+    private function settings(Tenant $tenant): array
     {
-        return $settings[$tool->name()] ?? in_array($tool->name(), config('ai.tools.default_enabled', []), true);
-    }
-
-    private function available(AITool $tool): bool
-    {
-        return ! $tool instanceof HasAvailability || $tool->isAvailable();
+        return $this->tenants->runAs($tenant, fn () => TenantTool::pluck('enabled', 'tool')->all());
     }
 }

@@ -48,21 +48,23 @@ function incomingMessage(array $overrides = []): MailMessage
     ], $overrides));
 }
 
-/** JSON de clasificación tal como lo devolvería el modelo (sobrescribible por campo). */
-function classificationData(array $overrides = []): array
+/** Clasificación tal como la guarda Laravel de un resultado de ai-service (sobrescribible por campo). */
+function classificationOf(array $overrides = []): App\AI\Classification\EmailClassification
 {
-    return array_replace_recursive([
-        'intent' => 'order_status',
+    return new App\AI\Classification\EmailClassification(...array_replace([
+        'intent' => App\AI\Classification\EmailIntent::OrderStatus,
         'confidence' => 0.92,
         'language' => 'es',
         'summary' => 'El cliente pregunta dónde está su pedido #45821.',
-        'needs_human' => false,
-        'needs_human_reason' => null,
+        'needsHuman' => false,
+        'needsHumanReason' => null,
         'sentiment' => 'neutral',
         'urgency' => 'normal',
-        'injection_suspected' => false,
-        'entities' => ['order_numbers' => ['45821'], 'invoice_numbers' => [], 'customer_name' => 'Cliente Pérez'],
-    ], $overrides);
+        'injectionSuspected' => false,
+        'orderNumbers' => ['45821'],
+        'invoiceNumbers' => [],
+        'customerName' => 'Cliente Pérez',
+    ], $overrides));
 }
 
 /** Activa herramientas de la IA para una empresa (las que no son "por defecto" vienen desactivadas). */
@@ -73,24 +75,9 @@ function enableTools(Tenant $tenant, string ...$tools): void
     }
 }
 
-/** JSON de respuesta final del agente tal como lo devolvería el modelo (sobrescribible por campo). */
-function agentReplyData(array $overrides = []): array
-{
-    return array_replace([
-        'reply_body' => "Hola:\n\nTu pedido #45821 salió el 29 de septiembre con SEUR (seguimiento SEU123456789ES).\n\nUn saludo,\nEl equipo de atención al cliente",
-        'reply_language' => 'es',
-        'confidence' => 0.9,
-        'needs_human' => false,
-        'needs_human_reason' => null,
-        'sources' => [['type' => 'order', 'reference' => '45821']],
-        'pending_actions' => [],
-        'internal_note' => null,
-    ], $overrides);
-}
-
 /**
- * Propuesta de respuesta (borrador) para un email, como la dejaría el
- * agente. Llamar dentro del tenant del email.
+ * Propuesta de respuesta (borrador) para un email, como la dejaría un
+ * resultado de ai-service. Llamar dentro del tenant del email.
  */
 function draftReply(App\Models\Email $email, array $overrides = []): App\Models\EmailReply
 {
@@ -174,4 +161,82 @@ function remoteStatusPath(App\Models\Email $email): array
 {
     return inTenant($email->tenant, fn () => $email->statusChanges()->get()
         ->map(fn (App\Models\EmailStatusChange $change) => $change->to_status->value)->all());
+}
+
+/**
+ * email.processed.v1 (el ejemplo compartido del contrato) para un email ya
+ * publicado: lo que respondería ai-service. Por defecto, una respuesta segura
+ * a una pregunta de producto con envío automático recomendado.
+ */
+function processedEvent(App\Models\Email $email, array $overrides = [], array $classification = []): array
+{
+    $event = json_decode(file_get_contents(base_path('contracts/events/examples/valid/email.processed.v1.json')), true);
+    $event['event_id'] = (string) Illuminate\Support\Str::uuid();
+    $event['tenant_id'] = $email->tenant_id;
+    $event['email_id'] = $email->id;
+    $event['causation_id'] = $email->fresh()->ai_event_id;
+    $event['category'] = 'product_question';
+    $event['decision'] = 'auto_send';
+    $event['confidence'] = 0.93;
+    $event['reasons'] = [];
+    $event['draft'] = "Hola:\n\nSí, enviamos a Canarias.\n\nUn saludo,\nEl equipo de Empresa Demo";
+    $event['classification'] = array_merge($event['classification'], ['summary' => 'Pregunta por envíos a Canarias.', 'order_numbers' => [], 'customer_name' => null], $classification);
+
+    return array_merge($event, $overrides);
+}
+
+/** email.processing_failed.v1 (ejemplo del contrato) para un email ya publicado. */
+function failedEvent(App\Models\Email $email, array $overrides = []): array
+{
+    $event = json_decode(file_get_contents(base_path('contracts/events/examples/valid/email.processing_failed.v1.json')), true);
+
+    return array_merge($event, ['event_id' => (string) Illuminate\Support\Str::uuid(), 'tenant_id' => $email->tenant_id, 'email_id' => $email->id, 'causation_id' => null], $overrides);
+}
+
+/** Aplica un resultado de ai-service como lo haría ai:consume-results; devuelve el resultado (applied, stale...). */
+function applyAiResult(array $event, string $type = 'email.processed'): string
+{
+    return app(App\AI\Remote\RemoteResultHandler::class)->handle(new App\AI\Remote\Data\StreamMessage(
+        "{$type}.v1",
+        '1-0',
+        ['event_id' => $event['event_id'], 'event_type' => $type, 'payload' => json_encode($event)],
+    ));
+}
+
+/**
+ * Procesa un email de punta a punta con ai-service simulado: Laravel lo
+ * publica y se aplica el resultado (processedEvent con $overrides). Devuelve
+ * el estado final.
+ */
+function processWithAi(App\Models\Email $email, array $overrides = [], array $classification = []): App\Mail\Enums\EmailStatus
+{
+    processRemote($email);
+    applyAiResult(processedEvent($email, $overrides, $classification));
+
+    return $email->fresh()->status;
+}
+
+function lastStatusReasonOf(App\Models\Email $email): ?string
+{
+    return inTenant($email->tenant, fn () => $email->statusChanges()->get()->last()?->reason);
+}
+
+/** Inserta una fila en emails sin pasar por el modelo (tests de las tablas). */
+function insertEmailRow(array $overrides = []): int
+{
+    if (! isset($overrides['mail_connection_id'])) {
+        $tenant = App\Models\Tenant::factory()->create();
+        $connection = inTenant($tenant, fn () => App\Models\MailConnection::factory()->create());
+        $overrides += ['tenant_id' => $tenant->id, 'mail_connection_id' => $connection->id];
+    }
+
+    return Illuminate\Support\Facades\DB::table('emails')->insertGetId(array_merge([
+        'folder' => 'INBOX',
+        'provider_message_id' => (string) fake()->unique()->randomNumber(),
+        'message_id' => fake()->unique()->uuid() . '@cliente.test',
+        'dedup_hash' => hash('sha256', fake()->unique()->uuid()),
+        'subject' => 'Consulta',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ], $overrides));
 }

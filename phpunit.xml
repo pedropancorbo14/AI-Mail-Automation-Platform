@@ -30,12 +30,10 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <server name="CACHE_STORE" value="array"/>
-        <!-- Nunca llamar a la API de IA real desde los tests (aunque .env tenga clave). -->
-        <server name="ANTHROPIC_API_KEY" value=""/>
-        <!-- Ni la IA simulada del .env local: cada test elige su proveedor. -->
-        <server name="AI_PROVIDER" value="anthropic"/>
-        <!-- Motor de Laravel por defecto; los tests del motor remoto lo cambian. -->
-        <server name="AI_ENGINE" value="laravel"/>
+        <!-- Los tests nunca hablan con un ai-service real (las peticiones HTTP se simulan). -->
+        <server name="AI_SERVICE_URL" value="http://ai-service.test"/>
+        <server name="AI_SERVICE_INTERNAL_TOKEN" value="test-internal-token"/>
+        <server name="AI_SERVICE_LLM_PROVIDER" value="anthropic"/>
         <!-- Streams de los tests de Redis real (BD propia, se vacía en cada test). -->
         <server name="REDIS_STREAMS_DB" value="14"/>
         <server name="DB_CONNECTION" value="pgsql"/>
@@ -45,7 +43,6 @@
         <!-- Métricas en memoria: cada test empieza de cero y no toca Redis. -->
         <server name="METRICS_STORAGE" value="memory"/>
         <server name="QUEUE_CONNECTION" value="sync"/>
-        <server name="RAG_QUEUE_CONNECTION" value="sync"/>
         <server name="AI_QUEUE_CONNECTION" value="sync"/>
         <server name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

@@ -1,7 +1,6 @@
 <?php
 
-use App\AI\Contracts\LLMProvider;
-use App\AI\Embeddings\EmbeddingProvider;
+use App\AI\Remote\Contracts\EventStream;
 use App\Automation\AutomationMode;
 use App\Mail\Data\MailMessage;
 use App\Mail\Enums\EmailStatus;
@@ -12,24 +11,20 @@ use App\Models\MailConnection;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Mime\Email as MimeEmail;
-use Tests\Fakes\FakeEmbeddingProvider;
-use Tests\Fakes\FakeLLMProvider;
 use Tests\Support\GreenMail;
 
 /*
  * El MVP completo (sección 17) contra un servidor de correo real
  * (GreenMail): el cliente escribe → mail:sync → ingesta IMAP → evento →
- * ProcessEmailJob → clasificación y agente (IA simulada) → reglas →
- * SendReplyJob → SMTP → la respuesta llega al buzón del cliente en su hilo.
- * Las colas son sync en los tests: todo ocurre dentro de mail:sync.
+ * ProcessEmailJob → email.received.v1 para ai-service → su resultado
+ * (simulado) → reglas → SendReplyJob → SMTP → la respuesta llega al buzón del
+ * cliente en su hilo. Las colas son sync en los tests.
  */
 
 beforeEach(function () {
-    config(['mail_connections.allow_private_hosts' => true, 'ai.anthropic.api_key' => 'sk-ant-x']);
+    config(['mail_connections.allow_private_hosts' => true]);
     Storage::fake('local');
-    $this->llm = new FakeLLMProvider();
-    app()->instance(LLMProvider::class, $this->llm);
-    app()->instance(EmbeddingProvider::class, new FakeEmbeddingProvider());
+    $this->streams = app(EventStream::class);
 
     $this->tenant = Tenant::factory()->create();
     $this->tenant->configureAutomation(AutomationMode::Auto);
@@ -63,6 +58,16 @@ function customerWrites(string $subject, string $messageId, ?Closure $customize 
     GreenMail::append(test()->support, $email);
 }
 
+/** ai-service responde al email que se le publicó (resultado simulado según el contrato). */
+function aiServiceAnswers(string $messageId, array $overrides = []): Email
+{
+    $email = inTenant(test()->tenant, fn () => Email::where('message_id', $messageId)->sole());
+    expect($email->status)->toBe(EmailStatus::Processing); // publicado, esperando a ai-service
+    applyAiResult(processedEvent($email, $overrides));
+
+    return $email->fresh();
+}
+
 /** @return list<MailMessage> */
 function customerInbox(): array
 {
@@ -71,14 +76,11 @@ function customerInbox(): array
 
 it('answers a customer on its own through a real mailbox, in the same thread', function () {
     customerWrites('Envíos a Canarias', 'consulta-canarias@cliente.test');
-    $this->llm->respondWith(
-        classificationData(['intent' => 'product_question']),
-        agentReplyData(['reply_body' => "Hola:\n\nSí, enviamos a Canarias, de 5 a 7 días laborables.\n\nUn saludo,\nEl equipo de atención al cliente", 'sources' => [['type' => 'document', 'reference' => 'Envíos y entregas, sección «Coste del envío»']]]),
-    );
 
     $this->artisan('mail:sync')->assertSuccessful();
-
-    $email = inTenant($this->tenant, fn () => Email::sole());
+    $email = aiServiceAnswers('consulta-canarias@cliente.test', [
+        'draft' => "Hola:\n\nSí, enviamos a Canarias, de 5 a 7 días laborables.\n\nUn saludo,\nEl equipo de atención al cliente",
+    ]);
     $path = inTenant($this->tenant, fn () => $email->statusChanges()->get()->map(fn (EmailStatusChange $change) => $change->to_status->value)->all());
 
     expect($email->status)->toBe(EmailStatus::Sent)
@@ -102,8 +104,8 @@ it('answers a customer on its own through a real mailbox, in the same thread', f
 
 it('does not fall into a loop with the customer auto-responder', function () {
     customerWrites('Envíos a Canarias', 'consulta-canarias@cliente.test');
-    $this->llm->respondWith(classificationData(['intent' => 'product_question']), agentReplyData(['reply_body' => "Hola:\n\nSí, enviamos a Canarias.\n\nUn saludo"]));
     $this->artisan('mail:sync')->assertSuccessful();
+    aiServiceAnswers('consulta-canarias@cliente.test');
 
     // El cliente está de vacaciones: su sistema contesta solo a nuestra respuesta.
     customerWrites('Fuera de la oficina: Re: Envíos a Canarias', 'vacaciones@cliente.test', function (MimeEmail $email) {
@@ -115,17 +117,16 @@ it('does not fall into a loop with the customer auto-responder', function () {
     $autoReply = inTenant($this->tenant, fn () => Email::where('message_id', 'vacaciones@cliente.test')->sole());
 
     expect($autoReply->status)->toBe(EmailStatus::Ignored)
-        ->and($this->llm->requests)->toHaveCount(2) // solo las del primer email
+        ->and($this->streams->entries['email.received.v1'])->toHaveCount(1) // solo el primer email
         ->and(customerInbox())->toHaveCount(1);
 })->group('greenmail');
 
 it('keeps the reply for a person in draft mode', function () {
     $this->tenant->configureAutomation(AutomationMode::Draft);
     customerWrites('Envíos a Canarias', 'consulta-canarias@cliente.test');
-    $this->llm->respondWith(classificationData(['intent' => 'product_question']), agentReplyData());
 
     $this->artisan('mail:sync')->assertSuccessful();
 
-    expect(inTenant($this->tenant, fn () => Email::sole()->status))->toBe(EmailStatus::HumanReview)
+    expect(aiServiceAnswers('consulta-canarias@cliente.test')->status)->toBe(EmailStatus::HumanReview)
         ->and(customerInbox())->toBe([]);
 })->group('greenmail');

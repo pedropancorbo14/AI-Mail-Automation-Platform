@@ -139,8 +139,16 @@ function importsOutside(string $namespace, array $allowed): array
         ->all();
 }
 
-it('keeps the anthropic sdk inside its provider', function () {
-    expect(importsOutside('Anthropic', ['app/AI/Providers/Anthropic/', 'app/Providers/AIServiceProvider.php']))->toBe([]);
+it('never calls an AI model from Laravel: the AI lives in ai-service', function () {
+    // Ni SDKs de modelos ni clientes de embeddings: Laravel publica eventos y aplica resultados.
+    foreach (['Anthropic', 'OpenAI', 'Gemini', 'Google\\Cloud\\AIPlatform', 'Smalot'] as $namespace) {
+        expect(importsOutside($namespace, []))->toBe([]);
+    }
+
+    $calls = collect(Symfony\Component\Finder\Finder::create()->files()->in(app_path())->name('*.php'))
+        ->filter(fn ($file) => preg_match('#api\.anthropic\.com|/api/embed\b|api\.openai\.com#', $file->getContents()))
+        ->map(fn ($file) => $file->getRelativePathname())->values()->all();
+    expect($calls)->toBe([]);
 });
 
 it('keeps the mail libraries inside the mail module', function () {

@@ -2,8 +2,10 @@
 
 namespace Tests;
 
+use App\AI\Remote\Contracts\EventStream;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Tests\Fakes\InMemoryEventStream;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -14,4 +16,13 @@ abstract class TestCase extends BaseTestCase
     protected bool $seed = true;
 
     protected string $seeder = RolesAndPermissionsSeeder::class;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Los eventos para ai-service van a streams en memoria: ningún test
+        // publica en Redis salvo los que lo piden (RedisEventStreamTest).
+        $this->app->instance(EventStream::class, new InMemoryEventStream());
+    }
 }

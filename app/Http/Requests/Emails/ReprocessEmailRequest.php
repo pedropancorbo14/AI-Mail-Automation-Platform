@@ -2,13 +2,9 @@
 
 namespace App\Http\Requests\Emails;
 
-use App\AI\Remote\AIEngine;
-use Closure;
-
 /**
- * Reprocesar con la IA, con una indicación opcional de la persona. La
- * indicación solo la entiende ai-service (AI_ENGINE=python): con el motor de
- * Laravel se rechaza en vez de ignorarla en silencio.
+ * Reprocesar con la IA, con una indicación opcional de la persona para
+ * ai-service (`review_instruction` de email.received.v1).
  */
 class ReprocessEmailRequest extends ReviewEmailRequest
 {
@@ -18,16 +14,7 @@ class ReprocessEmailRequest extends ReviewEmailRequest
     public function rules(): array
     {
         return [
-            'instruction' => [
-                'nullable',
-                'string',
-                'max:' . self::MAX_INSTRUCTION_CHARS,
-                function (string $attribute, mixed $value, Closure $fail) {
-                    if (is_string($value) && trim($value) !== '' && ! AIEngine::current()->isRemote()) {
-                        $fail('Las indicaciones para la IA solo están disponibles con el servicio de IA (ai-service).');
-                    }
-                },
-            ],
+            'instruction' => ['nullable', 'string', 'max:' . self::MAX_INSTRUCTION_CHARS],
         ];
     }
 }

@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
     config([
-        'ai.engine' => 'python',
         'ai.remote.service_url' => 'http://ai-service:8000',
         'ai.remote.internal_token' => 'internal-secret',
     ]);

@@ -12,8 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
- * Una ejecución del agente sobre un email. La crea y cierra
- * App\AI\Agent\AgentService.
+ * Una ejecución del agente de ai-service sobre un email. La crea
+ * App\AI\Remote\RemoteResultHandler a partir de `email.processed.v1`.
  *
  * @property AgentRunStatus $status
  * @property AgentStopReason|null $stop_reason

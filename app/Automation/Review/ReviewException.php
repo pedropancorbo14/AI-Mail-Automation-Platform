@@ -35,9 +35,4 @@ class ReviewException extends RuntimeException
     {
         return new self('Este email no tiene ninguna acción de la IA pendiente de aprobar: recarga la página.');
     }
-
-    public static function remoteEngineOff(): self
-    {
-        return new self('El servicio de IA (ai-service) no está activo: no se puede continuar con la acción. Responde tú o ciérralo.');
-    }
 }

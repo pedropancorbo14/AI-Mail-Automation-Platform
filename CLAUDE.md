@@ -277,7 +277,7 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-10-17)
+## ESTADO ACTUAL (actualizado 2026-10-18)
 
 **Decisión ya tomada, distinta al plan original:** empezar la Fase 5 (AI
 Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
@@ -290,8 +290,12 @@ como interfaces intercambiables para el futuro, no implementadas todavía.
 ecosistema de agentes (LangGraph, MCP) está en Python, la carga de la IA es
 distinta a la web, y el usuario prepara una oferta que pide Python,
 LangGraph, MCP, hexagonal/DDD, eventos y Kubernetes. Laravel sigue siendo
-el monolito de todo lo demás. El motor de IA de Laravel (Fases 5–9) **no
-se borra**: convive con un interruptor `AI_ENGINE=laravel|python`.
+el monolito de todo lo demás. El motor de IA de Laravel (Fases 5–9)
+convivió un tiempo con un interruptor `AI_ENGINE=laravel|python` y **se
+retiró el 2026-10-18** (pedido por el usuario): toda la lógica de IA vive en
+ai-service; Laravel conserva la configuración de cada empresa, las reglas de
+envío, el control de gasto y el registro de costes (ver "Retirada del motor
+de IA de Laravel" más abajo).
 
 ### Fase 1 (base del proyecto): VERIFICADA EN LOCAL (2026-09-29)
 
@@ -4430,7 +4434,7 @@ fusionar la rama, probar con Claude real (`AI_SERVICE_LLM_PROVIDER=
 anthropic`), retirar el motor de IA de Laravel cuando ai-service lo iguale,
 o seguir con las fases 14–17 de la plataforma.
 
-### Retirada del motor de IA de Laravel: EN CURSO (2026-10-18), rama `fase-retirada-motor-laravel`
+### Retirada del motor de IA de Laravel: COMPLETADA (2026-10-18), rama `fase-retirada-motor-laravel`
 
 Pedido por el usuario: **toda la lógica de la IA en el microservicio**.
 Hoy conviven dos motores que hacen lo mismo (`AI_ENGINE=laravel|python`,
@@ -4721,6 +4725,64 @@ trabajar pedido por el usuario:** cuando todo esté hecho y el CI en verde,
   quitarlo rompería la v1 y servirá para comparar prompts o modelos en la
   Fase 15. Laravel descarta cualquier resultado en sombra sin tocar el email
   (resultado `shadow` en la métrica)
+
+- [x] **R4 + R5.2 Cambio de motor y borrado del motor de Laravel** (en un
+  commit: sin el motor de Laravel no hay interruptor que cambiar).
+  `AI_ENGINE` desaparece (y `AIEngine`): **ai-service es el único motor**.
+  Borrado de Laravel: `AIService`, `LLMProvider` y los DTOs `LLM*` (se queda
+  `LLMUsage` para `CostCalculator`), proveedores Anthropic y simulado,
+  `Prompts/`, `EmailClassifier`/`ClassifyEmailJob`/prompt, `Agent/` (se
+  quedan sus enums de las tablas), `Embeddings/`, excepciones `LLM*`,
+  `app/Tools` salvo `TenantToolService` y `ToolCallStatus`, `app/ERP` y
+  `config/erp.php`, extracción/troceado/búsqueda/`KnowledgeBaseService`/
+  `ProcessDocumentJob`, comandos `ai:classify`, `ai:reply`, `ai:tool`.
+  `EmailProcessor`: filtros baratos → publicar (sin camino local);
+  `DocumentService` siempre publica (`mimeFor` vive ahí);
+  `TenantToolService` = catálogo compartido (`statusFor` con la
+  disponibilidad de ai-service, `null` si no responde; `ai:tools` lo
+  muestra); `ReplyContentGuard` usa los nombres del catálogo;
+  `AIServiceProvider` solo streams, contrato y catálogo; `config/ai.php`
+  limpio (precios, documentos, automatización, límites, `remote` con
+  `model`/`min_confidence`/`llm_provider` solo para mostrar y para
+  `security:check`); `ProcessEmailJob` pasa a la conexión `redis` (solo
+  publica: timeout 120) y fuera `redis-long` y `supervisor-documents`;
+  `AiSpendGuard` cuenta también los emails ya publicados
+  (`ai_requested_at`), no solo los clasificados (con el motor remoto, una
+  ráfaga se publicaba entera antes de que llegara ninguna clasificación);
+  métricas de clasificación por `*classification` (con `needs_human` del
+  evento); reprocesar con indicación y aprobar acciones ya no dependen del
+  motor (`can_instruct` siempre true). **Pedidos de demostración** movidos a
+  `ai-service/src/ai_service/mcp_server/data/orders.json` (dentro de la
+  imagen: fuera el volumen del compose, el ConfigMap de Kubernetes y el
+  montaje del CI). **Compose:** `ai-service`, `ai-mcp` y `ai-results`
+  siempre activos (sin perfil). `ANTHROPIC_API_KEY` solo la usa el
+  contenedor de ai-service. **Tests:** `TestCase` usa `InMemoryEventStream`
+  por defecto; helpers en `tests/Pest.php` para simular a ai-service
+  (`processedEvent`, `failedEvent`, `applyAiResult`, `processWithAi`,
+  `classificationOf`); reescritos procesador, job, comandos, métricas,
+  gasto, documentos, detalle, herramientas, configuración y los E2E con
+  GreenMail (el resultado de ai-service se simula); `insertEmailRow` a
+  `tests/Pest.php` (fallaba al lanzar un archivo suelto). **R5.3 en el
+  mismo commit:** `composer remove anthropic-ai/sdk smalot/pdfparser`, tabla
+  `document_chunks` y modelo `DocumentChunk` fuera (migración
+  `drop_document_chunks_and_reader`, que también quita la RLS y los permisos
+  del rol `ai_service_reader`; la migración antigua que los creaba queda
+  vacía y `contracts/database/knowledge_base_reader.sql` se borra),
+  `ArchitectureTest`: prohibido cualquier SDK de modelos o de PDF en `app/`
+  y llamadas a APIs de modelos o a `/api/embed`. **R6:** README (secciones
+  6–10 reescritas: ai-service como motor, RAG, herramientas, agente,
+  automatización; servicios, comandos, estructura, tests, problemas
+  frecuentes), README de ai-service (estado, "Probarlo en tu equipo",
+  compose, decisiones, hoja de ruta) y este archivo. Laravel 1035 tests en
+  verde (salvo `DatabaseConnectionTest`, que solo falla en paralelo por el
+  nombre de la BD), Python 438. **Pendiente:** evaluar con Claude real los
+  19 correos de la puerta que no se llegaron a comparar (sin modo sombra:
+  intención esperada frente a la clasificada); job E2E de compose en el CI
+  (Laravel + ai-service con IA simulada + GreenMail) aplazado: los E2E de
+  Pest y de Python ya cubren cada lado con el contrato compartido
+
+**Cambio de rama pedido por el usuario:** con todo hecho y el CI en verde,
+push de la rama a **`main`** (fast-forward; `main` es ancestro).
 
 **Decisiones abiertas que había (ya resueltas arriba):**
 1. Frontera: las reglas de envío y el control de gasto se quedan en

@@ -136,7 +136,7 @@ groups:
           description: "budget = la empresa agotó su presupuesto diario (ver ai:budget); sender = un remitente supera el máximo de emails en 24 h (¿inundación o bucle con otro sistema?). Esos emails los atiende una persona."
 
   # Microservicio de IA en Python (ai-service) y el consumidor de sus
-  # resultados en Laravel. Sin el perfil "ai-service" no hay series: no alertan.
+  # resultados en Laravel.
   - name: ai-service
     rules:
       - alert: ServicioIANoResponde

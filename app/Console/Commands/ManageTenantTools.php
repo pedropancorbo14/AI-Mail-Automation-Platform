@@ -45,9 +45,13 @@ class ManageTenantTools extends Command
         $this->table(['Herramienta', 'Activada', 'Disponible', 'Origen', 'La IA la ve'], array_map(fn (array $row) => [
             $row['tool'],
             $row['enabled'] ? 'sí' : 'no',
-            $row['available'] ? 'sí' : 'no (sin datos configurados)',
+            match ($row['available']) {
+                true => 'sí',
+                false => 'no (sin datos configurados)',
+                null => '? (ai-service no responde)',
+            },
             $row['source'],
-            $row['enabled'] && $row['available'] ? 'SÍ' : 'no',
+            $row['enabled'] && $row['available'] !== false ? 'SÍ' : 'no',
         ], $tools->statusFor($tenant)));
 
         return self::SUCCESS;

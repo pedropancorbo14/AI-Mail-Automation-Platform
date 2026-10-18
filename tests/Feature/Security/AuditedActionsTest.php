@@ -1,6 +1,5 @@
 <?php
 
-use App\AI\Embeddings\EmbeddingProvider;
 use App\Mail\Enums\MailProviderType;
 use App\Mail\MailProviderFactory;
 use App\Models\AuditLog;
@@ -12,7 +11,6 @@ use App\Tenancy\Scopes\TenantScope;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
-use Tests\Fakes\FakeEmbeddingProvider;
 use Tests\Fakes\FakeMailProvider;
 
 /*
@@ -179,7 +177,6 @@ it('records changes to the automation and to the tools', function () {
 
 it('records uploading, reindexing and deleting documents', function () {
     Storage::fake('local');
-    app()->instance(EmbeddingProvider::class, new FakeEmbeddingProvider());
 
     $id = asOwner()->postJson('/api/v1/documents', [
         'file' => UploadedFile::fake()->createWithContent('politica.md', "# Devoluciones\n\n30 días."),

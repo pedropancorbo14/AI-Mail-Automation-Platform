@@ -10,7 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Una llamada a la IA (lograda o no). La crea App\AI\AIService; nunca una
+ * Una llamada a la IA (lograda o no) hecha por ai-service. La crea
+ * App\AI\Remote\RemoteCallRecorder a partir de sus eventos; nunca una
  * petición del cliente.
  *
  * @property AiRequestStatus $status

@@ -6,25 +6,6 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-function insertEmailRow(array $overrides = []): int
-{
-    if (! isset($overrides['mail_connection_id'])) {
-        $tenant = Tenant::factory()->create();
-        $connection = inTenant($tenant, fn () => MailConnection::factory()->create());
-        $overrides += ['tenant_id' => $tenant->id, 'mail_connection_id' => $connection->id];
-    }
-
-    return DB::table('emails')->insertGetId(array_merge([
-        'folder' => 'INBOX',
-        'provider_message_id' => (string) fake()->unique()->randomNumber(),
-        'message_id' => fake()->unique()->uuid() . '@cliente.test',
-        'dedup_hash' => hash('sha256', fake()->unique()->uuid()),
-        'subject' => 'Consulta',
-        'created_at' => now(),
-        'updated_at' => now(),
-    ], $overrides));
-}
-
 it('has the expected columns', function () {
     expect(Schema::hasColumns('emails', [
         'id', 'tenant_id', 'mail_connection_id', 'folder', 'provider_message_id',

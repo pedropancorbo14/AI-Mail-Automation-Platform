@@ -437,7 +437,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "redis-long:ai"
+              "options": "redis:ai"
             },
             "properties": [
               {
@@ -445,21 +445,6 @@
                 "value": {
                   "mode": "fixed",
                   "fixedColor": "#199e70"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "redis-long:documents"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#c98500"
                 }
               }
             ]

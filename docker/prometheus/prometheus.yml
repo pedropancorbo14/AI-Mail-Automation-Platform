@@ -23,8 +23,8 @@ scrape_configs:
     static_configs:
       - targets: ["nginx:80"]
 
-  # ai-service (Python): descubierto por DNS. Si el perfil "ai-service" no
-  # está levantado no hay target (ni alerta); si está y no responde, up = 0.
+  # ai-service (Python, el motor de IA): descubierto por DNS (se puede
+  # escalar a varias réplicas); si no responde, up = 0.
   - job_name: "ai-service"
     metrics_path: /metrics
     dns_sd_configs:

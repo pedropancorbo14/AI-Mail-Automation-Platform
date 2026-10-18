@@ -75,12 +75,11 @@ class EmailEventPublisher
     }
 
     /**
-     * El evento de un email. En modo sombra (copia para comparar con el motor de
-     * Laravel) no lleva la indicación de una persona: esa es del email real.
+     * El evento de un email.
      *
      * @return array<string, mixed>
      */
-    public function build(Email $email, string $mode = 'live'): array
+    public function build(Email $email): array
     {
         $email->loadMissing('attachments', 'tenant');
 
@@ -106,8 +105,8 @@ class EmailEventPublisher
                 ->map(fn ($attachment) => mb_substr((string) $attachment->filename, 0, 255))->values()->all(),
             'tenant_name' => mb_substr($email->tenant->name, 0, 255),
             // Indicación de la persona al reprocesar: la respuesta la revisa siempre una persona.
-            'review_instruction' => $mode === 'live' && $email->ai_review_instruction ? mb_substr($email->ai_review_instruction, 0, 2000) : null,
-            'mode' => $mode,
+            'review_instruction' => $email->ai_review_instruction ? mb_substr($email->ai_review_instruction, 0, 2000) : null,
+            'mode' => 'live',
             // La empresa decide qué herramientas usa la IA; ai-service solo usa estas.
             'enabled_tools' => app(TenantToolService::class)->enabledNames($email->tenant),
         ];

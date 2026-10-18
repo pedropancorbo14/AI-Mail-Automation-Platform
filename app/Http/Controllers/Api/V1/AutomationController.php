@@ -2,8 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\AI\Remote\AIEngine;
-use App\AI\AIService;
 use App\AI\Classification\EmailIntent;
 use App\Automation\AutomationMode;
 use App\Http\Controllers\Controller;
@@ -95,12 +93,13 @@ class AutomationController extends Controller
                 'value' => $intent->value,
                 'allows_auto_send' => $intent->allowsAutoSend(),
             ], EmailIntent::cases()),
-            'tools' => array_map(fn (array $tool) => [...$tool, 'source' => $tool['source'] === 'empresa' ? 'company' : 'default'], AIEngine::current()->isRemote() ? $this->tools->catalogStatusFor($tenant) : $this->tools->statusFor($tenant)),
+            'tools' => array_map(fn (array $tool) => [...$tool, 'source' => $tool['source'] === 'empresa' ? 'company' : 'default'], $this->tools->statusFor($tenant)),
             'platform' => [
-                'ai_configured' => AIService::enabled(),
+                // Laravel solo sabe si puede hablar con ai-service; la clave del modelo la tiene él.
+                'ai_configured' => config('ai.remote.service_url') !== '' && config('ai.remote.internal_token') !== '',
                 'auto_send_enabled' => (bool) config('ai.automation.auto_send_enabled'),
-                'model' => config('ai.anthropic.model'),
-                'min_confidence' => (float) config('ai.agent.min_confidence'),
+                'model' => config('ai.remote.model'),
+                'min_confidence' => (float) config('ai.remote.min_confidence'),
                 'max_auto_replies_per_address' => (int) config('ai.automation.max_auto_replies_per_address'),
             ],
         ]]);

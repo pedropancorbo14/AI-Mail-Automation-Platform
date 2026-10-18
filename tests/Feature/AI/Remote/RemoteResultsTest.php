@@ -20,7 +20,6 @@ use Tests\Fakes\FakeMailProvider;
 use Tests\Fakes\InMemoryEventStream;
 
 beforeEach(function () {
-    config(['ai.engine' => 'python', 'ai.anthropic.api_key' => '']);
     $this->streams = new InMemoryEventStream();
     app()->instance(EventStream::class, $this->streams);
     $this->mail = new FakeMailProvider();
@@ -36,31 +35,6 @@ beforeEach(function () {
     ]));
     processRemote($this->email); // publicado: en processing esperando a ai-service
 });
-
-/** email.processed.v1 del ejemplo compartido, para el email del test. */
-function processedEvent(Email $email, array $overrides = [], array $classification = []): array
-{
-    $event = json_decode(file_get_contents(base_path('contracts/events/examples/valid/email.processed.v1.json')), true);
-    $event['event_id'] = (string) Str::uuid();
-    $event['tenant_id'] = $email->tenant_id;
-    $event['email_id'] = $email->id;
-    $event['causation_id'] = $email->fresh()->ai_event_id;
-    $event['category'] = 'product_question';
-    $event['decision'] = 'auto_send';
-    $event['confidence'] = 0.93;
-    $event['reasons'] = [];
-    $event['draft'] = "Hola:\n\nSí, enviamos a Canarias.\n\nUn saludo,\nEl equipo de Empresa Demo";
-    $event['classification'] = array_merge($event['classification'], ['summary' => 'Pregunta por envíos a Canarias.', 'order_numbers' => [], 'customer_name' => null], $classification);
-
-    return array_merge($event, $overrides);
-}
-
-function failedEvent(Email $email, array $overrides = []): array
-{
-    $event = json_decode(file_get_contents(base_path('contracts/events/examples/valid/email.processing_failed.v1.json')), true);
-
-    return array_merge($event, ['event_id' => (string) Str::uuid(), 'tenant_id' => $email->tenant_id, 'email_id' => $email->id, 'causation_id' => null], $overrides);
-}
 
 function deliverResult(array $event, string $type = 'email.processed'): void
 {
@@ -241,11 +215,6 @@ it('counts the cost reported by the service against the daily budget', function 
     expect(processRemote($next))->toBe(EmailStatus::HumanReview)
         ->and(lastStatusReasonOf($next))->toContain('presupuesto diario');
 });
-
-function lastStatusReasonOf(Email $email): ?string
-{
-    return inTenant($email->tenant, fn () => $email->statusChanges()->get()->last()?->reason);
-}
 
 it('records what ai-service did as an agent run with its tool calls (also for the content guard)', function () {
     $event = json_decode(file_get_contents(base_path('contracts/events/examples/valid/email.processed.v1--with-rag.json')), true);

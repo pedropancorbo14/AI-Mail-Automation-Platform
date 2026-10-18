@@ -4,12 +4,18 @@ use App\Automation\AutomationMode;
 use App\Models\Tenant;
 use App\Models\TenantTool;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
     $this->tenant = Tenant::factory()->create(['slug' => 'empresa-demo']);
     $this->admin = User::factory()->admin()->for($this->tenant)->create();
     $this->agent = User::factory()->for($this->tenant)->create();
+    // Si cada herramienta tiene datos en la empresa lo sabe ai-service.
+    Http::fake(['ai-service.test/*' => Http::response(['tools' => [
+        ['name' => 'get_order', 'available' => true],
+        ['name' => 'search_company_documents', 'available' => true],
+    ]])]);
 });
 
 /** @return Tests\TestCase El test, ya autenticado como $user (test() devuelve un proxy de Pest). */
@@ -21,8 +27,6 @@ function asUser(User $user): mixed
 }
 
 it('shows the ai configuration of the company', function () {
-    config(['ai.anthropic.api_key' => 'sk-ant-x', 'ai.anthropic.model' => 'claude-opus-5-5']);
-
     $response = asUser($this->agent)->getJson('/api/v1/automation')->assertOk();
 
     $response->assertJsonPath('data.mode', 'draft')
@@ -32,7 +36,7 @@ it('shows the ai configuration of the company', function () {
         ->assertJsonPath('data.platform.ai_configured', true)
         ->assertJsonPath('data.platform.auto_send_enabled', true)
         ->assertJsonPath('data.platform.model', 'claude-opus-5-5')
-        ->assertJsonPath('data.platform.min_confidence', 0.75);
+        ->assertJsonPath('data.platform.min_confidence', 0.85);
 
     expect(collect($response->json('data.intents'))->firstWhere('value', 'complaint'))->toBe(['value' => 'complaint', 'allows_auto_send' => false])
         ->and(collect($response->json('data.tools'))->firstWhere('tool', 'search_company_documents'))

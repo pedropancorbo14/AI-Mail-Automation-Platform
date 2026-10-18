@@ -25,23 +25,24 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 2 | Empresas (tenants), usuarios, login/logout, roles y permisos, aislamiento entre empresas | ✅ Hecha |
 | 3 | Conexiones de correo: IMAP/SMTP, Microsoft 365 (Graph + OAuth), Gmail (API + OAuth), credenciales cifradas, prueba de conexión | ✅ Hecha |
 | 4 | Ingesta de emails: sincronización periódica de los buzones, emails + destinatarios + adjuntos guardados sin duplicados, reintentos | ✅ Hecha |
-| 5 | IA con Claude (Anthropic): clasificación de cada email (intención, confianza, resumen, datos), registro de cada petición con tokens, coste y latencia | ✅ Hecha (probada con Claude real: ~0,012 $ por email) |
-| 6 | Base de conocimiento (RAG): documentos de la empresa (PDF, TXT, Markdown, HTML), troceado, embeddings **locales** (Ollama + bge-m3) y búsqueda por significado con pgvector, citando la fuente | ✅ Hecha |
-| 7 | Tools: herramientas controladas que la IA puede pedir (documentación, pedidos del cliente), validadas, con permisos y auditadas en `ai_tool_calls` | ✅ Hecha |
-| 8 | Agente: Claude usa las herramientas en cadena, prepara una propuesta de respuesta citando sus fuentes y el backend decide si necesita revisión humana | ✅ Hecha (probada con Claude real: ~0,05 $ por respuesta) |
+| 5 | IA con Claude (Anthropic) — *hoy en ai-service*: clasificación de cada email (intención, confianza, resumen, datos), registro de cada petición con tokens, coste y latencia | ✅ Hecha (probada con Claude real: ~0,012 $ por email) |
+| 6 | Base de conocimiento (RAG) — *indexado y búsqueda hoy en ai-service*: documentos de la empresa (PDF, TXT, Markdown, HTML), troceado, embeddings **locales** (Ollama + bge-m3) y búsqueda por significado con pgvector, citando la fuente | ✅ Hecha |
+| 7 | Tools — *hoy en el servidor MCP de ai-service*: herramientas controladas que la IA puede pedir (documentación, pedidos del cliente), validadas, con permisos y auditadas en `ai_tool_calls` | ✅ Hecha |
+| 8 | Agente — *hoy en ai-service*: Claude usa las herramientas en cadena, prepara una propuesta de respuesta citando sus fuentes y el backend decide si necesita revisión humana | ✅ Hecha (probada con Claude real: ~0,05 $ por respuesta) |
 | 9 | Automatización: cada email se procesa solo de principio a fin (clasificar → agente → reglas → **enviar en el hilo** o revisión humana), con estados, historial y protección contra bucles | ✅ Hecha (probada con Claude real y GreenMail) |
 | 10 | Panel de administración (Vue + Naive UI): resumen, emails con lo que hizo la IA, buzones (con autodetección), documentación, ajustes de la IA, empresa y usuarios | ✅ Hecha (probada en navegador) |
 | 11 | Observabilidad: métricas de Prometheus, 6 dashboards de Grafana, logs en Loki y alertas probadas; IA simulada para probar sin coste | ✅ Hecha (probada en el stack con la IA simulada) |
 | 12 | Seguridad: auditoría inmutable, cuenta propia, freno del gasto de IA, revisión del texto antes de enviar, cabeceras y CSP, secretos fuera de los logs, retención y derecho de supresión, infraestructura solo en local, tests de arquitectura | ✅ Hecha (probada con ataques contra el stack) |
 | 13 | Revisión humana (*human in the loop*): bandeja de casos pendientes, aprobar, corregir o descartar la respuesta de la IA, responder, cerrar, reprocesar, asignarse casos, historial de decisiones con métricas y alerta | ✅ Hecha (probada en el navegador con la IA simulada y GreenMail) |
-| AI | **Microservicio de IA en Python** ([`ai-service/`](ai-service/README.md)): LangGraph, Redis Streams, MCP, arquitectura hexagonal; Laravel publica cada email como evento y aplica el resultado | ✅ Las 6 fases hechas: 1 camino mínimo, 2 RAG, 3 MCP + tools, 4 aprobación humana (`interrupt` y checkpoints en PostgreSQL), 5 supervisor con especialistas, redactor agéntico y modo sombra, y 6 Kubernetes (Kustomize, Pod Security restricted, NetworkPolicies; desplegado en kind en el CI en cada push). Probadas de punta a punta con la IA simulada. Opcional con `AI_ENGINE=python`; por defecto sigue el motor de Laravel. **Planificado:** retirar el motor de IA de Laravel y dejar toda la lógica de la IA en ai-service (plan en [CLAUDE.md](CLAUDE.md), pendiente de aprobar) |
+| AI | **Microservicio de IA en Python** ([`ai-service/`](ai-service/README.md)): LangGraph, Redis Streams, MCP, arquitectura hexagonal; Laravel publica cada email como evento y aplica el resultado | ✅ Las 6 fases hechas: 1 camino mínimo, 2 RAG, 3 MCP + tools, 4 aprobación humana (`interrupt` y checkpoints en PostgreSQL), 5 supervisor con especialistas, redactor agéntico y modo sombra, y 6 Kubernetes (Kustomize, Pod Security restricted, NetworkPolicies; desplegado en kind en el CI en cada push). Probadas de punta a punta con la IA simulada y con Claude real. **Es el único motor de IA**: el de Laravel se retiró (octubre de 2026) tras una puerta de calidad con Claude real en modo sombra |
 | 14–17 | Integraciones, evaluación, producción, SaaS | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
 los correos nuevos de los buzones conectados, los guarda (con destinatarios
 y adjuntos) y los **clasifica con Claude**: intención, confianza, idioma,
-resumen, si necesita una persona y datos como el número de pedido. Cada
+resumen, si necesita una persona y datos como el número de pedido; toda
+la IA la hace el microservicio [`ai-service`](ai-service/README.md). Cada
 empresa puede además subir su **documentación** (políticas, FAQs,
 manuales), que se indexa en local y se puede consultar por significado,
 y la IA tiene **herramientas controladas** para consultar esa
@@ -142,13 +143,12 @@ docker compose exec app php artisan tinker                 # consola interactiva
 docker compose exec app php artisan route:list --path=api  # rutas de la API
 docker compose logs -f horizon                             # logs de las colas
 docker compose exec app php artisan mail:sync              # sincronizar ya los buzones (si no, cada minuto)
-docker compose exec app php artisan ai:classify 2 --now    # clasificar el email 2 con la IA y ver resultado y coste
 docker compose exec app php artisan kb:search "¿cómo devuelvo un producto?" --tenant=1   # buscar en la documentación
-docker compose exec app php artisan ai:tool --list         # herramientas de la IA (y ejecutarlas a mano)
 docker compose exec app php artisan ai:tools 1             # herramientas activadas para la empresa 1
-docker compose exec app php artisan ai:reply 1             # el agente prepara la respuesta al email 1 y muestra la traza
+docker compose exec app php artisan ai:trace 1             # lo que hizo la IA con el email 1: pasos, herramientas, propuesta y coste
+docker compose exec ai-service ai-service-tool --list      # herramientas del servidor MCP (y ejecutarlas a mano)
 docker compose exec app php artisan ai:automation 1        # modo de automatización de la empresa 1 (off / draft / auto)
-docker compose exec app php artisan ai:process 1 --now     # procesar el email 1 de principio a fin y ver su historial de estados
+docker compose exec app php artisan ai:process 1 --now     # procesar el email 1 (espera a ai-service) y ver su historial de estados
 docker compose exec app php artisan ai:budget 1            # presupuesto diario de IA de la empresa 1 y gasto de hoy (--daily=25 para cambiarlo)
 docker compose exec app php artisan data:prune             # aplicar la retención ya (si no, cada noche a las 03:30)
 docker compose exec app php artisan data:forget-address 1 ana@cliente.test   # derecho de supresión (cuenta; --force para borrar)
@@ -164,14 +164,11 @@ docker compose exec prometheus promtool test rules /etc/prometheus/alerts.test.y
 
 ## 2. Arquitectura
 
-Monolito modular en Laravel: una sola imagen de PHP que se usa para la
-app web, los workers de colas y el scheduler. El "cerebro de IA" tiene
-además una versión en un **microservicio en Python**,
-[`ai-service/`](ai-service/README.md), que se comunica con Laravel por
-eventos en Redis Streams (`AI_ENGINE=python`, perfil `ai-service` del
-compose). Laravel se queda con la ingesta, los estados, el panel, las
-reglas finales y el envío. El diagrama de abajo es el motor por defecto
-(`AI_ENGINE=laravel`).
+Monolito modular en Laravel (una sola imagen de PHP para la app web, los
+workers de colas y el scheduler) más un **microservicio de IA en Python**,
+[`ai-service/`](ai-service/README.md), que hace toda la IA y se comunica
+con Laravel por eventos en Redis Streams. Laravel se queda con la ingesta,
+las empresas, el panel, los estados, las reglas finales y el envío.
 
 ```
   Cliente (curl, panel, integraciones)
@@ -190,6 +187,9 @@ reglas finales y el envío. El diagrama de abajo es el motor por defecto
 
    greenmail = servidor de correo de PRUEBAS (IMAP + SMTP), solo en
                desarrollo y CI: no envía nada fuera
+   ai-service + ai-mcp = la IA (Python): lee email.received.v1 y
+               document.uploaded.v1 de Redis Streams y publica los resultados;
+               ai-results (Laravel) los aplica
    ollama    = modelo de embeddings LOCAL (bge-m3) para el RAG: los
                documentos de las empresas no salen del servidor
 
@@ -212,9 +212,9 @@ reglas finales y el envío. El diagrama de abajo es el motor por defecto
 | `grafana` | Paneles; datasources de Prometheus y Loki ya configurados. |
 | `greenmail` | Servidor de correo de pruebas (IMAP 3143, SMTP 3025, API 8080). Lo usan los tests de IMAP/SMTP y sirve para probar a mano (p. ej. con Thunderbird). Todo se queda en memoria. |
 | `ollama` | Modelos de IA locales: calcula los embeddings del RAG con `bge-m3`. Solo en la red interna (sin puerto publicado); el modelo se guarda en el volumen `ollama-data`. |
-| `ai-service` | **Perfil `ai-service`** (solo con `AI_ENGINE=python`). Microservicio de IA en Python ([`ai-service/`](ai-service/README.md)): consume `email.received.v1` de Redis Streams y publica el resultado. `/health`, `/ready` y `/metrics` en `127.0.0.1:8001`. |
-| `ai-mcp` | **Perfil `ai-service`**. Servidor MCP del microservicio (CRM, ERP y tickets de demostración, los mismos pedidos que el motor de Laravel). Solo red interna, con token (`AI_SERVICE_MCP_TOKEN`). |
-| `ai-results` | **Perfil `ai-service`**. Misma imagen que la app: `php artisan ai:consume-results` aplica los resultados de ai-service (estado, borrador, `ai_requests`, envío). |
+| `ai-service` | Microservicio de IA en Python ([`ai-service/`](ai-service/README.md)), el único motor de IA: consume `email.received.v1` y `document.uploaded.v1` de Redis Streams y publica los resultados; API interna para el panel. `/health`, `/ready` y `/metrics` en `127.0.0.1:8001`. |
+| `ai-mcp` | Servidor MCP del microservicio (CRM, ERP, facturas y tickets de demostración). Solo red interna, con token (`AI_SERVICE_MCP_TOKEN`). |
+| `ai-results` | Misma imagen que la app: `php artisan ai:consume-results` aplica los resultados de ai-service (estado, propuesta, `ai_requests`, envío, documentos indexados). |
 
 Configuración de cada servicio en [`docker/`](docker/) y en
 [`docker-compose.yml`](docker-compose.yml).
@@ -516,353 +516,205 @@ Horizon (`http://localhost:8080/horizon`, cola `mail`).
 
 ---
 
-## 6. Inteligencia artificial: clasificación de emails
+## 6. Inteligencia artificial: el microservicio ai-service
 
-Cada email que entra se clasifica con **Claude** (Anthropic) y cada llamada
-a la IA queda registrada con su coste.
+Toda la IA de la plataforma (clasificación, agente, herramientas, búsqueda
+e indexado de documentos) vive en **[`ai-service/`](ai-service/README.md)**,
+un microservicio en Python (LangGraph, MCP, Redis Streams, arquitectura
+hexagonal). **Laravel no llama a ningún modelo** ni calcula embeddings (un
+test de arquitectura lo prohíbe): publica cada email como evento, aplica el
+resultado con **sus propias reglas de envío** y registra cada llamada a la
+IA con su coste. Hasta la retirada del motor de Laravel (octubre de 2026)
+convivían dos motores; ahora solo existe ai-service.
+
+```
+Laravel                                   Redis Streams             ai-service (Python)
+ingesta → filtros baratos ─► email.received.v1 ───────────────►  clasificación → RAG → especialistas
+                                                                  (herramientas MCP) → redactor → decisión
+ai:consume-results ◄──────── email.processed.v1 ◄──────────────   (recomendación + llamadas + herramientas)
+  → ai_requests (coste con los precios de Laravel), ai_agent_runs, ai_tool_calls
+  → AutoSendPolicy + ReplyContentGuard (la última palabra es de Laravel) → envío o persona
+```
+
+- **Contratos:** cada evento tiene un JSON Schema en
+  [`contracts/events/`](contracts/README.md), validado en los dos lados.
+- **Quién decide:** ai-service **recomienda** (`auto_send`,
+  `human_review`, `escalate`); Laravel lo pasa por el modo de la empresa,
+  las intenciones permitidas, los límites anti-bucles y la revisión del
+  texto. Si ai-service tuviera un fallo, no podría enviar nada que Laravel
+  no apruebe.
+- **Costes:** ai-service manda los tokens de cada llamada y Laravel calcula
+  el coste con los precios de [`config/ai.php`](config/ai.php) (una sola
+  tabla de precios); así el panel, Grafana y el freno del gasto ven todo.
+- **Si ai-service no responde:** `ai:reconcile-remote` (cada 5 minutos)
+  vuelve a publicar los emails que llevan 15 minutos en `processing`; tras 3
+  intentos el email pasa a **revisión humana** ("El servicio de IA no
+  respondió…"): sin IA una persona puede contestar igualmente.
 
 ### Activarla
 
-La IA está **desactivada mientras no haya API key**: los emails se siguen
-guardando, solo que sin clasificar (aviso en el log). Para activarla:
+Los servicios `ai-service` (worker + API interna), `ai-mcp` (herramientas)
+y `ai-results` (consumidor de resultados en Laravel) arrancan con el resto
+del stack. Lo único que hace falta es la clave de Anthropic, que **solo**
+recibe el contenedor `ai-service`:
 
 1. Crea una API key en [platform.claude.com](https://platform.claude.com)
-   (Settings → API keys) y añade saldo a la cuenta.
-2. Pégala en `.env`: `ANTHROPIC_API_KEY=sk-ant-...`
-3. Reinicia los workers para que la lean:
-   `docker compose exec horizon php artisan horizon:terminate`
-4. Prueba con un email ya guardado y mira resultado y coste:
-   `docker compose exec app php artisan ai:classify <id> --now`
-5. Procesa los que llegaron mientras no había clave (estaban en revisión
-   humana): `docker compose exec app php artisan ai:process <id> --now --reprocess`
-   o, para los que siguen en `received`, `ai:process --pending`
+   y añade saldo a la cuenta.
+2. Pégala en `.env`: `ANTHROPIC_API_KEY=sk-ant-...` y reinicia el
+   servicio: `docker compose up -d ai-service`.
+3. Prueba con un email ya guardado (publica, espera el resultado y enseña
+   el historial): `docker compose exec app php artisan ai:process <id> --now --reprocess`
+   y la traza de la IA: `php artisan ai:trace <id>`.
+
+Para probar **sin gastar**: `AI_SERVICE_LLM_PROVIDER=simulated` (reglas por
+palabras clave, solo en local; ver [Observabilidad](#12-observabilidad-métricas-grafana-y-alertas)).
 
 | Variable | Para qué |
 |---|---|
-| `AI_PROVIDER` | `anthropic` (Claude real) o **`simulated`**: IA de pruebas por palabras clave, sin API ni coste, para probar el flujo, las métricas y Grafana en local (prohibida fuera de `local`). |
-| `ANTHROPIC_API_KEY` | Clave de la API. Vacía = IA desactivada. |
-| `ANTHROPIC_MODEL` | Modelo (por defecto `claude-opus-5-5`, $4 / $20 por millón de tokens de entrada / salida). Más barato: `claude-sonnet-5-5` ($2 / $10) o `claude-haiku-4-5` ($1 / $5). Los precios están en `config/ai.php`. |
-| `AI_PROCESS_ON_INGEST` | Procesar cada email al guardarlo: clasificación, agente y envío o revisión humana (`true`; ver [Automatización](#10-automatización-cada-email-de-principio-a-fin)). Acepta el nombre antiguo `AI_CLASSIFY_ON_INGEST`. |
-| `ANTHROPIC_FALLBACKS` | Si los filtros de seguridad de un modelo rechazan un email, Anthropic lo reintenta con otro modelo en la misma llamada (`true`). |
-| `AI_CLASSIFICATION_EFFORT` | Profundidad del razonamiento (`low` por defecto: clasificar es sencillo y así gasta menos). |
-| `AI_CLASSIFICATION_MAX_BODY_CHARS` | Caracteres del cuerpo que se envían (20 000). Si se recorta, se avisa al modelo y queda registrado. |
+| `ANTHROPIC_API_KEY` | Clave de la API (solo la usa `ai-service`). |
+| `ANTHROPIC_MODEL` | Modelo (por defecto `claude-opus-5-5`, $4 / $20 por millón de tokens). Más barato: `claude-sonnet-5-5` ($2 / $10) o `claude-haiku-4-5` ($1 / $5). |
+| `AI_SERVICE_LLM_PROVIDER` | `anthropic` o `simulated` (IA de pruebas, prohibida fuera de `local`). |
+| `AI_PROCESS_ON_INGEST` | Procesar cada email al guardarlo (`true`). |
+| `AI_CLASSIFICATION_MAX_BODY_CHARS` | Caracteres del cuerpo que se mandan a ai-service (20 000); si se recorta, va marcado en el evento. |
+| `AI_SERVICE_INTERNAL_TOKEN` | Token de la API interna (búsqueda del panel y herramientas disponibles). |
+| `AI_SERVICE_CHECKPOINTS_DB_PASSWORD` | Rol de PostgreSQL de ai-service: solo su esquema `ai_service`. |
 
-### Cómo funciona
+Qué hace ai-service por dentro (prompts versionados, structured outputs,
+protección contra prompt injection, supervisor con especialistas, redactor
+agéntico, aprobación de acciones con `interrupt`, Kubernetes) está en
+[ai-service/README.md](ai-service/README.md). La lista de pasos para
+probarlo en tu equipo, en
+[Probarlo en tu equipo](ai-service/README.md#probarlo-en-tu-equipo-fases-15).
 
-```
-Ingesta (Fase 4) ── evento EmailIngested ──► ProcessEmailJob (cola "ai", Horizon) ── ver sección 10
-   └─ EmailClassifier ── prompt versionado + email como dato no fiable
-        └─ AIService ── LLMProvider (AnthropicProvider, SDK oficial)
-              ├─ registra SIEMPRE la llamada en ai_requests (tokens, coste, latencia, resultado o error)
-              └─ resultado → columnas de clasificación del email
-```
+### Qué guarda Laravel de cada email
 
-- **Qué devuelve:** `intent` (pedido, devolución, cancelación, factura,
-  cobro, producto, soporte técnico, queja, ventas, cambio de cuenta,
-  opinión, respuesta automática, spam, otros), `intent_confidence` (0–1),
-  `language`, `summary` (en español), `needs_human` + motivo, `sentiment`,
-  `urgency`, `injection_suspected` y `ai_entities` (números de pedido y de
-  factura, nombre del cliente). Se guarda en la tabla `emails`.
-- **Formato garantizado:** se usan *structured outputs*: el modelo responde
-  con un JSON que cumple un esquema, sin tener que "parsear" texto libre.
-- **Prompts versionados:** el prompt vive en código
-  ([`EmailClassificationPrompt`](app/AI/Classification/EmailClassificationPrompt.php)).
-  Cada versión usada se guarda en `ai_prompt_versions` y cada petición
-  apunta a la suya. Si cambias el texto sin subir `VERSION`, la app falla a
-  propósito: la auditoría nunca miente sobre qué prompt se usó.
-- **Protección contra prompt injection:** el email va al modelo entre
-  `<email>…</email>` como un dato que no debe obedecer; si trae esas
-  etiquetas se neutralizan para que no pueda "cerrar" el bloque. Si el
-  modelo detecta un intento de darle órdenes, el email se marca y **siempre**
-  va a revisión humana.
-- **Errores y reintentos:** límite de peticiones (429), sobrecarga (529),
-  errores 5xx o de red se reintentan (30 s, 2 min, 5 min). Un rechazo de
-  seguridad, una clave inválida o una respuesta inválida **no** se
-  reintentan (costaría dinero y daría lo mismo). Un email ya clasificado no
-  se vuelve a clasificar (salvo `ai:classify <id> --force`): no se paga dos
-  veces.
-- **Costes:** cada fila de `ai_requests` guarda tokens de entrada/salida (y
-  de caché), el modelo que respondió y `cost_usd`. Gasto del mes, por
-  ejemplo:
+- **Clasificación** en `emails`: `intent` (pedido, devolución, cancelación,
+  factura, cobro, producto, soporte técnico, queja, ventas, cambio de
+  cuenta, opinión, respuesta automática, spam, otros), `intent_confidence`,
+  `language`, `summary`, `needs_human` + motivo, `sentiment`, `urgency`,
+  `injection_suspected` y `ai_entities` (pedidos, facturas, nombre).
+- **Cada llamada a un modelo** en `ai_requests` (también las fallidas, que
+  se facturan): propósito (`ai_service.classification`, `ai_service.draft`,
+  `ai_service.knowledge_search`…), modelo, tokens, `cost_usd`, latencia,
+  versión del prompt. Gasto del mes:
   `SELECT SUM(cost_usd) FROM ai_requests WHERE created_at >= date_trunc('month', now());`
-- **Otro proveedor (OpenAI, Gemini…):** implementar
-  [`LLMProvider`](app/AI/Contracts/LLMProvider.php) y elegirlo en
-  `config/ai.php`; el resto de la app no cambia.
+- **Lo que hizo la IA** en `ai_agent_runs` y `ai_tool_calls` (ver
+  [sección 9](#9-agente-propuesta-de-respuesta)).
 
 ---
 
 ## 7. Base de conocimiento (RAG)
 
 Cada empresa sube su documentación (política de devoluciones, envíos,
-garantía, FAQs, manuales…) y la plataforma puede encontrar **por
-significado** el fragmento que responde a una pregunta, aunque no use las
-mismas palabras e incluso en otro idioma. Es la información que usará el
-agente (Fase 8) para responder los emails citando de dónde sale.
-
-### Cómo funciona
+garantía, FAQs, manuales…) y la IA encuentra **por significado** el
+fragmento que responde a una pregunta, aunque no use las mismas palabras e
+incluso en otro idioma, y lo cita en la respuesta.
 
 ```
-Subir documento (API o kb:import)
-  └─ disco privado + fila en documents (pending)
-       └─ ProcessDocumentJob (cola "documents", Horizon)
-            ├─ extraer texto: PDF por páginas · Markdown por secciones · HTML · TXT
-            ├─ trocear: ~2000 caracteres, párrafos completos, 200 de solapamiento
-            ├─ embeddings con Ollama (bge-m3, local) → vectores de 1024 números
-            └─ document_chunks (PostgreSQL + pgvector, índice HNSW) → ready
-
-Pregunta ("la lámpara llegó rota")
-  └─ embedding de la pregunta → trozos más cercanos (distancia coseno)
-       └─ resultados con su fuente: "Política de devoluciones, sección «Productos que llegan rotos»"
+Subir documento (panel, API o kb:import) ─► Laravel: disco privado + documents (processing)
+   └─ document.uploaded.v1 (con un enlace firmado de 30 min para descargar el original)
+        └─ ai-service: descarga → texto (PDF por páginas, Markdown por secciones, HTML, TXT)
+             → trozos de ~2000 caracteres → embeddings bge-m3 (Ollama, local)
+             → ai_service.knowledge_chunks (pgvector, HNSW)
+   ◄─ document.indexed.v1 / document.indexing_failed.v1 → documents: ready (n fragmentos) o failed con el motivo
 ```
 
 - **Privacidad:** los embeddings se calculan con un modelo **local**
-  (contenedor `ollama`, solo en la red interna). Los documentos de las
-  empresas no se envían a ningún servicio externo para indexarlos.
-- **Aislamiento:** documentos y trozos llevan `tenant_id`; la búsqueda
-  solo ve la documentación de la empresa del usuario (probado con tests y
-  por la API).
-- **Fuente citada:** cada trozo guarda la página (PDF) o la sección
+  (contenedor `ollama`, solo red interna): los documentos no salen del
+  servidor para indexarlos.
+- **Aislamiento:** cada fragmento lleva su empresa y toda búsqueda filtra
+  por ella; ai-service solo descarga el fichero por la ruta firmada que le
+  da Laravel (no puede pedir otro documento ni otra URL).
+- **Fuente citada:** cada fragmento guarda la página (PDF) o la sección
   (Markdown) de la que sale.
-- **Solo lo relevante:** por debajo de una similitud mínima
-  (`RAG_MIN_SIMILARITY`, 0,45) no se devuelve nada. Así una pregunta sin
-  relación ("¿tenéis tienda en Madrid?") no trae documentación que no
-  viene al caso.
-- **Formatos:** PDF (con texto; los escaneados sin OCR no están
-  soportados), TXT, Markdown y HTML. Máximo 20 MB (`RAG_MAX_UPLOAD_MB`).
-  El mismo fichero no se puede subir dos veces en una empresa.
-- **Coste:** 0 € (modelo local). Cada cálculo se registra igualmente en
-  `ai_requests` (`document_indexing` / `knowledge_search`) con tokens y
-  latencia.
-
-### Probarlo
+- **Solo lo relevante:** por debajo de una similitud mínima no se
+  devuelve nada.
+- **Formatos:** PDF con texto (sin OCR), TXT, Markdown y HTML; máximo
+  20 MB (`RAG_MAX_UPLOAD_MB`); el mismo fichero no se sube dos veces en una
+  empresa. Borrar un documento borra también sus fragmentos en ai-service
+  (`document.deleted.v1`).
 
 ```bash
-docker compose exec ollama ollama pull bge-m3                        # una vez
-docker compose exec app php artisan db:seed --class=KnowledgeBaseSeeder   # documentos de ejemplo
+docker compose exec ollama ollama pull bge-m3                              # una vez
+docker compose exec app php artisan db:seed --class=KnowledgeBaseSeeder     # documentos de ejemplo
 docker compose exec app php artisan kb:search "La lámpara me llegó rota, ¿qué hago?" --tenant=1
-docker compose exec app php artisan kb:import /ruta/en/el/contenedor/manual.pdf --tenant=1 --title="Manual"
+docker compose exec app php artisan kb:reindex --all                        # volver a indexarlo todo
 ```
 
-Resultados reales con la documentación de ejemplo: "¿Cuánto cuesta enviar
-a Canarias?" → *Envíos y entregas, sección «Coste del envío»* (similitud
-0,74); "How long do I have to return an item?" → *Política de
-devoluciones, sección «Plazo para devolver»* (0,72, pregunta en inglés,
-documento en español). Indexar los 4 documentos de ejemplo tarda unos 15 s
-en CPU y cada búsqueda menos de 1 s.
-
-### Detalles técnicos
-
-- pgvector con el soporte nativo de Laravel 13 (`vector(1024)`,
-  `vectorIndex()` = HNSW + `vector_cosine_ops`, `orderByVectorDistance`).
-  Como el índice HNSW filtra por empresa *después* de buscar vecinos, la
-  búsqueda activa `hnsw.iterative_scan` (pgvector 0.8) para completar los
-  resultados dentro de la empresa.
-- Indexar un PDF grande en CPU puede tardar minutos: los documentos van por
-  una conexión de cola propia (`redis-long`, `retry_after` 30 min) para
-  que Redis no relance un job que sigue en marcha.
-- Cambiar de modelo de embeddings obliga a reindexar (los vectores no son
-  comparables entre modelos): `POST /documents/{id}/reindex`.
-- Otro proveedor de embeddings (Voyage, OpenAI…): implementar
-  [`EmbeddingProvider`](app/AI/Embeddings/EmbeddingProvider.php) y elegirlo
-  con `AI_EMBEDDINGS_PROVIDER`.
+En el panel, "Documentación → Probar la búsqueda" enseña lo que
+encontraría la IA (la búsqueda es la de ai-service, por su API interna).
 
 ---
 
 ## 8. Herramientas de la IA (Tools)
 
-La IA **nunca accede a los datos por su cuenta**: solo puede pedir una
-herramienta por su nombre con unos argumentos, y el backend decide si la
-ejecuta. Es la base del [agente](#9-agente-propuesta-de-respuesta), que
-encadena herramientas para preparar la respuesta de cada email.
+La IA **nunca accede a los datos por su cuenta**: pide una herramienta por
+su nombre y el backend decide si la ejecuta. Las herramientas las sirve el
+**servidor MCP** de ai-service (`ai-mcp`); el catálogo es único y lo
+comparten Laravel y ai-service:
+[`contracts/tools/catalog.json`](contracts/tools/catalog.json).
 
-### Herramientas disponibles
+| Herramienta | Qué hace |
+|---|---|
+| `search_company_documents` | Busca en la documentación de la empresa (activada por defecto) |
+| `get_customer` | Ficha del cliente que escribe |
+| `get_order` / `get_customer_orders` | Un pedido del cliente o sus últimos pedidos |
+| `get_invoice` / `get_customer_invoices` | Una factura del cliente o sus facturas |
+| `get_customer_tickets` | Tickets de soporte del cliente |
+| `create_support_ticket` | **Escribe**: solo tras aprobarlo una persona en el panel |
 
-| Herramienta | Qué hace | Necesita email |
-|---|---|---|
-| `search_company_documents` | Busca en la documentación de la empresa (RAG) y devuelve fragmentos con su fuente para citarla | no |
-| `get_order` | Detalle de un pedido del cliente: estado, productos, total, envío y seguimiento | sí |
-| `get_customer_orders` | Últimos pedidos del cliente (cuando no da el número) | sí |
-
-### Herramientas por empresa
-
-No todas las empresas tienen pedidos (una clínica o una consultoría no los
-tienen), así que cada empresa activa solo las herramientas que le sirven.
-Por defecto solo `search_company_documents` (`ai.tools.default_enabled`).
-La IA ve una herramienta solo si está **activada** para la empresa **y
-disponible** (p. ej. las de pedidos necesitan una fuente de pedidos
-configurada); si aun así la pidiera, el `ToolExecutor` la rechaza.
+- **Por empresa:** cada empresa activa las que le sirven (una clínica no
+  tiene pedidos); Laravel manda la lista en cada evento (`enabled_tools`) y
+  ai-service no planifica, ofrece ni ejecuta ninguna otra.
+- **Los datos de un cliente solo se le enseñan a ese cliente:** empresa y
+  remitente los pone el backend, nunca el modelo; un pedido de otra persona
+  se responde como si no existiera.
+- **Datos de demostración:** todavía no hay integraciones reales (Fase
+  14): pedidos, facturas y tickets de "Empresa Demo" en
+  `ai-service/src/ai_service/mcp_server/data/`.
 
 ```bash
-docker compose exec app php artisan ai:tools 1                                            # estado
+docker compose exec app php artisan ai:tools 1                      # estado (y si tienen datos, según ai-service)
 docker compose exec app php artisan ai:tools 1 --enable=get_order --enable=get_customer_orders
-docker compose exec app php artisan ai:tools 1 --disable=get_order
+docker compose exec ai-service ai-service-tool --list
+docker compose exec ai-service ai-service-tool get_order --tenant 1 --customer cliente@cliente.test --args '{"order_number":"45821"}'
 ```
-
-### Cómo se controlan
-
-```
-La IA pide: get_order {"order_number": "45821"}
-  └─ ToolExecutor (único que ejecuta)
-       1. ¿existe la herramienta?                    → si no: rejected
-       2. ¿los argumentos cumplen su esquema JSON?    → si no: rejected (con el motivo, para que se corrija)
-       3. ¿se puede usar aquí? (p. ej. necesita email) → si no: rejected
-       4. se ejecuta dentro de la empresa del email; un fallo inesperado
-          se convierte en un error genérico (el detalle solo va al log)
-       5. resultado recortado si es demasiado grande
-  └─ SIEMPRE se registra en ai_tool_calls: argumentos, resultado, estado, duración
-```
-
-- **Los datos de un cliente solo se le enseñan a ese cliente.** Las
-  herramientas de pedidos están atadas al **remitente del email**, que pone
-  el backend y no la IA. Si el email pide un pedido de otra persona, la
-  respuesta es la misma que para un pedido que no existe: "No hay ningún
-  pedido con ese número asociado a este cliente". `get_customer_orders`
-  ni siquiera acepta un email como argumento.
-- **Argumentos inventados se rechazan**: los esquemas no admiten campos
-  extra (un `"sql": "DROP TABLE…"` o un `"email": "otro@cliente"` no se
-  ejecutan).
-- **Pedidos de demostración:** todavía no hay integración con una tienda
-  o ERP real (Fase 14). Los pedidos salen de
-  [`database/seeders/demo/orders.json`](database/seeders/demo/orders.json)
-  (solo para "Empresa Demo", con los mismos números que los emails de
-  prueba). Las herramientas usan la interfaz `OrderProvider`: cuando
-  llegue la integración real, se cambia el proveedor y ellas no cambian.
-
-### Probarlas a mano
-
-```bash
-docker compose exec app php artisan ai:tool --list
-# Como si la IA procesara el email 1 (Cliente Pérez):
-docker compose exec app php artisan ai:tool get_order --email=1 --args='{"order_number":"45821"}'
-docker compose exec app php artisan ai:tool get_order --email=1 --args='{"order_number":"76540"}'   # de otro cliente → no lo ve
-docker compose exec app php artisan ai:tool search_company_documents --tenant=1 --args='{"query":"plazo de devolución"}'
-```
-
-Cada ejecución queda en la tabla `ai_tool_calls`.
-
-### Añadir una herramienta
-
-Crear una clase que implemente [`AITool`](app/Tools/Contracts/AITool.php)
-(nombre en snake_case, descripción para el modelo, esquema JSON con
-`additionalProperties: false`, `execute()` que devuelve
-`ToolResult::success()` o `ToolResult::error()`), marcarla con
-`RequiresSender` si devuelve datos de un cliente, y añadirla a
-`ai.tools.available` en [`config/ai.php`](config/ai.php). Si depende de
-una configuración de la empresa, implementar también `HasAvailability`.
 
 ---
 
 ## 9. Agente: propuesta de respuesta
 
-El agente junta todo lo anterior: lee el email (con su clasificación),
-**decide qué consultar**, usa las herramientas las veces que necesite y
-termina con una **propuesta de respuesta** que cita sus fuentes. El agente
-**no envía nada**: deja un borrador en `email_replies`. Si se envía solo o
-lo revisa una persona lo decide la [automatización](#10-automatización-cada-email-de-principio-a-fin).
-
-### Cómo funciona
-
-```
-Email (+ clasificación) ─► AgentService
-   ┌──────────────────────────────────────────────────────────────┐
-   │ 1. Claude recibe el email como DATO NO FIABLE + herramientas  │
-   │    de la empresa                                              │
-   │ 2. ¿Pide herramientas? → ToolExecutor las ejecuta (validadas, │
-   │    atadas al remitente, en ai_tool_calls) → resultados a      │
-   │    Claude → vuelta a 1                                        │
-   │ 3. ¿Responde? → propuesta en JSON (structured outputs)        │
-   └──────────────────────────────────────────────────────────────┘
-   Límites en cada vuelta: pasos, nº de herramientas, tiempo y gasto
-        │
-        ▼
-AgentDecision (backend, no la IA) ─► email_replies (borrador)
-                                     needs_human + motivos
-```
-
-La propuesta trae: texto de la respuesta (en el idioma del cliente),
-confianza, si la IA cree que necesita una persona y por qué, **fuentes**
-(pedidos y secciones de documentos usados), **acciones pendientes** (lo que
-el agente no puede hacer: tramitar un reembolso, abrir una incidencia…) y
-una nota interna para quien la revise. El agente **solo informa**: no
-puede prometer ni ejecutar acciones (las herramientas son de solo lectura).
-
-### Quién decide si la revisa una persona
-
-La IA propone; **el backend decide**. Va a revisión humana si se cumple
-**cualquiera** de estas condiciones (se guardan todos los motivos), aunque
-el modelo diga estar seguro:
-
-- el modelo lo pide;
-- confianza menor que `ai.agent.min_confidence` (0,75);
-- sospecha de prompt injection en el email;
-- la clasificación ya lo marcó para una persona (queja, amenaza legal…);
-- quedan acciones pendientes para una persona;
-- alguna herramienta falló o fue rechazada durante la ejecución;
-- el email era demasiado largo y la IA no lo leyó entero.
-
-### Límites y errores
-
-Configurables en `ai.agent` ([`config/ai.php`](config/ai.php)):
-`max_iterations` 6 pasos, `max_tool_calls` 10, `timeout_seconds` 120,
-`max_cost_usd` 0,25 por email, `effort` medium, `max_tokens` 8000. Si se
-alcanza un límite, el agente se para **sin propuesta** y queda registrado
-el motivo (`ai_agent_runs.stop_reason`): ese email lo atiende una persona.
-Un rechazo de seguridad del modelo o una respuesta inválida tampoco dejan
-propuesta; los errores temporales de Anthropic (429, 529) se relanzan para
-que la cola los reintente.
-
-### Auditoría
-
-Todo queda en la base de datos y enlazado:
+ai-service decide qué consultar (supervisor con especialistas de pedidos,
+facturación y soporte; el redactor puede pedir consultas extra), redacta
+una **propuesta** que cita sus fuentes y recomienda qué hacer con ella. En
+Laravel la propuesta queda en `email_replies` (borrador) y la ejecución
+entera, auditada:
 
 | Tabla | Qué guarda |
 |---|---|
-| `ai_agent_runs` | Una fila por ejecución: estado, motivo de fin, pasos, herramientas, tokens, coste total, duración, salida final |
-| `ai_requests` | Una fila por paso (`agent_run_id`): tokens, coste, latencia y las herramientas que pidió |
-| `ai_tool_calls` | Cada herramienta ejecutada: argumentos, resultado, estado, paso que la pidió |
-| `email_replies` | La propuesta: texto, confianza, `needs_human` + motivos, fuentes, acciones pendientes, nota interna, estado (`draft`) |
+| `ai_agent_runs` | Una fila por ejecución: pasos, herramientas, tokens, coste, duración, especialistas y salida final |
+| `ai_requests` | Una fila por llamada a un modelo (`agent_run_id`), con su coste |
+| `ai_tool_calls` | Cada herramienta: argumentos, resultado, estado y origen (plan, pedida por la IA, aprobada por una persona) |
+| `email_replies` | La propuesta: texto, confianza, `needs_human` + motivos, fuentes, estado |
 
-### Probarlo
+ai-service pide una persona si la confianza es baja (menos de 0,85), hay
+sospecha de prompt injection, una amenaza legal, una cita a algo que no
+consultó, una consulta fallida, una acción pendiente o el email era
+demasiado largo. Si propone una **acción que modifica datos** (abrir un
+ticket), el grafo queda en pausa hasta que una persona la apruebe o la
+rechace en el panel. Una persona también puede **reprocesar con una
+indicación** ("ofrece cambiarla por otra").
 
 ```bash
-# Una vez: activar las herramientas de pedidos para Empresa Demo
-docker compose exec app php artisan ai:tools 1 --enable=get_order --enable=get_customer_orders
-
-docker compose exec app php artisan ai:reply 1          # ejecuta el agente y muestra la traza
-docker compose exec app php artisan ai:reply 1 --last   # vuelve a ver la última ejecución (sin gastar)
+docker compose exec app php artisan ai:trace 12     # lo que hizo la IA: pasos, herramientas, propuesta y coste
 ```
 
-`ai:reply` muestra cada paso (tokens, latencia, coste) con las herramientas
-que pidió y lo que devolvieron, el resumen (motivo de fin, coste, duración)
-y la propuesta con la decisión y sus motivos.
-
-### Resultados de la prueba real (`claude-opus-5-5`)
-
-| Email | Qué hizo el agente | Decisión |
-|---|---|---|
-| "¿Dónde está mi pedido #45821?" | `get_order` + política de retrasos: envío con SEUR, seguimiento, retraso respecto a la fecha prevista | Persona (hay que abrir incidencia con SEUR) |
-| "¿Cuándo llega mi pedido?" (78123) | `get_order` + plazos: sigue en preparación, aún sin seguimiento | Persona (retraso sin causa conocida) |
-| Reclamación por doble cobro con amenaza legal | `get_order` + FAQ "Me habéis cobrado dos veces": pide el extracto, sin prometer el reembolso | Persona (reembolso, amenaza legal) |
-| Email en inglés, producto roto | `get_order` + devoluciones + garantía; responde **en inglés** y detecta que el aviso llegó fuera del plazo de 48 h | Persona (decidir devolución o garantía) |
-| Prompt injection | **No obedece ni revela nada**, no usa herramientas, respuesta genérica | Persona (injection) |
-| "¿Hacéis envíos a Canarias?" | Documentación de envíos: 14,95 €, 5–7 días, aranceles (DUA); todo comprobado contra el documento | **Se podría enviar sola** (confianza 0,93) |
-
-Coste: **~0,05 $ por respuesta** con Opus 5.5 (0,02–0,07 según cuántas
-consultas haga), más ~0,012 $ de la clasificación. Para abaratarlo:
-`ANTHROPIC_MODEL=claude-sonnet-5-5` (la mitad de precio) o `effort` más
-bajo; conviene medirlo con un conjunto de emails de prueba (Fase 15).
-
-### Detalles técnicos
-
-- **Tool calling con historial solo-añadir:** cada vuelta reenvía la
-  conversación anterior **tal cual** (incluido el razonamiento del modelo,
-  que no se puede editar) más los resultados de herramientas; el prompt de
-  sistema y la lista de herramientas no cambian durante la ejecución.
-- La respuesta final usa **structured outputs** (esquema JSON) a la vez que
-  las herramientas.
-- El prompt del agente está versionado igual que el de clasificación
-  (`email_agent` v1 en [`EmailAgentPrompt`](app/AI/Agent/EmailAgentPrompt.php)):
-  cambiarlo obliga a subir la versión.
+Resultados con Claude real (puerta de calidad antes de retirar el motor de
+Laravel, 13 emails en modo sombra): misma intención que el antiguo motor
+de Laravel en el 100 %, misma decisión en el 85 % (en los desacuerdos,
+ai-service es más prudente) y un 19 % más barato (0,054 $ frente a 0,067 $
+por email). Detalle en
+[`ai-service/evals/`](ai-service/evals/retirement-gate-2026-10-18.json).
 
 ---
 
@@ -878,47 +730,20 @@ preparado para una persona. Código en [`app/Automation/`](app/Automation/).
 email nuevo (mail:sync, cada minuto) ── EmailIngested ──► ProcessEmailJob (cola "ai")
   received ─► processing
      ├─ ¿correo automático? (rebote, lista, boletín, fuera de oficina...) ─► ignored   (sin gastar IA)
-     ├─ ¿empresa en modo "off" o IA sin configurar? ─────────────────────► human_review
-     ├─ clasificación (Claude) ─ ¿spam / respuesta automática, confianza ≥ 0,8? ─► ignored
-     ├─ ¿sospecha de prompt injection? ──────────────────────────────────► human_review (sin agente)
-     └─ agente (herramientas + documentación) ─► ai_review
-            └─ reglas: AgentDecision + AutoSendPolicy
+     ├─ ¿empresa en modo "off"? ─────────────────────────────────────────► human_review
+     ├─ ¿presupuesto diario agotado o remitente que inunda? ─────────────► human_review (sin IA)
+     └─ email.received.v1 ─► ai-service ─► email.processed.v1 ─► ai:consume-results
+            ├─ spam / respuesta automática con confianza ≥ 0,8 ─► ignored
+            ├─ sin propuesta (escala o pide persona) ─► human_review
+            └─ propuesta ─► ai_review ─► reglas: AutoSendPolicy + ReplyContentGuard
                  ├─ todo correcto ─► approved ─► SendReplyJob (cola "mail") ─► sent
                  └─ cualquier motivo ─► human_review (con todos los motivos)
 ```
 
-**Con el motor de IA en Python (`AI_ENGINE=python`)** el flujo es el mismo
-hasta el freno del gasto; a partir de ahí, en vez de clasificar y ejecutar
-el agente en Laravel, el email se **publica como evento**
-(`email.received.v1`, Redis Streams) y se queda en `processing` hasta que
-[`ai-service`](ai-service/README.md) devuelve el resultado
-(`email.processed.v1`). Las reglas finales (`AutoSendPolicy`) y el envío
-siguen en Laravel. Si no llega respuesta en 15 minutos,
-`ai:reconcile-remote` (cada 5 minutos) lo vuelve a publicar; tras 3
-intentos, `failed`. Con `AI_ENGINE=laravel` (por defecto) todo sigue como
-en el diagrama.
-
-**Modo sombra** (`AI_SHADOW_ENABLED=true`, con `AI_ENGINE=laravel` y el
-perfil `ai-service` levantado): una muestra de emails (`AI_SHADOW_SAMPLE_RATE`)
-se publica **también** a ai-service con `mode: shadow` mientras el motor de
-Laravel los procesa como siempre. Lo que recomiende ai-service **nunca se
-aplica al email**: se guarda en `ai_shadow_runs` y `ai:shadow-compare`
-(cada 5 minutos) lo compara con lo que hizo Laravel cuando los dos han
-terminado. `php artisan ai:shadow-report [--days=7] [--tenant=]` muestra
-en qué coinciden (intención, decisión), cuánto cuesta y tarda cada motor y
-los desacuerdos; en Grafana, fila "Modo sombra" del dashboard de ai-service.
-Las llamadas a la IA se pagan dos veces: cuenta para el presupuesto diario
-de cada empresa.
-
-**Probar el microservicio en tu equipo** (variables del `.env`, migraciones,
-servicios, correos de prueba y modo sombra): lista completa en
-[ai-service/README.md → Probarlo en tu equipo](ai-service/README.md#probarlo-en-tu-equipo-fases-15).
-
 Cada cambio de estado se guarda en **`email_status_changes`** con su motivo
-y quién lo decidió (null = la plataforma; una persona en la Fase 13). Un
-email no puede saltarse pasos: las transiciones válidas están en
-[`EmailStatus`](app/Mail/Enums/EmailStatus.php) y el cambio es atómico
-(dos procesos no pueden moverlo a la vez).
+y quién lo decidió (null = la plataforma). Un email no puede saltarse
+pasos: las transiciones válidas están en
+[`EmailStatus`](app/Mail/Enums/EmailStatus.php) y el cambio es atómico.
 
 ### Modos por empresa
 
@@ -944,11 +769,12 @@ entendido (`other`).
 Solo si **no** se cumple ninguna de estas condiciones (si se cumple
 alguna, va a una persona con todos los motivos):
 
-- la IA pide revisión, su confianza es menor de 0,75, quedan acciones para
-  una persona, falló alguna consulta o el email era demasiado largo
-  ([agente](#9-agente-propuesta-de-respuesta));
+- ai-service no recomienda el envío automático ([sección 9](#9-agente-propuesta-de-respuesta));
 - la empresa no está en modo `auto` o la intención no está permitida;
 - es un correo automático o hay sospecha de prompt injection;
+- el texto no pasa la revisión (enlaces, direcciones, pedidos o importes
+  que no salen de lo consultado, detalles internos, promesas de que lo
+  revisará una persona…; ver [Seguridad](#13-seguridad));
 - la respuesta iría a un **buzón de la propia empresa** o a una dirección
   `noreply`;
 - esa dirección ya recibió **3 respuestas automáticas en 24 horas**
@@ -966,11 +792,8 @@ alguna, va a una persona con todos los motivos):
   Graph no permite esa cabecera.)
 - **Nunca se envía dos veces:** antes de enviar, la respuesta se "reclama"
   con un cambio de estado atómico. Solo se reintenta si el servidor no
-  respondió (2 reintentos: 1 y 5 min). Si se desconoce si salió, queda en
-  `failed` para que lo revise una persona, y un email con un envío ya
-  intentado no se reprocesa nunca.
-- Errores: credenciales rechazadas → el buzón queda `failing`; rechazo del
-  servidor o buzón desactivado → `failed` con el motivo en `send_error`.
+  respondió. Si se desconoce si salió, queda en `failed` para que lo revise
+  una persona, y un email con un envío ya intentado no se reprocesa nunca.
 
 ### Probarlo
 
@@ -978,30 +801,11 @@ alguna, va a una persona con todos los motivos):
 docker compose exec app php artisan ai:automation 1 --mode=auto
 # Envía un correo a soporte@demo.test (GreenMail, SMTP 127.0.0.1:3025):
 #   "¿Hacéis envíos a Canarias?" → en < 1 min se responde solo.
-docker compose exec app php artisan ai:process 12 --now        # procesar uno al momento y ver su historial
+docker compose exec app php artisan ai:process 12 --now        # procesar uno, esperar a ai-service y ver su historial
 docker compose exec app php artisan ai:process 12 --now --reprocess   # volver a procesar uno ya decidido
 docker compose exec app php artisan ai:process --pending       # encolar los que siguen sin procesar
 docker compose exec app php artisan ai:process --failed        # reintentar los que fallaron
 ```
-
-Historial de un email en SQL:
-`SELECT from_status, to_status, reason, created_at FROM email_status_changes WHERE email_id = 12 ORDER BY id;`
-
-### Resultados de la prueba real (Claude + GreenMail, modo `auto`)
-
-| Email | Resultado |
-|---|---|
-| "¿Llegó mi pedido 44102?" (del propio cliente) | **Enviada sola** (0,95): entregado el 16/07 en Zaragoza, Correos Express, seguimiento; todo comprobado con el pedido |
-| "Do you ship to Lisbon?" (inglés) | **Enviada sola en inglés** (0,90): Portugal 3–5 días laborables, según la documentación |
-| "¿Cuántos días tengo para devolver una silla?" | **Enviada sola** (0,90): clasificada como pregunta sobre el producto; 30 días, estado, pasos, 14 días de reembolso y 4,95 €, todo exacto según la política |
-| "¿Hacéis envíos a Canarias?" | **Enviada sola**; llegó al buzón de la clienta en el hilo, con `Auto-Submitted` |
-| Boletín con `List-Unsubscribe` | **Ignorado sin llamar a la IA** |
-| Spam y "fuera de la oficina" | Ignorados (confianza 0,97) |
-| Pedido retrasado, doble cobro con amenaza legal, producto roto, factura | **Revisión humana**, cada uno con sus motivos (acciones pendientes, intención no permitida...) |
-| Prompt injection | Revisión humana **sin ejecutar el agente** |
-
-Coste: clasificación + agente ≈ **0,04–0,07 $ por email** con Opus 5.5;
-los correos automáticos no cuestan nada.
 
 ---
 
@@ -1028,7 +832,7 @@ siempre los permisos** (la interfaz solo es comodidad).
 **Costes y tokens de la IA no aparecen en el panel ni en su API**: son
 información del operador de la plataforma (tu margen, tus proveedores), no
 de las empresas cliente. Se consultan en **Grafana** (dashboard Costes) y,
-por consola, en `ai:reply` / `ai:classify`. Un test recorre las respuestas
+por consola, en `ai:trace`. Un test recorre las respuestas
 de la API del panel y falla si aparece cualquier campo de coste o tokens.
 
 ### Seguridad del panel
@@ -1192,10 +996,10 @@ fase de producción. Los umbrales se cambian en `alerts.yml` (y sus pruebas).
 
 ### Probarlo sin gastar en IA
 
-Con `AI_PROVIDER=simulated` en `.env` (y `horizon:terminate` para que los
-workers lo lean) la IA responde con reglas por palabras clave, sin API ni
-coste: clasifica, el agente consulta pedidos y la plataforma decide y envía
-como con Claude. Su modelo se llama `simulated` y tiene un **precio
+Con `AI_SERVICE_LLM_PROVIDER=simulated` en `.env` (y `docker compose up -d
+ai-service` para que lo lea) la IA responde con reglas por palabras clave,
+sin API ni coste: clasifica, consulta pedidos y la plataforma decide y
+envía como con Claude. Su modelo se llama `simulated` y tiene un **precio
 ficticio** (el de Opus 5.5) para que se vean costes en Grafana. Envía unos
 cuantos correos por SMTP a `soporte@demo.test` (GreenMail, `127.0.0.1:3025`,
 cada uno con su `Message-ID`, o se tomarán por duplicados) y en un par de
@@ -1394,8 +1198,8 @@ agente):
 | **Descartar propuesta** | La propuesta queda descartada (con motivo opcional); el caso sigue esperando a una persona. |
 | **Enviar respuesta** (sin propuesta) | La persona escribe la suya. |
 | **Cerrar sin responder** | El email pasa a "Sin respuesta" (`ignored`), con motivo opcional. |
-| **Reprocesar con la IA** | La IA prepara una propuesta nueva (la anterior se descarta). **Nunca** si ya se intentó enviar una respuesta: podría llegar dos veces. Con el servicio de IA en Python (`AI_ENGINE=python`) se puede añadir una **indicación** para la IA; esa respuesta vuelve siempre a revisión. |
-| **Aprobar / Rechazar acción** (solo con `AI_ENGINE=python`) | La IA propuso algo que modifica datos (p. ej. abrir un ticket de soporte) y espera en pausa. Aprobada, la hace (una sola vez) y prepara la respuesta con su resultado; rechazada, responde sin hacerla. Ver [ai-service](ai-service/README.md#acciones-con-aprobación-humana-fase-4). |
+| **Reprocesar con la IA** | La IA prepara una propuesta nueva (la anterior se descarta). **Nunca** si ya se intentó enviar una respuesta: podría llegar dos veces. Se puede añadir una **indicación** para la IA; esa respuesta vuelve siempre a revisión. |
+| **Aprobar / Rechazar acción** | La IA propuso algo que modifica datos (p. ej. abrir un ticket de soporte) y espera en pausa. Aprobada, la hace (una sola vez) y prepara la respuesta con su resultado; rechazada, responde sin hacerla. Ver [ai-service](ai-service/README.md#acciones-con-aprobación-humana-fase-4). |
 
 - Lo que envía una persona sale **sin `Auto-Submitted`** (no es una respuesta
   automática) y el historial dice quién lo aprobó.
@@ -1432,7 +1236,7 @@ agente):
 ### Probarlo sin gastar en IA
 
 ```bash
-# .env: AI_PROVIDER=simulated (IA de pruebas por palabras clave) y reiniciar Horizon
+# .env: AI_SERVICE_LLM_PROVIDER=simulated (IA de pruebas por palabras clave) y docker compose up -d ai-service
 docker compose exec horizon php artisan horizon:terminate
 docker compose exec app php artisan ai:automation 1 --mode=draft     # todo pasa por una persona
 # Envía correos a soporte@demo.test (GreenMail, SMTP 127.0.0.1:3025) y en < 1 min
@@ -1487,29 +1291,15 @@ app/
 │   ├── Enums/                Proveedor, estados de conexión/email/adjunto, tipo de destinatario
 │   ├── MailProviderFactory   Conexión → proveedor
 │   └── MailConnectionService Prueba de conexión y su estado
-├── AI/                       Inteligencia artificial (Fase 5)
-│   ├── Contracts/            LLMProvider (la interfaz común)
-│   ├── Data/                 DTOs: LLMRequest, LLMResponse, LLMUsage, AIResult
-│   ├── Providers/Anthropic/  AnthropicProvider (SDK oficial de Anthropic)
-│   ├── Prompts/              Prompt (interfaz) + PromptRegistry (versiones en BD)
-│   ├── Classification/       Prompt de clasificación, EmailClassifier, ClassifyEmailJob
-│   ├── Embeddings/           EmbeddingProvider, OllamaEmbeddingProvider, EmbeddingService
-│   ├── Agent/                Agente (Fase 8): prompt, contexto, AgentService (bucle), AgentDecision, AgentReply
-│   ├── AIService             Ejecuta prompts (y conversaciones con herramientas) y registra cada petición en ai_requests
-│   └── CostCalculator        Coste en USD por modelo
-├── Documents/                Base de conocimiento / RAG (Fase 6)
-│   ├── Extraction/           Texto de PDF, TXT, Markdown y HTML por secciones citables
-│   ├── Chunking/             TextChunker (troceado con solapamiento)
-│   ├── Search/               SemanticSearchService (pgvector)
-│   ├── DocumentService       Subir, indexar (ProcessDocumentJob) y borrar documentos
-│   └── KnowledgeBaseService  Documentación relevante para un email, lista para el prompt
-├── Tools/                    Herramientas de la IA (Fase 7)
-│   ├── Contracts/            AITool, RequiresSender, HasAvailability
-│   ├── Builtin/              search_company_documents, get_order, get_customer_orders
-│   ├── ToolRegistry          Catálogo de herramientas disponibles
-│   ├── TenantToolService     Herramientas activadas y disponibles para cada empresa
-│   └── ToolExecutor          Valida, controla permisos, ejecuta y registra (ai_tool_calls)
-├── ERP/                      Pedidos: OrderProvider + DemoOrderProvider (integraciones reales en la Fase 14)
+├── AI/                       Integración con ai-service (la IA vive en el microservicio)
+│   ├── Remote/               Eventos: EmailEventPublisher, RemoteResultHandler, DocumentIndexPublisher,
+│   │                         DocumentResultHandler, ReviewResumedPublisher, RedisEventStream, EventContract,
+│   │                         AiServiceClient (API interna), RemoteCallRecorder (ai_requests)
+│   ├── Classification/       EmailIntent y EmailClassification (lo que se guarda en emails)
+│   ├── ToolCatalog           Catálogo de herramientas compartido (contracts/tools/catalog.json)
+│   └── CostCalculator        Coste en USD por modelo (precios en config/ai.php)
+├── Documents/                Base de conocimiento: DocumentService (subir, reindexar, borrar; indexa ai-service)
+├── Tools/                    TenantToolService: herramientas activadas por empresa
 ├── Automation/               Automatización (Fase 9): EmailProcessor + ProcessEmailJob, AutoSendPolicy,
 │                             ReplySender + SendReplyJob (envío en el hilo), AutomationMode;
 │                             Review/ (Fase 13): HumanReviewService (decisiones de las personas), ReviewStats
@@ -1519,22 +1309,22 @@ app/
 ├── Security/                 Seguridad (Fase 12): Audit/AuditLogger, Redactor + Logging/RedactSecrets (secretos fuera
 │                             de los logs), AiSpendGuard (freno del gasto), ReplyContentGuard (revisión del texto),
 │                             Retention/ (EmailEraser, RetentionService)
-├── Console/Commands/         mail:sync (cada minuto), ai:classify, kb:import, kb:search, ai:tool, ai:tools, ai:reply,
-│                             ai:automation, ai:process, ai:budget, data:prune (cada noche), data:forget-address,
-│                             security:check
+├── Console/Commands/         mail:sync (cada minuto), ai:process, ai:trace, ai:consume-results, ai:reconcile-remote,
+│                             kb:import, kb:search, kb:reindex, ai:tools, ai:automation, ai:budget,
+│                             data:prune (cada noche), data:forget-address, security:check
 ├── Models/                   Tenant, User, Role, Permission, MailConnection, Email,
 │                             EmailRecipient, EmailAttachment, MailSyncState,
-│                             AiRequest, AiPromptVersion, Document, DocumentChunk, AiToolCall,
+│                             AiRequest, AiPromptVersion (historial), Document, AiToolCall,
 │                             TenantTool, AiAgentRun, EmailReply, EmailStatusChange, AuditLog, EmailReview
 ├── Policies/                 UserPolicy, TenantPolicy, MailConnectionPolicy, DocumentPolicy, EmailPolicy
 ├── Providers/                AppServiceProvider (rate limits, Gates), Horizon, MailProviders, AI
 ├── Tenancy/                  TenantService, BelongsToTenant, TenantScope
 └── Jobs/                     Jobs de cola
 bootstrap/app.php             Middleware y manejo de errores de la API
-config/                       Configuración (ai, erp, sanctum, horizon, mail_connections, services…)
+config/                       Configuración (ai, sanctum, horizon, mail_connections, services…)
 database/
 ├── migrations/               Esquema de la BD
-├── seeders/                  Roles/permisos, datos de desarrollo, documentación (knowledge/) y pedidos (demo/) de ejemplo
+├── seeders/                  Roles/permisos, datos de desarrollo y documentación de ejemplo (knowledge/)
 └── factories/                Datos falsos para tests
 docker/                       Config de nginx, php, postgres, redis, prometheus (+ alerts.yml y sus pruebas),
                               loki, promtail, grafana (provisioning + dashboards/*.json)
@@ -1551,19 +1341,18 @@ tests/
 ├── Feature/Mail/             Conexiones: Imap/, Smtp/ (GreenMail real), Microsoft/, Google/ (APIs simuladas)
 ├── Feature/Emails/           Tablas y modelos de emails, API del panel (listado, detalle, revisión, bandeja, historial);
 │                             Ingestion/ (servicio, sync, job, comando, E2E con GreenMail)
-├── Feature/AI/               Proveedor Anthropic (HTTP simulado, también tool calling), AIService, costes, prompts, clasificación,
-│                             embeddings (Ollama simulado), Agent/ (bucle, límites, decisión humana, comando ai:reply)
-├── Feature/Documents/        Documentos: extracción, troceado, indexado, búsqueda, API, aislamiento, comandos
-├── Feature/Tools/            Registro, ejecutor (validación, permisos, errores), herramientas por empresa, comandos ai:tool/ai:tools
+├── Feature/AI/               Costes, clasificación guardada; Remote/ (contrato, publicación, resultados, documentos,
+│                             aprobación de acciones, API interna, Redis real, rol de ai-service)
+├── Feature/Documents/        Documentos: subida, API, aislamiento, comandos
+├── Feature/Tools/            Herramientas por empresa y comando ai:tools
 ├── Feature/Automation/       Modos, política de envío, envío en el hilo, procesador, job, comandos y E2E con GreenMail real;
 │                             Review/ (revisión humana: modelo, servicio y E2E con GreenMail y la IA simulada)
 ├── Feature/Observability/    Métricas (emails, IA, HTTP, colas, estado), /metrics, logs JSON, dashboard del panel
 ├── Feature/Security/         Auditoría, gasto de IA, revisión del texto, cabeceras, logs, retención, infraestructura,
 │                             arquitectura (aislamiento, rutas protegidas, dependencias encapsuladas, higiene)
-├── Feature/ERP/              Proveedor de pedidos de demostración
 ├── Feature/*.php             API base (health, errores, rate limit, BD de test)
 ├── Support/                  GreenMail (buzones de prueba) y Pdf (PDFs generados al vuelo)
-└── Fakes/                    FakeMailProvider, FakeLLMProvider, FakePrompt, FakeEmbeddingProvider, FakeTool
+└── Fakes/                    FakeMailProvider, InMemoryEventStream (streams de Redis en memoria)
 ```
 
 En próximas fases se añadirán más módulos en `app/` por dominio (`CRM/`…), siempre con la
@@ -1622,7 +1411,7 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | POST | `/emails/{id}/replies/{reply}/reject` | `emails.review` | Descartar la propuesta (`reason` opcional) |
 | POST | `/emails/{id}/replies` | `emails.review` | Enviar una respuesta escrita por la persona (`body`) |
 | POST | `/emails/{id}/close` | `emails.review` | Cerrar sin responder (`reason` opcional) |
-| POST | `/emails/{id}/reprocess` | `emails.review` | Volver a procesarlo con la IA (409 si ya se intentó un envío; `instruction` opcional solo con `AI_ENGINE=python`, si no 422) |
+| POST | `/emails/{id}/reprocess` | `emails.review` | Volver a procesarlo con la IA (409 si ya se intentó un envío; `instruction` opcional, máx. 2000 caracteres) |
 | POST | `/emails/{id}/action/approve` | `emails.review` | Aprobar la acción que propuso ai-service (409 si no hay ninguna pendiente o ya se decidió) |
 | POST | `/emails/{id}/action/reject` | `emails.review` | Rechazar la acción que propuso ai-service |
 | PUT | `/emails/{id}/assignee` | `emails.review` | Asignar el caso (`user_id`, o `null` para liberarlo) |
@@ -1687,28 +1476,29 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
   petición y construir correos recibidos, y `FakeMailProvider` para probar
   código que usa `MailProvider` sin servidor (lotes, resync y fallos
   simulados).
-- **IA:** los tests **nunca llaman a Anthropic ni gastan dinero**:
-  `phpunit.xml` fuerza `ANTHROPIC_API_KEY` vacía. `AnthropicProvider` se
-  prueba con el SDK real y un cliente HTTP simulado (Guzzle `MockHandler`);
-  el resto, con `FakeLLMProvider` (respuestas o errores encolados) y el
-  helpers `classificationData()` y `agentReplyData()`; para el agente,
-  `FakeLLMProvider::toolUse([[herramienta, argumentos]])` simula que el
-  modelo pide herramientas. Los embeddings se prueban con
-  `FakeEmbeddingProvider` (vectores deterministas: textos con palabras en
-  común se parecen) y `Http::fake` para Ollama: los tests no necesitan el
-  modelo descargado.
+- **IA:** Laravel no llama a ningún modelo; los tests simulan a
+  ai-service. Los eventos van a `InMemoryEventStream` (en `TestCase`, salvo
+  los tests de Redis real) y los helpers de `tests/Pest.php` hacen el
+  recorrido completo: `processRemote($email)` lo publica,
+  `processedEvent($email, [...])` / `failedEvent()` construyen un resultado
+  que cumple el contrato (a partir de los ejemplos compartidos de
+  `contracts/events/examples/`), `applyAiResult($evento)` lo aplica como
+  `ai:consume-results` y `processWithAi($email, [...])` hace las tres
+  cosas. La API interna de ai-service se simula con `Http::fake`. La IA en
+  sí se prueba en `ai-service/` (pytest).
 - Las funciones de ayuda de los archivos de test son **globales** en Pest:
   no repitas un nombre ya usado en otro archivo.
 - **Métricas:** con `METRICS_STORAGE=memory` (cada test empieza de cero) y
   el helper `metricSample('nombre', ['etiqueta' => 'valor'])` de
-  `tests/Pest.php`, que lee `/metrics` como Prometheus. La IA simulada se
-  prueba aparte; `phpunit.xml` fuerza `AI_PROVIDER=anthropic` para que un
-  `.env` local con `simulated` no cambie los tests.
+  `tests/Pest.php`, que lee `/metrics` como Prometheus. `phpunit.xml`
+  fija `AI_SERVICE_URL`/`AI_SERVICE_INTERNAL_TOKEN` de prueba para que un
+  `.env` local no cambie los tests.
 - **Seguridad** (`tests/Feature/Security/`): además de cada protección,
   **tests de arquitectura** que fallan si un cambio futuro se salta una
   regla. Todo modelo con `tenant_id` usa `BelongsToTenant` y no deja
   asignarlo en masa. Toda ruta de la API exige sesión y empresa, salvo las
-  públicas a propósito. Los SDK externos (Anthropic, IMAP, SMTP) solo se
+  públicas a propósito. Laravel no usa ningún SDK de modelos ni de
+  embeddings (la IA es de ai-service) y las librerías de IMAP/SMTP solo se
   usan en su módulo. En `app/` no hay `dd`/`dump`, ejecución de comandos,
   `eval`/`unserialize` ni `env()` fuera de `config/`. Se comprueban con el
   tokenizer de PHP sobre `app/`; el `arch()` de Pest analiza también
@@ -1763,23 +1553,23 @@ prepararán en la fase de producción.
 | "El servidor X apunta a una dirección interna no permitida" en local | Protección anti-SSRF. Para usar GreenMail u otro servidor local: `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` en `.env` (**nunca en producción**). |
 | Llegan correos al buzón pero no aparecen en `emails` | El buzón no está `active` (pruébalo con `POST /mail-connections/{id}/test`), la 1ª sincronización solo fija el punto de partida (lo anterior no se importa), o Horizon no procesa la cola `mail`: `docker compose exec horizon php artisan horizon:supervisors` debe mostrar `supervisor-mail`. Mira `last_error` en `mail_sync_states`. |
 | Tras cambiar código o `config/horizon.php` los jobs siguen igual | Horizon mantiene el código cargado: `docker compose exec horizon php artisan horizon:terminate` (el contenedor lo vuelve a arrancar). |
-| Los emails se guardan pero se quedan en `received` | `AI_PROCESS_ON_INGEST=false`, o Horizon no procesa la cola `ai`: `horizon:supervisors` debe mostrar `supervisor-ai` en **`redis-long:ai`** (si no, `horizon:terminate`). Para encolarlos: `ai:process --pending`. |
+| Los emails se guardan pero se quedan en `received` | `AI_PROCESS_ON_INGEST=false`, o Horizon no procesa la cola `ai`: `horizon:supervisors` debe mostrar `supervisor-ai` (si no, `horizon:terminate`). Para encolarlos: `ai:process --pending`. |
 | Todos los emails van a `human_review` | Es lo normal en modo `draft` (por defecto). Mira el motivo en `email_status_changes`: "La IA no está configurada" (falta `ANTHROPIC_API_KEY`; tras ponerla, `horizon:terminate` y `ai:process <id> --now --reprocess`), modo `off`, intención no permitida, confianza baja... |
 | No se envía nada aunque la empresa esté en `auto` | `AI_AUTO_SEND=false`, la intención no está en `ai:automation <empresa>`, o el motivo está en `email_status_changes`. Si el email está `approved`, Horizon no procesa la cola `mail` (`supervisor-mail`). |
 | Un email en `failed` con "No se pudo enviar la respuesta" | El servidor rechazó el envío o falló la conexión tras los reintentos (`send_error` en `email_replies`). No se reprocesa solo para no enviarlo dos veces: aparece en la **bandeja de revisión**, donde una persona comprueba si llegó y responde o lo cierra. |
 | "Este email ya no está esperando a una persona" (409) al aprobar | Otra persona (o la plataforma) decidió antes: recarga la página para ver su estado. |
 | No veo la tarjeta "Revisión" en un email | Solo aparece si el email espera a una persona (`human_review` o `failed`) y tu rol tiene `emails.review` (en un entorno anterior a la Fase 13: `db:seed --class=RolesAndPermissionsSeeder`). |
 | En Grafana, "Aprobadas sin cambios" o los totales salen por debajo de la realidad | Limitación de Prometheus: `increase()` no cuenta la primera aparición de una serie. Con uso continuo no se nota; la cifra exacta está en **Revisión → Historial** del panel. |
-| Un documento se queda en `failed`: "El modelo bge-m3 no está descargado en Ollama" | Falta descargarlo: `docker compose exec ollama ollama pull bge-m3` y después `POST /documents/{id}/reindex`. |
-| Un documento se queda en `pending` | Horizon no procesa la cola `documents`: `horizon:supervisors` debe mostrar `supervisor-documents` (si no, `horizon:terminate`). |
+| Un documento se queda en `failed`: "El modelo bge-m3 no está descargado en Ollama" | Falta descargarlo: `docker compose exec ollama ollama pull bge-m3` y después reindexar (`kb:reindex --all` o el botón del panel). |
+| Un documento se queda en "Indexando" | ai-service o `ai-results` no están en marcha (`docker compose ps`), o ai-service no llega a Laravel por `AI_SERVICE_LARAVEL_URL`. `ai:reconcile-remote` lo republica cada 5 min y, tras 3 intentos, lo deja con error. |
 | "El PDF no contiene texto extraíble" | Es un PDF escaneado (solo imágenes). El OCR no está soportado todavía: súbelo en texto o PDF con texto. |
 | El agente no consulta pedidos (solo documentación) | Las herramientas de pedidos no están activadas para la empresa: `ai:tools 1 --enable=get_order --enable=get_customer_orders`. |
-| `ai:reply` → "Sin propuesta de respuesta: Límite de…" | El agente llegó a un límite de `ai.agent` (pasos, herramientas, tiempo o gasto). Es el comportamiento previsto: el email lo atiende una persona. Si pasa a menudo, revisa la traza y los límites. |
-| `ai:classify` → "Anthropic rechazó la API key (401)" | La clave es incorrecta o se revocó: revisa `ANTHROPIC_API_KEY` y reinicia Horizon. |
+| Los emails se quedan en `processing` | ai-service o `ai-results` no están en marcha (`docker compose ps`; logs: `docker compose logs ai-service`). Sin clave de Anthropic el worker no arranca. Tras 15 min se republican y, tras 3 intentos, pasan a revisión humana. |
+| Emails en `failed` con "La IA no está bien configurada" | La clave de Anthropic es incorrecta, se revocó o no hay saldo: revisa `ANTHROPIC_API_KEY`, `docker compose up -d ai-service` y `ai:process --failed`. |
 | Grafana no arranca: "Datasource provisioning error: data source not found" | Un Grafana antiguo tenía los datasources con otro `uid`. El provisioning ya los borra y recrea (`deleteDatasources`); si aun así falla: `docker compose rm -sf grafana && docker volume rm <proyecto>_grafana-data` (⚠️ borra lo creado a mano en Grafana). |
 | El target `laravel` sale DOWN en Prometheus (http://localhost:9090/targets) | `METRICS_TOKEN` de `.env` distinto del de `docker/prometheus/prometheus.yml`, o nginx no está en la red `observability-net` (`docker compose up -d nginx`). |
 | Los dashboards salen vacíos | Aún no hay datos en el periodo (cambia el rango arriba a la derecha) o el target `laravel` está DOWN. "Gasto por día" muestra los días ya terminados: para hoy, "Últimas 24 h". |
-| Cambié `AI_PROVIDER` (u otra variable) y los emails siguen igual | Horizon lee el `.env` al arrancar: `docker compose exec horizon php artisan horizon:terminate`. |
+| Cambié `AI_SERVICE_LLM_PROVIDER` (u otra variable) y los emails siguen igual | Los contenedores leen el `.env` al crearse: `docker compose up -d ai-service` (y `horizon:terminate` para las variables de Laravel). |
 | "La conexión con microsoft/google no está configurada en este servidor" | Faltan `MICROSOFT_CLIENT_ID/SECRET` o `GOOGLE_CLIENT_ID/SECRET` (ver [Conexiones de correo](#4-conexiones-de-correo)). |
 
 ## Documentación adicional

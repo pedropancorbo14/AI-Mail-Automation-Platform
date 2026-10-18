@@ -131,16 +131,14 @@ services:
       - "logging=promtail"
 
   # ---------------------------------------------------------------
-  # Microservicio de IA en Python (ai-service) + consumidor de sus
-  # resultados en Laravel. Solo con el perfil "ai-service" (AI_ENGINE=python,
-  # o AI_ENGINE=laravel con el modo sombra AI_SHADOW_ENABLED=true):
-  #   COMPOSE_PROFILES=ai-service en .env, o docker compose --profile ai-service up -d
+  # Microservicio de IA en Python (ai-service): el único motor de IA.
+  # ai-service (worker + API interna), ai-mcp (herramientas) y
+  # ai-results (consumidor de sus resultados en Laravel).
   # ---------------------------------------------------------------
   ai-service:
     build:
       context: ./ai-service
     image: ai-mail-automation-ai-service:latest
-    profiles: ["ai-service"]
     restart: unless-stopped
     environment:
       AI_SERVICE_ENVIRONMENT: ${AI_SERVICE_ENVIRONMENT:-production}
@@ -192,20 +190,15 @@ services:
     labels:
       - "logging=promtail"
 
-  # Servidor MCP (Fase 3): CRM, ERP y tickets para el grafo de ai-service.
+  # Servidor MCP: CRM, ERP, facturas y tickets (demostración) para ai-service.
   # Misma imagen, otro proceso. Sin puertos publicados: solo lo llama
   # ai-service por la red interna, con token.
   ai-mcp:
     image: ai-mail-automation-ai-service:latest
-    profiles: ["ai-service"]
     restart: unless-stopped
     command: ai-service-mcp
     environment:
       AI_SERVICE_MCP_TOKEN: ${AI_SERVICE_MCP_TOKEN:-local-mcp-token}
-      # Los MISMOS pedidos de demostración que el DemoOrderProvider de Laravel.
-      AI_SERVICE_MCP_ORDERS_FILE: /data/orders.json
-    volumes:
-      - ./database/seeders/demo/orders.json:/data/orders.json:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=3).status == 200 else 1)"]
       interval: 15s
@@ -226,7 +219,6 @@ services:
   ai-results:
     build: *app-build
     image: ai-mail-automation-app:latest
-    profiles: ["ai-service"]
     restart: unless-stopped
     working_dir: /var/www/html
     command: php artisan ai:consume-results

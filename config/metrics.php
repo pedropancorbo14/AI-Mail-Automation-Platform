@@ -40,7 +40,6 @@ return [
     'queues' => [
         ['connection' => 'redis', 'queue' => 'default'],
         ['connection' => 'redis', 'queue' => 'mail'],
-        ['connection' => 'redis-long', 'queue' => 'ai'],
-        ['connection' => 'redis-long', 'queue' => 'documents'],
+        ['connection' => 'redis', 'queue' => 'ai'],
     ],
 ];

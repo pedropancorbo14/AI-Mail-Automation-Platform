@@ -1,29 +1,30 @@
 <?php
 
-use App\AI\Embeddings\EmbeddingProvider;
 use App\Documents\Enums\DocumentStatus;
 use App\Models\Document;
 use App\Models\Tenant;
 use Database\Seeders\KnowledgeBaseSeeder;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
-use Tests\Fakes\FakeEmbeddingProvider;
 
 beforeEach(function () {
     Storage::fake('local');
-    config(['ai.rag.min_similarity' => 0.1]);
-    app()->instance(EmbeddingProvider::class, new FakeEmbeddingProvider());
     $this->tenant = Tenant::factory()->create(['slug' => 'empresa-demo']);
 });
 
-it('imports a file into a company and searches it', function () {
+it('imports a file into a company and searches it through ai-service', function () {
+    Http::fake(['ai-service.test/*' => Http::response(['results' => [[
+        'source' => 'Envíos, sección «Canarias»', 'chunk_id' => 1, 'document_id' => 1, 'document_title' => 'Envíos',
+        'content' => 'A Canarias, 14,95 €.', 'metadata' => ['heading' => 'Canarias'], 'similarity' => 0.81,
+    ]], 'calls' => []])]);
     $path = database_path('seeders/knowledge/envios.md');
 
     $this->artisan('kb:import', ['path' => $path, '--tenant' => $this->tenant->id, '--title' => 'Envíos'])
-        ->expectsOutputToContain('«Envíos» subido (ready)')
+        ->expectsOutputToContain('«Envíos» subido (processing)')
         ->assertSuccessful();
 
     $this->artisan('kb:search', ['query' => '¿Cuánto tarda un envío a Canarias?', '--tenant' => $this->tenant->id])
-        ->expectsOutputToContain('Envíos, sección')
+        ->expectsOutputToContain('Envíos, sección «Canarias»')
         ->assertSuccessful();
 });
 
@@ -38,12 +39,14 @@ it('explains import errors', function () {
 });
 
 it('says when nothing relevant is found', function () {
-    $this->artisan('kb:search', ['query' => 'algo', '--tenant' => $this->tenant->id, '--min' => 0.99])
+    Http::fake(['ai-service.test/*' => Http::response(['results' => [], 'calls' => []])]);
+
+    $this->artisan('kb:search', ['query' => 'algo', '--tenant' => $this->tenant->id])
         ->expectsOutputToContain('Sin resultados')
         ->assertSuccessful();
 });
 
-it('seeds the demo company with example documentation only once', function () {
+it('seeds the demo company with example documentation only once, for ai-service to index', function () {
     $this->seed(KnowledgeBaseSeeder::class);
     $this->seed(KnowledgeBaseSeeder::class);
 
@@ -51,5 +54,5 @@ it('seeds the demo company with example documentation only once', function () {
 
     expect($documents->pluck('title')->all())->toBe([
         'Envíos y entregas', 'Política de devoluciones', 'Política de garantía', 'Preguntas frecuentes: pagos y facturas',
-    ])->and($documents->pluck('status')->unique()->all())->toBe([DocumentStatus::Ready]);
+    ])->and($documents->pluck('status')->unique()->all())->toBe([DocumentStatus::Processing]);
 });

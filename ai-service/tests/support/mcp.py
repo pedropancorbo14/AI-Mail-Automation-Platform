@@ -1,12 +1,12 @@
-"""Datos de demostración del servidor MCP para los tests (los de Laravel)."""
+"""Datos de demostración del servidor MCP para los tests."""
 
 from pathlib import Path
 
 from ai_service.mcp_server.backends import DemoData
 
-ROOT = Path(__file__).parents[3]
-ORDERS = ROOT / "database" / "seeders" / "demo" / "orders.json"
-TICKETS = ROOT / "ai-service" / "src" / "ai_service" / "mcp_server" / "data" / "tickets.json"
+DATA = Path(__file__).parents[2] / "src" / "ai_service" / "mcp_server" / "data"
+ORDERS = DATA / "orders.json"
+TICKETS = DATA / "tickets.json"
 
 
 def demo_data() -> DemoData:

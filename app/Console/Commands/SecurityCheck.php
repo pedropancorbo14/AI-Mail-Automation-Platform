@@ -35,7 +35,7 @@ class SecurityCheck extends Command
             ['Contraseña de PostgreSQL fuerte', $this->strong(config('database.connections.pgsql.password')), 'DB_PASSWORD: 16+ caracteres aleatorios.'],
             ['Contraseña de Redis fuerte', $this->strong(config('database.redis.default.password')), 'REDIS_PASSWORD: 16+ caracteres aleatorios.'],
             ['Token de métricas propio', ! config('metrics.enabled') || filled(config('metrics.token')) && $this->strong(config('metrics.token'), 32), 'METRICS_TOKEN: 32+ caracteres aleatorios (y el mismo en prometheus.yml).'],
-            ['IA real (no simulada)', config('ai.provider') !== 'simulated', 'AI_PROVIDER=anthropic: la simulada respondería a clientes reales.'],
+            ['IA real (no simulada)', config('ai.remote.llm_provider') !== 'simulated', 'AI_SERVICE_LLM_PROVIDER=anthropic: la simulada respondería a clientes reales.'],
             ['Buzones solo en servidores públicos', ! config('mail_connections.allow_private_hosts'), 'MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=false (anti-SSRF).'],
             ['Proxies de confianza acotados', config('app.trusted_proxies') !== '*', 'TRUSTED_PROXIES con las IPs del proxy, no "*": cualquiera podría falsear su IP.'],
             ['Tokens de API con caducidad', config('sanctum.expiration') !== null, 'SANCTUM_TOKEN_EXPIRATION en minutos.'],

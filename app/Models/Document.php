@@ -10,13 +10,13 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 /**
- * Documento de la base de conocimiento de una empresa. Solo el título es
- * asignable en masa: fichero, estado e indexación los gestiona
- * App\Documents\DocumentService.
+ * Documento de la base de conocimiento de una empresa: el fichero original y
+ * su estado. Los fragmentos y sus embeddings los guarda ai-service (que lo
+ * indexa). Solo el título es asignable en masa: fichero, estado e indexación
+ * los gestionan App\Documents\DocumentService y los resultados de ai-service.
  *
  * @property DocumentStatus $status
  */
@@ -69,11 +69,5 @@ class Document extends Model
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
-    }
-
-    /** @return HasMany<DocumentChunk, $this> */
-    public function chunks(): HasMany
-    {
-        return $this->hasMany(DocumentChunk::class)->orderBy('position');
     }
 }

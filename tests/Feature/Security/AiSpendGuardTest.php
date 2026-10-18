@@ -1,13 +1,12 @@
 <?php
 
-use App\AI\Contracts\LLMProvider;
+use App\AI\Remote\Contracts\EventStream;
 use App\Automation\AutomationMode;
 use App\Automation\EmailProcessor;
 use App\Mail\Enums\EmailStatus;
 use App\Models\AiRequest;
 use App\Models\Email;
 use App\Models\Tenant;
-use Tests\Fakes\FakeLLMProvider;
 
 /*
  * Freno del gasto de IA: presupuesto diario por empresa y límite de emails
@@ -16,12 +15,10 @@ use Tests\Fakes\FakeLLMProvider;
 
 beforeEach(function () {
     config([
-        'ai.anthropic.api_key' => 'sk-ant-x',
         'ai.limits.tenant_daily_budget_usd' => 5.0,
         'ai.limits.max_ai_emails_per_sender_per_day' => 3,
     ]);
-    $this->llm = new FakeLLMProvider();
-    app()->instance(LLMProvider::class, $this->llm);
+    $this->streams = app(EventStream::class);
 
     $this->tenant = Tenant::factory()->create(['slug' => 'acme']);
     $this->tenant->configureAutomation(AutomationMode::Draft);
@@ -51,6 +48,12 @@ function processGuarded(Tenant $tenant, Email $email): ?EmailStatus
     return inTenant($tenant, fn () => app(EmailProcessor::class)->process($email->fresh()));
 }
 
+/** Emails que se mandaron a ai-service. */
+function publishedToAi(): int
+{
+    return count(test()->streams->entries['email.received.v1'] ?? []);
+}
+
 function guardReason(Tenant $tenant, Email $email): ?string
 {
     return inTenant($tenant, fn () => $email->statusChanges()->get()->last()?->reason);
@@ -63,7 +66,7 @@ it('sends the email to a person without calling the ai once the daily budget is 
 
     expect(processGuarded($this->tenant, $email))->toBe(EmailStatus::HumanReview)
         ->and(guardReason($this->tenant, $email))->toBe('La empresa ha alcanzado su presupuesto diario de IA (5.05 $ de 5.00 $): lo atiende una persona.')
-        ->and($this->llm->requests)->toBe([])
+        ->and(publishedToAi())->toBe(0)
         ->and($email->fresh()->classified_at)->toBeNull()
         ->and(metricSample('ai_guard_blocks_total', ['tenant' => 'acme', 'reason' => 'budget']))->toBe(1.0);
 });
@@ -72,37 +75,34 @@ it('uses the ai while there is budget left, counting only today and only this co
     spend($this->tenant, 4.00);
     spend($this->tenant, 50.00, now()->subDay()->endOfDay()); // ayer
     spend(Tenant::factory()->create(), 50.00);                 // otra empresa
-    $this->llm->respondWith(classificationData(), agentReplyData());
 
-    expect(processGuarded($this->tenant, guardedEmail($this->tenant)))->toBe(EmailStatus::HumanReview)
-        ->and($this->llm->requests)->toHaveCount(2);
+    expect(processGuarded($this->tenant, guardedEmail($this->tenant)))->toBe(EmailStatus::Processing)
+        ->and(publishedToAi())->toBe(1);
 });
 
 it('lets the operator give a company its own budget, or none', function () {
     spend($this->tenant, 6.00);
 
     $this->tenant->forceFill(['ai_daily_budget_usd' => 20])->save();
-    $this->llm->respondWith(classificationData(), agentReplyData());
     processGuarded($this->tenant, guardedEmail($this->tenant, 'a@cliente.test'));
-    expect($this->llm->requests)->toHaveCount(2);
+    expect(publishedToAi())->toBe(1);
 
     config(['ai.limits.tenant_daily_budget_usd' => null]);
     $this->tenant->forceFill(['ai_daily_budget_usd' => null])->save();
-    $this->llm->respondWith(classificationData(), agentReplyData());
     processGuarded($this->tenant, guardedEmail($this->tenant, 'b@cliente.test'));
-    expect($this->llm->requests)->toHaveCount(4);
+    expect(publishedToAi())->toBe(2);
 });
 
 it('stops using the ai for a sender that floods the mailbox, ignoring case', function () {
-    foreach (['Pesado@Cliente.test', 'pesado@cliente.test', 'PESADO@cliente.test'] as $from) {
-        guardedEmail($this->tenant, $from, ['classified_at' => now()->subHours(2)]);
-    }
+    guardedEmail($this->tenant, 'Pesado@Cliente.test', ['classified_at' => now()->subHours(2)]);
+    guardedEmail($this->tenant, 'pesado@cliente.test', ['classified_at' => now()->subHours(2)]);
+    guardedEmail($this->tenant, 'PESADO@cliente.test', ['ai_requested_at' => now()->subMinute()]); // aún en ai-service
     guardedEmail($this->tenant, 'pesado@cliente.test', ['classified_at' => now()->subDays(2), 'created_at' => now()->subDays(2)]); // hace más de 24 h
     $email = guardedEmail($this->tenant, 'pesado@cliente.test');
 
     expect(processGuarded($this->tenant, $email))->toBe(EmailStatus::HumanReview)
         ->and(guardReason($this->tenant, $email))->toBe('pesado@cliente.test ha enviado más de 3 emails en 24 h: los siguientes los atiende una persona, sin IA.')
-        ->and($this->llm->requests)->toBe([])
+        ->and(publishedToAi())->toBe(0)
         ->and(metricSample('ai_guard_blocks_total', ['tenant' => 'acme', 'reason' => 'sender']))->toBe(1.0);
 });
 
@@ -112,11 +112,10 @@ it('does not count emails that did not reach the ai, nor other senders or compan
     guardedEmail($this->tenant, 'otro@cliente.test', ['classified_at' => now()]);
     guardedEmail(Tenant::factory()->create(), 'pesado@cliente.test', ['classified_at' => now()]);
     guardedEmail($this->tenant, 'pesado@cliente.test', ['classified_at' => now()]);
-    $this->llm->respondWith(classificationData(), agentReplyData());
 
     processGuarded($this->tenant, guardedEmail($this->tenant, 'pesado@cliente.test'));
 
-    expect($this->llm->requests)->toHaveCount(2);
+    expect(publishedToAi())->toBe(1);
 });
 
 it('shows and changes the budget of a company with ai:budget', function () {

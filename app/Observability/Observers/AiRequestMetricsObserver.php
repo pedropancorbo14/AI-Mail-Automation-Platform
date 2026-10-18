@@ -2,7 +2,6 @@
 
 namespace App\Observability\Observers;
 
-use App\AI\Classification\EmailClassificationPrompt;
 use App\AI\Enums\AiRequestStatus;
 use App\Models\AiRequest;
 use App\Observability\MetricLabels;
@@ -52,7 +51,7 @@ class AiRequestMetricsObserver
             $this->metrics->observe('ai_request_duration_seconds', $request->latency_ms / 1000, ['provider' => $request->provider, 'model' => $model, 'purpose' => $purpose]);
         }
 
-        if ($purpose === EmailClassificationPrompt::KEY && $request->status === AiRequestStatus::Success && $request->intent !== null) {
+        if (str_ends_with($purpose, 'classification') && $request->status === AiRequestStatus::Success && $request->intent !== null) {
             $this->metrics->increment('ai_classifications_total', [
                 'tenant' => $tenant,
                 'intent' => $request->intent,

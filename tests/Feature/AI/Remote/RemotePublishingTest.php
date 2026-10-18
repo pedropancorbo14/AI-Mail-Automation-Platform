@@ -1,28 +1,21 @@
 <?php
 
-use App\AI\Contracts\LLMProvider;
 use App\AI\Remote\Contracts\EventStream;
 use App\AI\Remote\EventContract;
 use App\Automation\AutomationMode;
-use App\Automation\ProcessEmailJob;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
 use App\Models\Tenant;
 use App\Tools\TenantToolService;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Queue;
-use Tests\Fakes\FakeLLMProvider;
 use Tests\Fakes\InMemoryEventStream;
 
 const RECEIVED_STREAM = 'email.received.v1';
 
 beforeEach(function () {
-    config(['ai.engine' => 'python', 'ai.anthropic.api_key' => '']);
     $this->streams = new InMemoryEventStream;
     app()->instance(EventStream::class, $this->streams);
-    $this->llm = new FakeLLMProvider;
-    app()->instance(LLMProvider::class, $this->llm);
 
     $this->tenant = Tenant::factory()->create(['name' => 'Empresa Demo']);
     $this->tenant->configureAutomation(AutomationMode::Auto);
@@ -41,8 +34,7 @@ function remoteEmail(Tenant $tenant, array $attributes = []): Email
 
 it('publishes email.received.v1 and leaves the email waiting in processing', function () {
     expect(processRemote($this->email))->toBe(EmailStatus::Processing)
-        ->and(remoteStatusPath($this->email))->toBe(['processing'])
-        ->and($this->llm->requests)->toBe([]); // Laravel no llama a la IA
+        ->and(remoteStatusPath($this->email))->toBe(['processing']);
 
     [$message] = $this->streams->entries[RECEIVED_STREAM];
     $event = json_decode($message->payload(), true);
@@ -87,13 +79,6 @@ it('rejects tools that are not in the catalog', function () {
     app(TenantToolService::class)->enable($this->tenant, 'drop_database');
 })->throws(InvalidArgumentException::class);
 
-it('does not need an Anthropic key in Laravel with the remote engine', function () {
-    processRemote($this->email);
-
-    expect($this->streams->entries[RECEIVED_STREAM])->toHaveCount(1)
-        ->and($this->email->fresh()->status)->toBe(EmailStatus::Processing);
-});
-
 it('sends plain text: HTML is converted and long bodies are truncated with a flag', function () {
     config(['ai.classification.max_body_chars' => 50]);
     $email = remoteEmail($this->tenant, ['text_body' => null, 'html_body' => '<p>Hola <b>equipo</b></p>' . str_repeat('<p>texto largo</p>', 20)]);
@@ -126,15 +111,6 @@ it('never sends automated emails, disabled companies or blocked senders to the s
     expect($status)->toBeIn([EmailStatus::Ignored, EmailStatus::HumanReview])
         ->and($this->streams->entries[RECEIVED_STREAM] ?? [])->toBe([]);
 })->with(['automated', 'mode off', 'budget']);
-
-it('keeps using the Laravel engine when AI_ENGINE=laravel', function () {
-    config(['ai.engine' => 'laravel']);
-
-    processRemote($this->email); // sin clave de Anthropic: revisión humana
-
-    expect($this->streams->entries[RECEIVED_STREAM] ?? [])->toBe([])
-        ->and($this->email->fresh()->status)->toBe(EmailStatus::HumanReview);
-});
 
 it('does not publish twice when the job is retried, but does on a manual reprocess', function () {
     processRemote($this->email);
@@ -209,17 +185,6 @@ describe('ai:reconcile-remote', function () {
 
         expect($this->email->fresh()->ai_request_attempts)->toBe(1)
             ->and($other->fresh()->ai_request_attempts)->toBe(2);
-    });
-
-    it('hands pending emails back to the Laravel engine if it was switched back', function () {
-        processRemote($this->email);
-        ageRequest($this->email, 20);
-        config(['ai.engine' => 'laravel']);
-        Queue::fake();
-
-        $this->artisan('ai:reconcile-remote')->expectsOutputToContain('Al motor de Laravel: 1');
-
-        Queue::assertPushed(ProcessEmailJob::class, fn ($job) => $job->emailId === $this->email->id);
     });
 
     it('is scheduled every five minutes', function () {

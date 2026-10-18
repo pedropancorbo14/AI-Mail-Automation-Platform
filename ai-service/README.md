@@ -1,17 +1,17 @@
 # ai-service: el cerebro de IA de la plataforma
 
-Microservicio en **Python** que decide qué hacer con cada email: lo
-clasifica, consulta la documentación y los sistemas de la empresa (más
-adelante), redacta una respuesta, calcula su confianza y recomienda si se
-envía sola, la revisa una persona o se escala. **Laravel** sigue siendo el
-dueño de todo lo demás: ingesta IMAP, empresas, usuarios, panel, estados
-del email, reglas finales y envío.
+Microservicio en **Python** que hace **toda la IA** de la plataforma: indexa
+la documentación de cada empresa y, con cada email, lo clasifica, consulta la
+documentación y los sistemas de la empresa, redacta una respuesta, calcula su
+confianza y recomienda si se envía sola, la revisa una persona o se escala.
+**Laravel** es el dueño de todo lo demás: ingesta IMAP, empresas, usuarios,
+panel, estados del email, reglas finales de envío, control de gasto y envío.
 
-> **Estado:** Fase 1 **completa y probada de punta a punta** (IMAP real →
-> Laravel → Redis Streams → este servicio → Laravel → respuesta por SMTP)
-> con la IA simulada. El motor por defecto sigue siendo el de Laravel
-> (`AI_ENGINE=laravel`): este servicio aún no tiene RAG ni tools (Fases 2
-> y 3), así que se activa con `AI_ENGINE=python` cuando se quiera.
+> **Estado:** las 6 fases del servicio hechas y probadas de punta a punta, y
+> **es el único motor de IA**: el de Laravel se retiró (ver
+> [Único motor de IA](#único-motor-de-ia-retirada-del-motor-de-laravel)).
+> Las secciones de cada fase cuentan cómo se construyó; donde mencionan el
+> motor de Laravel o `AI_ENGINE`, es historia.
 
 ## En una entrevista (resumen de 1 minuto)
 
@@ -36,10 +36,10 @@ del email, reglas finales y envío.
   agéntico**: puede pedir consultas extra de solo lectura (tool calling
   estricto, historial solo-añadir, límites de rondas y consultas) y cada
   consulta queda auditada con su origen (plan, modelo o persona).
-- **Modo sombra:** con el motor de Laravel en producción, una muestra de
-  emails pasa también por este servicio **sin efectos**; se compara la
-  recomendación de los dos motores (intención, decisión, coste, tiempo) en
-  Grafana y con un informe antes de cambiar de motor.
+- **Migración sin riesgo:** antes de retirar el motor de IA del monolito, un
+  **modo sombra** pasó emails reales por los dos motores (este, sin
+  efectos) y comparó intención, decisión y coste con Claude real; solo
+  después se cambió de motor y se borró el código de IA de Laravel.
 - **Human in the loop de verdad:** si el agente quiere **modificar datos**
   (abrir un ticket), el grafo se para con **`interrupt`**, su estado queda
   en **PostgreSQL** (checkpointer de LangGraph, esquema y rol propios) y una
@@ -375,6 +375,14 @@ comprueba la petición exacta (structured outputs, effort, fallbacks, sin
 
 ## RAG: documentación de la empresa (Fase 2)
 
+> **Cambió con la retirada del motor de Laravel:** ahora este servicio
+> también **indexa** y guarda los fragmentos en su propio esquema
+> (`ai_service.knowledge_chunks`, con su rol `ai_service_checkpoints`); el
+> rol de solo lectura y la RLS sobre tablas de Laravel ya no existen (ver
+> [Indexado de documentos](#indexado-de-documentos)). Lo de abajo es cómo
+> funcionaba en la Fase 2; búsqueda, aislamiento por empresa y citas siguen
+> igual.
+
 **Opción A (decidida):** el servicio usa el **mismo motor de embeddings**
 que Laravel (Ollama + `bge-m3`, 1024 dimensiones, vectores normalizados)
 pero **solo para buscar**. La indexación (subir, extraer, trocear,
@@ -456,8 +464,8 @@ responde igual que uno que no existe ("No hay ningún pedido con ese número
 asociado a este cliente"): ni siquiera se puede averiguar si un número
 existe. Mismo criterio que las herramientas de Laravel (Fase 7).
 
-**Datos de demostración:** el ERP lee **el mismo fichero** que el
-`DemoOrderProvider` de Laravel (`database/seeders/demo/orders.json`); el
+**Datos de demostración:** pedidos en `mcp_server/data/orders.json` (hasta la
+retirada del motor de Laravel lo compartía con su `DemoOrderProvider`); el
 CRM se deriva de los pedidos y los tickets están en
 `mcp_server/data/tickets.json`. `AI_SERVICE_MCP_DEMO_TENANTS` asocia el
 `tenant_id` con la clave del fichero (`{"1": "empresa-demo"}`). En la Fase
@@ -637,16 +645,14 @@ Del lado de Laravel (`app/AI/Remote/`, `app/Automation/Review/`):
   **`ReviewResumedPublisher`** publica `email.review_resumed.v1` tras el
   commit. Decisión `action_approved` / `action_rejected` en `email_reviews`
   y en la auditoría (solo la herramienta, nunca los argumentos: llevan datos
-  del cliente). Si otra persona se adelantó, no hay acción o
-  `AI_ENGINE=laravel` → **409**.
+  del cliente). Si otra persona se adelantó o no hay acción → **409**.
 - **Reconciliador** (`ai:reconcile-remote`): si la decisión se perdió (Redis
   caído al publicar), vuelve a publicar **la decisión**, no el email (el
   grafo sigue esperándola). Repetirla no duplica el ticket.
 - **Reprocesar con una indicación**: `POST /emails/{id}/reprocess` acepta
   `instruction` (máx. 2000); se guarda en `emails.ai_review_instruction` y
-  viaja en el siguiente `email.received.v1`. Con `AI_ENGINE=laravel` → 422
-  (el motor de Laravel no la entendería: mejor rechazarla que ignorarla). La
-  acción pendiente, si la había, se descarta.
+  viaja en el siguiente `email.received.v1`. La acción pendiente, si la
+  había, se descarta.
 - **Cerrar** o **responder** a mano también descartan la acción pendiente
   (su pausa en ai-service caduca con la purga).
 
@@ -666,6 +672,10 @@ y una reanudación repetida (Redis entrega al menos una vez) encuentra el
 hilo ya terminado (`expired`).
 
 ## Supervisor, especialistas y modo sombra (Fase 5)
+
+> El modo sombra sirvió para la puerta de calidad antes de retirar el motor
+> de Laravel y se quitó con él (en ai-service se mantiene `mode: shadow` en
+> el contrato y en el grafo, sin uso).
 
 > Hecha y probada de punta a punta con la IA simulada (ver
 > [Prueba de punta a punta](#prueba-de-punta-a-punta-2026-10-17)).
@@ -873,11 +883,22 @@ vuelca pods, eventos y logs.
 
 ## Único motor de IA (retirada del motor de Laravel)
 
-Hasta ahora Laravel tenía su propio motor de IA (Fases 5–9) y ai-service era
-opcional (`AI_ENGINE=python`). Se retira el de Laravel: **toda la lógica de
-IA vive aquí**. Laravel conserva la configuración de cada empresa, las reglas
-de envío (`AutoSendPolicy`, `ReplyContentGuard`), el control de gasto y el
-registro de costes (ver el plan en `CLAUDE.md`).
+Laravel tenía su propio motor de IA (Fases 5–9 de la plataforma) y
+ai-service era opcional (`AI_ENGINE=python`). Ya no: **toda la lógica de IA
+vive aquí** y en Laravel no queda ninguna llamada a un modelo ni a
+embeddings (ni el SDK de Anthropic, ni `ANTHROPIC_API_KEY` en su
+configuración; un test de arquitectura lo vigila). Laravel conserva la
+configuración de cada empresa (modo, intenciones, herramientas), las reglas
+de envío (`AutoSendPolicy`, `ReplyContentGuard`), el control de gasto
+(`AiSpendGuard`) y el registro de costes (`ai_requests`, con sus precios).
+
+Cómo se hizo, por etapas (cada una con su commit y el CI en verde):
+paridad (herramientas por empresa, API interna, depuración, modo
+degradado), indexado de documentos aquí, puerta de calidad con Claude real,
+retirada del modo sombra y borrado del motor de Laravel (`AI_ENGINE`
+desaparece; `ai-service`, `ai-mcp` y `ai-results` dejan de ser un perfil
+opcional del compose), y fuera la tabla `document_chunks` y el rol de solo
+lectura `ai_service_reader` (los fragmentos son de este servicio).
 
 ### Puerta de calidad con Claude real
 
@@ -894,8 +915,11 @@ devoluciones, cancelaciones, facturas, un cobro duplicado); resultados en
 | Envíos automáticos de ai-service donde Laravel pedía persona | 0 |
 | Coste medio por email | 0,054 $ (ai-service) frente a 0,067 $ (Laravel), −19 % |
 
-Pendiente: completar los 19 correos sin comparar (preguntas de producto,
-soporte, quejas, spam, inyección…) con saldo, antes de producción.
+Pendiente antes de producción: evaluar con Claude real los 19 correos que no
+se llegaron a comparar (preguntas de producto, soporte, quejas, spam,
+inyección…). Retirado el modo sombra, se hace con este servicio solo:
+`gate_dataset.py` guarda la intención esperada de cada correo para
+compararla con la clasificada (es la base de la evaluación de la Fase 15).
 
 ### Herramientas por empresa
 
@@ -1016,41 +1040,35 @@ Métricas nuevas (prefijo `aiservice_`): `events_total{result}`,
 ## Probarlo en tu equipo (Fases 1–5)
 
 Todo lo que hay que hacer en un equipo con el stack de Docker ya montado
-(Fases 1–13 de la plataforma) para probar el microservicio. Sin API key:
-con la **IA simulada** no se gasta nada.
+(Fases 1–13 de la plataforma). Sin API key: con la **IA simulada** no se
+gasta nada.
 
-**1. Traer la rama y añadir al `.env`** (raíz del proyecto; los valores
-son los de `.env.docker.example`):
-
-```bash
-git fetch origin fase-ai-service && git checkout fase-ai-service
-```
+**1. Traer el código y revisar el `.env`** (raíz del proyecto; los valores
+son los de `.env.docker.example`). Sobran, si los tenías, `AI_ENGINE`,
+`AI_PROVIDER`, `COMPOSE_PROFILES`, `AI_SERVICE_DB_PASSWORD` y `AI_SHADOW_*`:
 
 ```dotenv
-AI_ENGINE=python
-COMPOSE_PROFILES=ai-service
 AI_SERVICE_ENVIRONMENT=local
 AI_SERVICE_LLM_PROVIDER=simulated        # anthropic para usar Claude real (ANTHROPIC_API_KEY)
-AI_SERVICE_DB_PASSWORD=reader-secret      # rol de solo lectura del RAG (Fase 2)
-AI_SERVICE_CHECKPOINTS_DB_PASSWORD=checkpoints-secret   # pausas de LangGraph (Fase 4)
-AI_SERVICE_MCP_TOKEN=local-mcp-token      # ai-service ↔ servidor MCP (Fase 3)
+AI_SERVICE_CHECKPOINTS_DB_PASSWORD=checkpoints-secret   # rol y esquema ai_service
+AI_SERVICE_MCP_TOKEN=local-mcp-token      # ai-service ↔ servidor MCP
+AI_SERVICE_URL=http://ai-service:8000     # API interna (búsqueda del panel, herramientas)
+AI_SERVICE_INTERNAL_TOKEN=local-internal-token
 REDIS_STREAMS_DB=3
-AI_SHADOW_ENABLED=false                   # modo sombra (paso 5)
-AI_SHADOW_SAMPLE_RATE=0.1
 ```
 
 **2. Migrar, construir y arrancar:**
 
 ```bash
-docker compose exec app composer install          # dependencias nuevas de PHP, si faltan
-docker compose exec app php artisan migrate       # columnas de emails, ai_tool_calls.origin, ai_shadow_runs,
-                                                  # roles ai_service_reader y ai_service_checkpoints, esquema ai_service
+docker compose exec app composer install          # quita el SDK de Anthropic y el parser de PDF
+docker compose exec app php artisan migrate       # rol y esquema ai_service; fuera document_chunks y ai_shadow_runs
 docker compose exec app php artisan db:seed --class=RolesAndPermissionsSeeder
 docker compose exec ollama ollama pull bge-m3     # una vez, si no lo tenías (RAG)
-docker compose up -d --build ai-service ai-mcp ai-results
-docker compose exec horizon php artisan horizon:terminate   # recoge AI_ENGINE
-docker compose restart prometheus grafana promtail          # alertas, dashboard y logs nuevos
+docker compose up -d --build                      # ai-service, ai-mcp y ai-results arrancan con el resto
+docker compose exec horizon php artisan horizon:terminate   # supervisores nuevos (sin redis-long)
+docker compose restart prometheus grafana promtail          # alertas, dashboards y logs
 curl -s 127.0.0.1:8001/ready    # {"status":"ok","checks":{"redis":true,"consumer":true,"checkpoints":true}}
+docker compose exec app php artisan kb:reindex --all        # ai-service indexa la documentación existente
 ```
 
 **3. Preparar la empresa de prueba** (envío automático y las intenciones
@@ -1059,12 +1077,13 @@ que verás en la prueba):
 ```bash
 docker compose exec app php artisan ai:automation 1 --mode=auto \
   --intents=order_status,product_question,technical_support
+docker compose exec app php artisan ai:tools 1 --enable=get_order --enable=get_customer_orders \
+  --enable=get_invoice --enable=get_customer_tickets --enable=create_support_ticket
 ```
 
-**4. Probar el motor de Python.** Envía correos a `soporte@demo.test`
-(GreenMail, SMTP `127.0.0.1:3025`, sin contraseña) desde los clientes de
-los pedidos de demostración y sigue los logs con
-`docker compose logs -f ai-service ai-results`:
+**4. Probar.** Envía correos a `soporte@demo.test` (GreenMail, SMTP
+`127.0.0.1:3025`, sin contraseña) desde los clientes de los pedidos de
+demostración y sigue los logs con `docker compose logs -f ai-service ai-results`:
 
 | Remitente | Texto | Qué debería pasar |
 |---|---|---|
@@ -1074,36 +1093,19 @@ los pedidos de demostración y sigue los logs con
 | `cliente@cliente.test` | "¿Dónde está mi pedido #76540?" (de otro cliente) | Revisión humana, sin ningún dato del pedido ajeno |
 
 En el panel (`http://localhost:8080`, `test@example.com` / `password`),
-"Lo que hizo la IA" muestra los especialistas y qué consultas pidió la IA.
-En Grafana, dashboard **"AI Mail · ai-service"**.
-
-**5. Probar el modo sombra** (el motor de Laravel decide y ai-service solo
-recomienda, sin tocar nada):
-
-```dotenv
-AI_ENGINE=laravel
-AI_SHADOW_ENABLED=true
-AI_SHADOW_SAMPLE_RATE=1       # todos los emails, solo para la prueba
-AI_PROVIDER=simulated         # IA simulada también en Laravel (si no, usa Claude)
-```
-
-```bash
-docker compose up -d app horizon scheduler ai-results     # recogen el .env
-docker compose exec horizon php artisan horizon:terminate
-# envía unos cuantos correos como en el paso 4 y, pasados unos minutos:
-docker compose exec app php artisan ai:shadow-compare     # (también corre solo cada 5 min)
-docker compose exec app php artisan ai:shadow-report
-```
-
-Deja `AI_SHADOW_ENABLED=false` (o una muestra pequeña) al terminar: con
-Claude real cada copia se paga.
+"Lo que hizo la IA" muestra los especialistas y qué consultas pidió la IA, y
+"Documentación → Probar la búsqueda" usa la búsqueda de este servicio. Por
+consola: `php artisan ai:process <id> --now` (publica y espera) y
+`php artisan ai:trace <id>`. En Grafana, dashboard **"AI Mail · ai-service"**.
 
 **Problemas típicos:** `/ready` con `checkpoints: false` → la contraseña
 `AI_SERVICE_CHECKPOINTS_DB_PASSWORD` no coincide con la del rol (la crea
 `migrate` con la del `.env`; si la cambias después, `ALTER ROLE
 ai_service_checkpoints PASSWORD '...'`); los emails se quedan en
-`processing` → `ai-results` no está levantado o Horizon no recogió
-`AI_ENGINE` (`horizon:terminate`).
+`processing` → `ai-results` no está levantado (tras 15 min se republican y,
+tras 3 intentos, pasan a revisión humana); documentos en "Indexando" →
+ai-service no llega a Laravel (`AI_SERVICE_LARAVEL_URL`, por defecto
+`http://nginx`).
 
 ### Kubernetes en tu equipo (kind)
 
@@ -1150,37 +1152,33 @@ curl localhost:8000/metrics  # formato Prometheus
 
 ### Con Docker Compose (stack completo)
 
-ai-service y el consumidor de resultados de Laravel (`ai-results`) van en
-el **perfil `ai-service`**: solo se levantan si usas el motor de Python.
+ai-service, su servidor MCP (`ai-mcp`) y el consumidor de resultados de
+Laravel (`ai-results`) arrancan con el resto del stack.
 
 ```bash
 # .env (raíz del proyecto)
-AI_ENGINE=python
-COMPOSE_PROFILES=ai-service
-ANTHROPIC_API_KEY=sk-ant-...        # la usa ai-service, no Laravel
+ANTHROPIC_API_KEY=sk-ant-...        # la usa SOLO ai-service
 
-docker compose up -d --build ai-service ai-mcp ai-results
-docker compose exec app php artisan migrate     # columnas ai_event_id/ai_pending_action, roles ai_service_reader y ai_service_checkpoints...
+docker compose up -d --build
+docker compose exec app php artisan migrate     # rol ai_service_checkpoints y su esquema ai_service
 docker compose exec ollama ollama pull bge-m3   # una vez (RAG), si no lo tenías
-docker compose exec horizon php artisan horizon:terminate   # recoge AI_ENGINE
 curl -s 127.0.0.1:8001/ready                    # {"status":"ok",...}
 docker compose logs -f ai-service ai-results
 ```
 
 | Servicio | Imagen | Qué hace |
 |---|---|---|
-| `ai-service` | `ai-service/Dockerfile` | Worker de Python: consume `email.received.v1`, ejecuta el grafo y publica el resultado. `/health`, `/ready`, `/metrics` en `127.0.0.1:8001` |
-| `ai-mcp` | la misma que `ai-service` (`ai-service-mcp`) | Servidor MCP (CRM, ERP, tickets) en `ai-mcp:8100`, **sin puertos publicados**, con token (`AI_SERVICE_MCP_TOKEN`). Monta `database/seeders/demo/orders.json` de solo lectura: los mismos pedidos que el motor de Laravel |
-| `ai-results` | la de Laravel | `php artisan ai:consume-results`: aplica los resultados (estados, borrador, `ai_requests`, envío) |
+| `ai-service` | `ai-service/Dockerfile` | Worker de Python: consume `email.received.v1`, `email.review_resumed.v1`, `document.uploaded.v1` y `document.deleted.v1`, ejecuta el grafo o el indexado y publica el resultado; API interna para el panel. `/health`, `/ready`, `/metrics` en `127.0.0.1:8001` |
+| `ai-mcp` | la misma que `ai-service` (`ai-service-mcp`) | Servidor MCP (CRM, ERP, facturas, tickets de demostración, dentro de la imagen) en `ai-mcp:8100`, **sin puertos publicados**, con token (`AI_SERVICE_MCP_TOKEN`) |
+| `ai-results` | la de Laravel | `php artisan ai:consume-results`: aplica los resultados (estados, propuesta, `ai_requests`, envío, documentos indexados) |
 
-`ai-service` se conecta a PostgreSQL como `ai_service_reader`
-(`AI_SERVICE_DB_PASSWORD`, solo lectura con RLS) para el RAG y como
-`ai_service_checkpoints` (`AI_SERVICE_CHECKPOINTS_DB_PASSWORD`, solo su
-esquema `ai_service`) para las pausas, a Ollama (`bge-m3`) y a `ai-mcp`;
-espera a que PostgreSQL y `ai-mcp` estén sanos para arrancar. Las
-contraseñas de los dos roles tienen que ser las mismas en el `.env` de
-Laravel (las migraciones crean los roles con ellas) y en el de ai-service
-(el compose las toma del mismo `.env`).
+`ai-service` se conecta a PostgreSQL como `ai_service_checkpoints`
+(`AI_SERVICE_CHECKPOINTS_DB_PASSWORD`, solo su esquema `ai_service`: pausas
+de LangGraph y base de conocimiento), a Ollama (`bge-m3`), a `ai-mcp` y a
+Laravel (`AI_SERVICE_LARAVEL_URL`, para descargar los documentos por su ruta
+firmada); espera a que PostgreSQL y `ai-mcp` estén sanos para arrancar. La
+contraseña del rol tiene que ser la misma en Laravel (la migración crea el
+rol con ella) y en ai-service (el compose la toma del mismo `.env`).
 
 **Imagen** (`ai-service/Dockerfile`, multi-stage): la etapa *builder*
 instala uv desde PyPI y las dependencias exactas de `uv.lock` (capa
@@ -1193,8 +1191,8 @@ en curso.
 
 **Observabilidad en el stack:**
 
-- **Prometheus** descubre `ai-service` por DNS (job `ai-service`): sin el
-  perfil no hay target ni alertas.
+- **Prometheus** descubre `ai-service` por DNS (job `ai-service`; cada
+  réplica es un target).
 - **Promtail** etiqueta los logs de los contenedores con `service` (el del
   compose) y, para `ai-service` y `ai-mcp`, parsea el JSON: `level` como etiqueta.
   Seguir un email: `{service="ai-service"} | json | trace_id="..."`.
@@ -1303,9 +1301,10 @@ la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root).
 | Reintento = no confirmar + `XAUTOCLAIM` | Re-publicar el mensaje con un contador | Una sola copia del mensaje; el contador de entregas lo lleva Redis |
 | Idempotencia con `SET event_id` (24 h) además del estado en Laravel | Solo la de Laravel | Si el proceso muere entre publicar y confirmar, no se vuelve a pagar al modelo |
 | Consumidor y HTTP de operación en el mismo proceso | Dos procesos | Las métricas son del consumidor; un contenedor = un proceso = una réplica |
-| Perfil de Compose `ai-service` | Servicios siempre activos | Quien sigue con el motor de Laravel no levanta nada nuevo ni ve alertas de un servicio que no usa |
+| Perfil de Compose `ai-service` (hasta la retirada) | Servicios siempre activos | Mientras convivían los dos motores, quien usaba el de Laravel no levantaba nada nuevo. Retirado el motor de Laravel, los servicios arrancan siempre |
 | uv instalado con `pip` en la imagen | `COPY --from=ghcr.io/astral-sh/uv` | Una dependencia de registro menos (y en algunos entornos ghcr está bloqueado) |
-| RAG: Python solo **lee** (opción A) | Mover también la indexación a Python | Un solo escritor de las tablas, sin romper el motor de Laravel ni el panel; la indexación se moverá con eventos cuando se retire el motor de Laravel |
+| RAG: Python solo **lee** (opción A, hasta la retirada) | Mover también la indexación a Python | Un solo escritor de las tablas sin romper el motor de Laravel. Con la retirada se movió la indexación aquí (eventos `document.*` y enlace firmado) y los fragmentos pasaron al esquema de este servicio |
+| Laravel conserva las reglas de envío y el control de gasto | Moverlas también a Python | Quien envía comprueba lo que envía: si este servicio fallara, no puede mandar nada que Laravel no apruebe. El gasto se controla en dólares y los precios están en Laravel |
 | RLS + rol por columnas + filtro en la consulta | Solo el filtro en la consulta | Un bug en una consulta no puede filtrar datos de otra empresa: la base de datos lo impide |
 | MCP por **streamable HTTP** en su contenedor | stdio dentro del worker | Se escala, se despliega y se vigila por separado; en Kubernetes es un Service; el token impide llamadas de terceros |
 | El contexto (empresa, cliente) lo inyecta el cliente MCP | Que el modelo pase el email del cliente | Un email malicioso no puede pedir datos de otro cliente: el modelo no controla esos argumentos |
@@ -1457,4 +1456,4 @@ costes en Grafana). Solo responde con confianza a preguntas generales
 | 4 | Checkpointing, `interrupt` (acciones con aprobación humana), reprocesar con una indicación y límites del agente | ✅ Hecha (probada de punta a punta con la IA simulada, la API del panel y un reinicio del worker en mitad de la pausa) |
 | 5 | Supervisor con especialistas en paralelo, redactor agéntico y modo *shadow* (comparar con el motor de Laravel) | ✅ Hecha (probada de punta a punta con la IA simulada, el servidor MCP y los dos motores) |
 | 6 | Kubernetes (Kustomize, Pod Security restricted, NetworkPolicies, overlays local y producción) | ✅ Hecha (probada en k3s en la sesión y en kind en el CI en cada push) |
-| — | **Retirada del motor de IA de Laravel:** ai-service pasa a ser el único motor (paridad: herramientas por empresa y API interna; indexado de documentos aquí; puerta de calidad con Claude real en modo sombra; cambio de motor; borrado del código de IA de Laravel). Laravel conserva la configuración de cada empresa, las reglas de envío, el control de gasto y el registro de costes | 📝 Planificada ([plan en CLAUDE.md](../CLAUDE.md)), pendiente de aprobar |
+| — | **Retirada del motor de IA de Laravel:** ai-service pasa a ser el único motor (paridad: herramientas por empresa y API interna; indexado de documentos aquí; puerta de calidad con Claude real en modo sombra; cambio de motor; borrado del código de IA de Laravel). Laravel conserva la configuración de cada empresa, las reglas de envío, el control de gasto y el registro de costes | ✅ Hecha (puerta de calidad con Claude real: 13 de 32 correos antes de agotarse el saldo; los otros 19, pendientes) |

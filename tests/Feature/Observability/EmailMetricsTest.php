@@ -1,9 +1,6 @@
 <?php
 
-use App\AI\Contracts\LLMProvider;
-use App\AI\Embeddings\EmbeddingProvider;
 use App\Automation\AutomationMode;
-use App\Automation\EmailProcessor;
 use App\Mail\Enums\EmailStatus;
 use App\Mail\Enums\MailConnectionStatus;
 use App\Mail\Enums\MailProviderType;
@@ -16,22 +13,15 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Tests\Fakes\FakeEmbeddingProvider;
-use Tests\Fakes\FakeLLMProvider;
 use Tests\Fakes\FakeMailProvider;
 
 beforeEach(function () {
     Storage::fake('local');
-    config(['ai.anthropic.api_key' => 'sk-ant-x']);
-    $this->llm = new FakeLLMProvider();
-    app()->instance(LLMProvider::class, $this->llm);
-    app()->instance(EmbeddingProvider::class, new FakeEmbeddingProvider());
     $this->mail = new FakeMailProvider(['INBOX' => []]);
     app(MailProviderFactory::class)->extend(MailProviderType::Imap, fn () => $this->mail);
 
     $this->tenant = Tenant::factory()->create(['slug' => 'empresa-demo']);
     $this->tenant->configureAutomation(AutomationMode::Auto);
-    enableTools($this->tenant, 'get_order');
     $this->connection = inTenant($this->tenant, fn () => MailConnection::factory()->create(['email' => 'soporte@empresa.test']));
     $this->connection->forceFill(['status' => MailConnectionStatus::Active])->save();
 });
@@ -41,14 +31,15 @@ function metricsEmail(array $attributes = []): Email
     return inTenant(test()->tenant, fn () => Email::factory()->create($attributes + [
         'mail_connection_id' => test()->connection->id,
         'from_email' => 'cliente@cliente.test',
-        'subject' => '¿Dónde está mi pedido #45821?',
-        'text_body' => 'Hola, ¿cuándo me llega?',
+        'subject' => '¿Hacéis envíos a Canarias?',
+        'text_body' => 'Hola, ¿enviáis a Tenerife?',
     ]));
 }
 
+/** El email pasa por ai-service (simulado: respuesta segura) y vuelve. */
 function metricsProcess(Email $email): ?EmailStatus
 {
-    return inTenant(test()->tenant, fn () => app(EmailProcessor::class)->process($email->fresh()));
+    return processWithAi($email);
 }
 
 it('counts the emails stored by the ingestion once, by mailbox type and kind', function () {
@@ -76,7 +67,6 @@ it('counts failed mailbox syncs', function () {
 
 it('measures an email answered on its own: states, decision time and the automatic reply', function () {
     $email = metricsEmail();
-    $this->llm->respondWith(classificationData(), FakeLLMProvider::toolUse([['get_order', ['order_number' => '45821']]]), agentReplyData());
 
     expect(metricsProcess($email))->toBe(EmailStatus::Sent);
 
@@ -93,7 +83,6 @@ it('measures an email answered on its own: states, decision time and the automat
 it('measures an email passed to a person', function () {
     $this->tenant->configureAutomation(AutomationMode::Draft);
     $email = metricsEmail();
-    $this->llm->respondWith(classificationData(), agentReplyData());
 
     expect(metricsProcess($email))->toBe(EmailStatus::HumanReview)
         ->and(metricSample('email_processing_seconds_count', ['outcome' => 'human_review']))->toBe(1.0)
@@ -104,7 +93,6 @@ it('measures an email passed to a person', function () {
 it('counts failed replies', function () {
     $email = metricsEmail();
     $this->mail->failSendWith = new App\Mail\Exceptions\MailProviderException('Destinatario rechazado');
-    $this->llm->respondWith(classificationData(), FakeLLMProvider::toolUse([['get_order', ['order_number' => '45821']]]), agentReplyData());
 
     metricsProcess($email);
 

@@ -1,25 +1,25 @@
 <?php
 
-use App\Models\AiToolCall;
-use App\Models\Email;
 use App\Models\Tenant;
 use App\Models\TenantTool;
-use App\Tools\Contracts\AITool;
-use App\Tools\Enums\ToolCallStatus;
 use App\Tools\TenantToolService;
-use App\Tools\ToolContext;
-use App\Tools\ToolExecutor;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 
+/*
+ * Herramientas de la IA por empresa: las del catálogo compartido con
+ * ai-service (contracts/tools/catalog.json) que cada empresa activa.
+ */
+
 beforeEach(function () {
-    $this->shop = Tenant::factory()->create(['slug' => 'empresa-demo']);   // tiene pedidos de demostración
-    $this->clinic = Tenant::factory()->create(['slug' => 'clinica']);      // no tiene pedidos
+    $this->shop = Tenant::factory()->create(['slug' => 'empresa-demo']);
+    $this->clinic = Tenant::factory()->create(['slug' => 'clinica']);
 });
 
 /** @return list<string> */
 function toolNamesFor(Tenant $tenant): array
 {
-    return array_map(fn (AITool $tool) => $tool->name(), app(TenantToolService::class)->toolsFor($tenant));
+    return app(TenantToolService::class)->enabledNames($tenant);
 }
 
 it('has the expected table', function () {
@@ -31,9 +31,8 @@ it('gives every company the default tools only', function () {
         ->and(toolNamesFor($this->clinic))->toBe(['search_company_documents']);
 });
 
-it('offers order tools only to companies that enable them and have orders', function () {
+it('adds the tools each company enables, in a stable order', function () {
     enableTools($this->shop, 'get_order', 'get_customer_orders');
-    enableTools($this->clinic, 'get_order');
 
     expect(toolNamesFor($this->shop))->toBe(['get_customer_orders', 'get_order', 'search_company_documents'])
         ->and(toolNamesFor($this->clinic))->toBe(['search_company_documents']);
@@ -46,16 +45,7 @@ it('lets a company disable a default tool', function () {
         ->and(toolNamesFor($this->shop))->toBe(['search_company_documents']);
 });
 
-it('rejects tools that are not enabled for the company even if they exist', function () {
-    $email = inTenant($this->shop, fn () => Email::factory()->create(['from_email' => 'cliente@cliente.test']));
-
-    $result = app(ToolExecutor::class)->execute('get_order', ['order_number' => '45821'], new ToolContext($this->shop, $email));
-
-    expect($result->error)->toBe('La herramienta get_order no está disponible para esta empresa.')
-        ->and(inTenant($this->shop, fn () => AiToolCall::sole()->status))->toBe(ToolCallStatus::Rejected);
-});
-
-it('does not accept unknown tools', function () {
+it('does not accept tools that are not in the catalog', function () {
     app(TenantToolService::class)->enable($this->shop, 'delete_customers');
 })->throws(InvalidArgumentException::class);
 
@@ -67,6 +57,11 @@ it('keeps the settings of each company separate', function () {
 });
 
 it('shows and manages the tools of a company from the console', function () {
+    Http::fake(['ai-service.test/*' => Http::response(['tools' => [
+        ['name' => 'get_order', 'available' => false],
+        ['name' => 'search_company_documents', 'available' => true],
+    ]])]);
+
     $this->artisan('ai:tools', ['tenant' => $this->clinic->id, '--enable' => ['get_order']])
         ->expectsOutputToContain('no (sin datos configurados)')
         ->assertSuccessful();
@@ -78,4 +73,12 @@ it('shows and manages the tools of a company from the console', function () {
 
     $this->artisan('ai:tools', ['tenant' => $this->shop->id, '--enable' => ['inventada']])->assertFailed();
     $this->artisan('ai:tools', ['tenant' => 999999])->assertFailed();
+});
+
+it('says when ai-service does not answer about the data', function () {
+    Http::fake(['ai-service.test/*' => Http::response([], 503)]);
+
+    $this->artisan('ai:tools', ['tenant' => $this->shop->id])
+        ->expectsOutputToContain('ai-service no responde')
+        ->assertSuccessful();
 });

@@ -73,13 +73,16 @@ class AiSpendGuard
         return (float) AiRequest::where('created_at', '>=', $since)->sum('cost_usd');
     }
 
-    /** Otros emails de la misma dirección en 24 h que ya pasaron por la IA. */
+    /**
+     * Otros emails de la misma dirección en 24 h que ya pasaron (o están
+     * pasando) por la IA: enviados a ai-service o ya clasificados.
+     */
     private function recentFromSender(Email $email): int
     {
         return Email::whereRaw('lower(from_email) = ?', [mb_strtolower($email->from_email)])
             ->whereKeyNot($email->getKey())
             ->where('created_at', '>=', now()->subDay())
-            ->whereNotNull('classified_at')
+            ->where(fn ($query) => $query->whereNotNull('ai_requested_at')->orWhereNotNull('classified_at'))
             ->count();
     }
 

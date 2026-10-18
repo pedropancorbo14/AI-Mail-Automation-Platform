@@ -1,7 +1,6 @@
 <?php
 
-use App\AI\Contracts\LLMProvider;
-use App\AI\Exceptions\LLMUnavailableException;
+use App\AI\Remote\Contracts\EventStream;
 use App\Automation\AutomationMode;
 use App\Automation\ProcessEmailJob;
 use App\Mail\Enums\EmailStatus;
@@ -9,12 +8,9 @@ use App\Mail\Ingestion\Events\EmailIngested;
 use App\Models\Email;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Queue;
-use Tests\Fakes\FakeLLMProvider;
 
 beforeEach(function () {
-    config(['ai.anthropic.api_key' => 'sk-ant-x']);
-    $this->llm = new FakeLLMProvider();
-    app()->instance(LLMProvider::class, $this->llm);
+    $this->streams = app(EventStream::class);
 
     $this->tenant = Tenant::factory()->create();
     $this->email = inTenant($this->tenant, fn () => Email::factory()->create());
@@ -29,7 +25,7 @@ function runProcessJob(bool $reprocess = false): ProcessEmailJob
     return $job;
 }
 
-it('goes to the ai queue on the long connection, once per email', function () {
+it('goes to the ai queue, once per email', function () {
     Queue::fake();
 
     ProcessEmailJob::dispatch($this->tenant->id, $this->email->id);
@@ -45,34 +41,27 @@ it('retries with backoff within the queue limits', function () {
     expect($job->tries)->toBe(3)
         ->and($job->backoff())->toBe([60, 300])
         ->and($job->connection)->toBe(config('ai.automation.queue_connection'))
-        ->and($job->timeout)->toBeLessThan(config('queue.connections.redis-long.retry_after'))
+        ->and($job->timeout)->toBeLessThan(config('queue.connections.redis.retry_after'))
         ->and(config('horizon.defaults.supervisor-ai.timeout'))->toBeGreaterThan($job->timeout);
 });
 
-it('processes the email inside its company', function () {
+it('processes the email inside its company: published for ai-service', function () {
     $this->tenant->configureAutomation(AutomationMode::Draft);
-    $this->llm->respondWith(classificationData(), agentReplyData());
 
     runProcessJob()->assertNotFailed();
 
-    expect($this->email->fresh()->status)->toBe(EmailStatus::HumanReview);
-});
-
-it('lets temporary ai errors bubble up so the queue retries them', function () {
-    $this->llm->respondWith(new LLMUnavailableException('Anthropic no está disponible (529).'));
-
-    expect(fn () => runProcessJob())->toThrow(LLMUnavailableException::class);
-    expect($this->email->fresh()->status)->toBe(EmailStatus::Processing);
+    expect($this->email->fresh()->status)->toBe(EmailStatus::Processing)
+        ->and($this->streams->entries['email.received.v1'] ?? [])->toHaveCount(1);
 });
 
 it('marks the email as failed when the retries run out', function () {
     inTenant($this->tenant, fn () => $this->email->transitionTo(EmailStatus::Processing));
 
-    (new ProcessEmailJob($this->tenant->id, $this->email->id))->failed(new LLMUnavailableException('Anthropic no está disponible (529).'));
+    (new ProcessEmailJob($this->tenant->id, $this->email->id))->failed(new RuntimeException('Redis no responde.'));
 
     expect($this->email->fresh()->status)->toBe(EmailStatus::Failed)
         ->and(inTenant($this->tenant, fn () => $this->email->statusChanges()->get()->last()->reason))
-        ->toBe('No se pudo procesar tras varios intentos: Anthropic no está disponible (529).');
+        ->toBe('No se pudo procesar tras varios intentos: Redis no responde.');
 });
 
 it('does nothing for deleted emails or inactive companies', function () {
@@ -80,12 +69,11 @@ it('does nothing for deleted emails or inactive companies', function () {
     runProcessJob()->assertNotFailed();
 
     expect($this->email->fresh()->status)->toBe(EmailStatus::Received)
-        ->and($this->llm->requests)->toBe([]);
+        ->and($this->streams->entries['email.received.v1'] ?? [])->toBe([]);
 });
 
-it('queues the processing when an email is ingested, even without api key', function () {
+it('queues the processing when an email is ingested', function () {
     Queue::fake();
-    config(['ai.anthropic.api_key' => '']);
 
     EmailIngested::dispatch($this->tenant->id, $this->email->id);
 

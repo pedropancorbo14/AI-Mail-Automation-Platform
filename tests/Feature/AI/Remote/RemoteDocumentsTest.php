@@ -24,7 +24,6 @@ use Tests\Fakes\InMemoryEventStream;
 beforeEach(function () {
     Storage::fake('local');
     Queue::fake([ProcessDocumentJob::class]);
-    config(['ai.engine' => 'python']);
     $this->streams = new InMemoryEventStream();
     app()->instance(EventStream::class, $this->streams);
     $this->tenant = Tenant::factory()->create();

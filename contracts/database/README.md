@@ -1,21 +1,17 @@
 # Contrato de base de datos con ai-service
 
-ai-service no escribe en las tablas de Laravel. La única excepción a "cada
-servicio con sus datos" es la **lectura de la base de conocimiento (RAG)**:
-los vectores ya están en PostgreSQL (`document_chunks`, pgvector) y
-copiarlos a otra base de datos no aportaría nada.
+ai-service **no lee ni escribe las tablas de Laravel**: todo lo que necesita
+le llega en los eventos (`contracts/events/`) o por la API interna. Tiene su
+propio esquema `ai_service` en la misma base de datos, con su propio rol:
 
-- [`knowledge_base_reader.sql`](knowledge_base_reader.sql): permisos del rol
-  `ai_service_reader` (solo `SELECT`, por columna) y **RLS por empresa**.
-  Lo ejecutan la migración de Laravel y los tests de ai-service.
-- Columnas que lee ai-service (si una migración de Laravel las cambia, los
-  tests de los dos lados fallan):
+- [`ai_service_checkpoints.sql`](ai_service_checkpoints.sql): esquema
+  `ai_service` propiedad del rol `ai_service_checkpoints` (sin acceso a las
+  tablas de Laravel). Ahí guarda ai-service los checkpoints de LangGraph
+  (acciones que esperan aprobación) y la base de conocimiento
+  (`knowledge_chunks`: fragmentos con sus embeddings, pgvector). Lo ejecutan
+  la migración de Laravel (`add_ai_service_checkpoints`), el overlay local de
+  Kubernetes y los tests de ai-service.
 
-| Tabla | Columnas |
-|---|---|
-| `documents` | `id`, `tenant_id`, `title`, `status`, `embedding_model` |
-| `document_chunks` | `id`, `tenant_id`, `document_id`, `position`, `content`, `metadata`, `embedding` (`vector(1024)`) |
-
-Cómo consulta ai-service: dentro de una transacción,
-`SET LOCAL app.tenant_id = '<id>'` (RLS) **y** `WHERE tenant_id = :id` en
-la consulta; solo documentos `ready` con `embedding_model` igual al suyo.
+Cómo busca ai-service: siempre con `WHERE tenant_id = :id` (no existe una
+búsqueda "de todas las empresas"), solo con fragmentos de su mismo modelo de
+embeddings.

@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Una llamada a una herramienta de la IA. La crea App\Tools\ToolExecutor.
+ * Una llamada a una herramienta de la IA hecha por ai-service. La crea
+ * App\AI\Remote\RemoteResultHandler a partir de `email.processed.v1`.
  *
  * @property ToolCallStatus $status
  */

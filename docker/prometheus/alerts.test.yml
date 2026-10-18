@@ -163,7 +163,7 @@ tests:
   # Cola con 150 trabajos durante más de 10 min.
   - interval: 1m
     input_series:
-      - series: 'aimail_queue_size{connection="redis-long", queue="ai"}'
+      - series: 'aimail_queue_size{connection="redis", queue="ai"}'
         values: "150x15"
     alert_rule_test:
       - eval_time: 5m
@@ -172,9 +172,9 @@ tests:
       - eval_time: 12m
         alertname: ColaAtascada
         exp_alerts:
-          - exp_labels: { severity: warning, connection: redis-long, queue: ai }
+          - exp_labels: { severity: warning, connection: redis, queue: ai }
             exp_annotations:
-              summary: "La cola redis-long:ai tiene 150 trabajos esperando"
+              summary: "La cola redis:ai tiene 150 trabajos esperando"
               description: "Los workers no dan abasto o están parados (php artisan horizon:status)."
 
   # Una sección del estado actual falla durante más de 5 min.

@@ -2,14 +2,12 @@
 
 namespace App\Console\Commands;
 
-use App\AI\Remote\AIEngine;
 use App\AI\Remote\DocumentIndexPublisher;
 use App\Documents\Enums\DocumentStatus;
 use App\Models\Document;
 use App\AI\Remote\EmailEventPublisher;
 use App\AI\Remote\Exceptions\InvalidEventException;
 use App\AI\Remote\ReviewResumedPublisher;
-use App\Automation\ProcessEmailJob;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
 use App\Tenancy\Scopes\TenantScope;
@@ -21,13 +19,14 @@ use Illuminate\Support\Facades\Log;
  * Emails enviados a ai-service que llevan demasiado en processing sin
  * resultado (servicio caído, Redis caído al publicar, evento perdido):
  *
- *  - Con AI_ENGINE=python se vuelven a publicar (evento nuevo) hasta
+ *  - Se vuelven a publicar (evento nuevo) hasta
  *    ai.remote.max_publish_attempts; agotados → revisión humana (modo
  *    degradado: sin IA, una persona puede contestar igualmente).
  *  - Si una persona ya decidió la acción pendiente de ai-service, se vuelve
  *    a publicar su decisión (email.review_resumed.v1), no el email: el grafo
  *    sigue en pausa esperándola.
- *  - Si se volvió a AI_ENGINE=laravel, los procesa el motor de Laravel.
+ *  - Documentos que llevan demasiado indexándose: se republican o, agotados
+ *    los intentos, quedan con error.
  */
 class ReconcileRemoteAI extends Command
 {
@@ -39,8 +38,7 @@ class ReconcileRemoteAI extends Command
     {
         $limit = now()->subMinutes((int) config('ai.remote.reconcile_after_minutes'));
         $maxAttempts = (int) config('ai.remote.max_publish_attempts');
-        $remote = AIEngine::current()->isRemote();
-        $counts = ['republished' => 0, 'to_person' => 0, 'local' => 0];
+        $counts = ['republished' => 0, 'to_person' => 0];
 
         // Consulta global deliberada: el comando revisa todas las empresas.
         Email::withoutGlobalScope(TenantScope::class)
@@ -48,16 +46,9 @@ class ReconcileRemoteAI extends Command
             ->where('status', EmailStatus::Processing)
             ->whereNotNull('ai_requested_at')
             ->where('ai_requested_at', '<', $limit)
-            ->chunkById(100, function ($emails) use ($publisher, $resumes, $tenants, $remote, $maxAttempts, &$counts) {
+            ->chunkById(100, function ($emails) use ($publisher, $resumes, $tenants, $maxAttempts, &$counts) {
                 foreach ($emails as $email) {
-                    $tenants->runAs($email->tenant, function () use ($email, $publisher, $resumes, $remote, $maxAttempts, &$counts) {
-                        if (! $remote) {
-                            ProcessEmailJob::dispatch($email->tenant_id, $email->id);
-                            $counts['local']++;
-
-                            return;
-                        }
-
+                    $tenants->runAs($email->tenant, function () use ($email, $publisher, $resumes, $maxAttempts, &$counts) {
                         if ($email->ai_request_attempts >= $maxAttempts) {
                             // Modo degradado: el email no se pierde ni se queda en error; lo atiende una persona.
                             $email->transitionTo(EmailStatus::HumanReview, "El servicio de IA no respondió tras {$email->ai_request_attempts} intentos: lo atiende una persona.");
@@ -83,19 +74,16 @@ class ReconcileRemoteAI extends Command
                 }
             });
 
-        if ($remote) {
-            $counts += $this->reconcileDocuments($documents, $tenants, $maxAttempts);
-        }
+        $counts += $this->reconcileDocuments($documents, $tenants, $maxAttempts);
 
         if (array_sum($counts) > 0) {
             Log::warning('Emails sin respuesta del servicio de IA', $counts);
         }
 
         $this->info(sprintf(
-            'Republicados: %d · A una persona (sin IA): %d · Al motor de Laravel: %d · Documentos republicados: %d · Documentos con error: %d',
+            'Republicados: %d · A una persona (sin IA): %d · Documentos republicados: %d · Documentos con error: %d',
             $counts['republished'],
             $counts['to_person'],
-            $counts['local'],
             $counts['documents_republished'] ?? 0,
             $counts['documents_failed'] ?? 0,
         ));

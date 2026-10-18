@@ -171,7 +171,11 @@ class RemoteResultHandler
     {
         $c = $event['classification'];
         $classifyRequest = collect($requests)->first(fn (AiRequest $r) => str_ends_with($r->purpose, 'classification') && $r->status === AiRequestStatus::Success);
-        $classifyRequest?->forceFill(['intent' => $event['category'], 'confidence' => $c['confidence']])->save();
+        $classifyRequest?->forceFill([
+            'intent' => $event['category'],
+            'confidence' => $c['confidence'],
+            'response' => [...($classifyRequest->response ?? []), 'needs_human' => $c['needs_human']],
+        ])->save();
 
         $email->recordClassification(new EmailClassification(
             intent: EmailIntent::from($event['category']),

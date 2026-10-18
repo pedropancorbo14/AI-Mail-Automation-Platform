@@ -2,6 +2,7 @@
 
 namespace App\Security;
 
+use App\AI\ToolCatalog;
 use App\Mail\Support\HtmlToText;
 use App\Security\Audit\AuditLogger;
 use App\Models\AiRequest;
@@ -9,9 +10,7 @@ use App\Models\AiToolCall;
 use App\Models\Email;
 use App\Models\EmailReply;
 use App\Models\MailConnection;
-use App\Tools\Contracts\AITool;
 use App\Tools\Enums\ToolCallStatus;
-use App\Tools\ToolRegistry;
 use Illuminate\Support\Str;
 
 /**
@@ -46,7 +45,7 @@ class ReplyContentGuard
         'system prompt', 'prompt del sistema', 'instrucciones del sistema', AuditLogger::HIDDEN,
     ];
 
-    public function __construct(private readonly ToolRegistry $tools)
+    public function __construct(private readonly ToolCatalog $tools)
     {
     }
 
@@ -119,7 +118,7 @@ class ReplyContentGuard
 
     private function internalMarker(string $body): ?string
     {
-        $markers = [...self::INTERNAL_MARKERS, ...array_map(fn (AITool $tool) => $tool->name(), $this->tools->all())];
+        $markers = [...self::INTERNAL_MARKERS, ...$this->tools->names()];
 
         foreach ($markers as $marker) {
             if (Str::contains($body, $marker, ignoreCase: true)) {

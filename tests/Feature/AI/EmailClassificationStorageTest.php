@@ -1,6 +1,5 @@
 <?php
 
-use App\AI\Classification\EmailClassification;
 use App\AI\Classification\EmailIntent;
 use App\Mail\Enums\EmailStatus;
 use App\Models\AiRequest;
@@ -33,10 +32,10 @@ it('stores the classification as the current one without touching the status', f
 
     $email = inTenant($this->tenant, function () {
         $record = AiRequest::create([
-            'email_id' => $this->email->id, 'purpose' => 'email_classification', 'provider' => 'anthropic',
+            'email_id' => $this->email->id, 'purpose' => 'ai_service.classification', 'provider' => 'anthropic',
             'requested_model' => 'claude-opus-5-5', 'status' => 'success',
         ]);
-        $this->email->recordClassification(EmailClassification::fromArray(classificationData(), aiRequestId: $record->id));
+        $this->email->recordClassification(classificationOf(['aiRequestId' => $record->id]));
 
         return $this->email->fresh()->load('classificationRequest', 'aiRequests');
     });
@@ -50,17 +49,17 @@ it('stores the classification as the current one without touching the status', f
         ->and($email->urgency)->toBe('normal')
         ->and($email->ai_entities)->toEqualCanonicalizing(['order_numbers' => ['45821'], 'invoice_numbers' => [], 'customer_name' => 'Cliente Pérez'])
         ->and($email->classified_at->eq(now()))->toBeTrue()
-        ->and($email->classificationRequest->purpose)->toBe('email_classification')
+        ->and($email->classificationRequest->purpose)->toBe('ai_service.classification')
         ->and($email->aiRequests)->toHaveCount(1)
         ->and($email->status)->toBe(EmailStatus::Received);
 });
 
 it('replaces the previous classification when classified again', function () {
     inTenant($this->tenant, function () {
-        $this->email->recordClassification(EmailClassification::fromArray(classificationData()));
-        $this->email->recordClassification(EmailClassification::fromArray(classificationData([
-            'intent' => 'complaint', 'needs_human' => true, 'needs_human_reason' => 'Queja grave.',
-        ])));
+        $this->email->recordClassification(classificationOf());
+        $this->email->recordClassification(classificationOf([
+            'intent' => EmailIntent::Complaint, 'needsHuman' => true, 'needsHumanReason' => 'Queja grave.',
+        ]));
     });
 
     $email = inTenant($this->tenant, fn () => $this->email->fresh());

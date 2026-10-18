@@ -2,9 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\AI\AIService;
-use App\AI\Exceptions\LLMException;
-use App\AI\Remote\AIEngine;
 use App\Automation\EmailProcessor;
 use App\Automation\ProcessEmailJob;
 use App\Mail\Enums\EmailStatus;
@@ -18,7 +15,7 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Procesa emails a mano (clasificación → agente → envío o revisión
+ * Procesa emails a mano (se publican para ai-service → envío o revisión
  * humana): uno al momento, o encolar los pendientes / los que fallaron.
  * Consultas globales deliberadas: cada job o ejecución entra en el tenant
  * del email.
@@ -29,7 +26,7 @@ use Illuminate\Database\Eloquent\Builder;
     {--reprocess : Volver a procesar un email ya decidido (revisión humana, sin respuesta o error)}
     {--pending : Encolar todos los emails recibidos que siguen sin procesar}
     {--failed : Volver a encolar los emails que fallaron al procesarse}
-    {--wait=120 : Con --now y el motor remoto, segundos que se espera el resultado de ai-service}')]
+    {--wait=120 : Con --now, segundos que se espera el resultado de ai-service}')]
 #[Description('Procesa emails con la IA: clasificación, propuesta de respuesta y envío o revisión humana')]
 class ProcessEmails extends Command
 {
@@ -66,26 +63,13 @@ class ProcessEmails extends Command
             return self::SUCCESS;
         }
 
-        $remote = AIEngine::current()->isRemote();
-        if (! $remote && ! AIService::enabled()) {
-            $this->warn('La IA no está configurada (ANTHROPIC_API_KEY): el email irá a revisión humana.');
-        }
-
-        return $tenants->runAs($email->tenant, function () use ($processor, $email, $reprocess, $remote) {
+        return $tenants->runAs($email->tenant, function () use ($processor, $email, $reprocess) {
             $email = Email::findOrFail($email->id);
             $this->line("Procesando «{$email->subject}» de {$email->from_email} (estado: {$email->status->label()})...");
 
-            $status = null;
-            $unavailable = false;
+            $status = $processor->process($email, $reprocess);
 
-            try {
-                $status = $processor->process($email, $reprocess);
-            } catch (LLMException $e) {
-                $this->error("La IA no está disponible ahora: {$e->getMessage()} El email sigue en «Procesando»: vuelve a intentarlo.");
-                $unavailable = true;
-            }
-
-            if ($status === null && ! $unavailable) {
+            if ($status === null) {
                 $this->warn(match (true) {
                     $reprocess && EmailProcessor::sendWasAttempted($email) => 'Ya se intentó enviar una respuesta a este email: no se reprocesa para no enviarla dos veces. Lo resuelve una persona.',
                     $reprocess => "No se puede reprocesar un email en «{$email->status->label()}».",
@@ -93,7 +77,7 @@ class ProcessEmails extends Command
                 });
             }
 
-            if ($remote && $status === EmailStatus::Processing) {
+            if ($status === EmailStatus::Processing) {
                 $status = $this->waitForAiService($email);
             }
 

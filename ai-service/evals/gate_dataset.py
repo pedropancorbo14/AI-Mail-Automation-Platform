@@ -7,10 +7,11 @@ Message-ID de cada uno con la intención esperada:
 
     python ai-service/evals/gate_dataset.py enviados.json
 
-Con el modo sombra activado (AI_ENGINE=laravel, AI_SHADOW_ENABLED=true,
-AI_SHADOW_SAMPLE_RATE=1) y después `php artisan ai:shadow-compare` y
-`php artisan ai:shadow-report` se comparan los dos motores. Cuesta dinero si
-la IA es Claude real (≈ 0,12 $ por correo con los dos motores).
+La puerta de 2026-10-18 se hizo con el modo sombra (los dos motores a la vez;
+resultado en retirement-gate-2026-10-18.json). Retirado el motor de Laravel,
+el conjunto sirve para evaluar ai-service solo: tras procesarlos, se compara
+la intención esperada con `emails.intent` (por Message-ID) y se revisa cada
+decisión. Cuesta dinero si la IA es Claude real (≈ 0,06 $ por correo).
 """
 
 import json

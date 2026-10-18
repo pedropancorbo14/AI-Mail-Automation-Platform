@@ -16,8 +16,8 @@ use Throwable;
 /**
  * Procesa un email con EmailProcessor (cola "ai" en la conexión
  * ai.automation.queue_connection). Recibe ids y entra en el tenant. Único
- * por email. Solo los errores temporales de la IA llegan aquí relanzados:
- * se reintentan con espera; si se agotan, el email queda en Failed.
+ * por email. Un error inesperado se reintenta con espera; si se agotan los
+ * intentos, el email queda en Failed.
  */
 class ProcessEmailJob implements ShouldQueue, ShouldBeUnique
 {
@@ -25,8 +25,8 @@ class ProcessEmailJob implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 3;
 
-    /** Clasificación + agente (con los reintentos internos del SDK); < retry_after 1900. */
-    public int $timeout = 600;
+    /** Filtros y publicación para ai-service; < retry_after 300 de "redis". */
+    public int $timeout = 120;
 
     public int $uniqueFor = 3600;
 

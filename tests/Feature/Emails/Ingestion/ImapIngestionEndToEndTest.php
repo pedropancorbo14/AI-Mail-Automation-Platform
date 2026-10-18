@@ -76,8 +76,8 @@ it('ingests new emails from a real imap mailbox without duplicates', function ()
         ->and($order->text_body)->toContain('Texto de: ¿Dónde está mi pedido #45821?')
         ->and($order->html_body)->toContain('<b>¿Dónde está mi pedido #45821?</b>')
         ->and($order->sent_at)->not->toBeNull()
-        // Al terminar la ingesta se procesa (Fase 9); sin API key en los tests, a revisión humana.
-        ->and($order->status)->toBe(EmailStatus::HumanReview)
+        // Al terminar la ingesta se procesa: queda publicado para ai-service.
+        ->and($order->status)->toBe(EmailStatus::Processing)
         ->and($order->ingested_at)->not->toBeNull()
         ->and($order->recipients->map(fn ($r) => [$r->type, $r->email])->all())->toBe([
             [RecipientType::Cc, 'jefe@cliente.test'],

@@ -51,8 +51,6 @@ spec:
             - name: AI_SERVICE_MCP_TOKEN
               valueFrom:
                 secretKeyRef: {name: ai-service-secrets, key: AI_SERVICE_MCP_TOKEN}
-            - name: AI_SERVICE_MCP_ORDERS_FILE
-              value: /data/orders.json
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -77,15 +75,9 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
           volumeMounts:
-            - name: demo-data
-              mountPath: /data
-              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
-        - name: demo-data
-          configMap:
-            name: ai-mcp-demo-data
         - name: tmp
           emptyDir:
             sizeLimit: 16Mi

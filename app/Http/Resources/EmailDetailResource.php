@@ -3,7 +3,6 @@
 namespace App\Http\Resources;
 
 use App\AI\Agent\Enums\EmailReplyStatus;
-use App\AI\Remote\AIEngine;
 use App\Automation\Review\HumanReviewService;
 use App\Mail\Enums\RecipientType;
 use App\Models\Email;
@@ -110,8 +109,9 @@ class EmailDetailResource extends EmailListResource
                 'arguments' => $action['arguments'],
                 'proposed_at' => $action['proposed_at'] ?? null,
             ],
-            // Se puede reprocesar con una indicación para la IA (solo con ai-service).
-            'can_instruct' => AIEngine::current()->isRemote(),
+            // Se puede reprocesar con una indicación para la IA (siempre, desde
+            // que ai-service es el único motor; se mantiene por compatibilidad).
+            'can_instruct' => true,
             'reviews' => $this->reviews->map(fn (EmailReview $review) => [
                 'id' => $review->id,
                 'decision' => $review->decision->value,

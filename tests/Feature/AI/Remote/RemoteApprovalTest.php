@@ -25,7 +25,6 @@ use Tests\Fakes\InMemoryEventStream;
  */
 
 beforeEach(function () {
-    config(['ai.engine' => 'python', 'ai.anthropic.api_key' => '']);
     $this->streams = new InMemoryEventStream();
     app()->instance(EventStream::class, $this->streams);
     app(MailProviderFactory::class)->extend(MailProviderType::Imap, fn () => new FakeMailProvider());
@@ -199,15 +198,10 @@ it('applies the result after resuming: keeps the original classification and the
         ->and($reply->agent_run_id)->toBe($runs[0]->id);
 });
 
-it('refuses a second decision, a missing action and the laravel engine with a 409', function () {
+it('refuses a second decision and a missing action with a 409', function () {
     asReviewer()->postJson("/api/v1/emails/{$this->email->id}/action/approve")->assertStatus(409); // en processing
 
     deliverApprovalResult(pendingActionEvent($this->email));
-    config(['ai.engine' => 'laravel']);
-    asReviewer()->postJson("/api/v1/emails/{$this->email->id}/action/approve")->assertStatus(409)
-        ->assertJsonPath('message', fn (string $m) => str_contains($m, 'ai-service'));
-
-    config(['ai.engine' => 'python']);
     asReviewer()->postJson("/api/v1/emails/{$this->email->id}/action/approve")->assertOk();
     asReviewer()->postJson("/api/v1/emails/{$this->email->id}/action/reject")->assertStatus(409);
 
@@ -234,16 +228,13 @@ it('reprocesses with an instruction that travels to ai-service once', function (
     expect($this->email->fresh()->ai_review_instruction)->toBeNull();
 });
 
-it('rejects an instruction with the laravel engine instead of ignoring it', function () {
+it('rejects an instruction that is too long', function () {
     deliverApprovalResult(pendingActionEvent($this->email));
-    config(['ai.engine' => 'laravel']);
 
-    asReviewer()->postJson("/api/v1/emails/{$this->email->id}/reprocess", ['instruction' => 'Sé breve.'])
-        ->assertStatus(422)->assertJsonValidationErrors('instruction');
     asReviewer()->postJson("/api/v1/emails/{$this->email->id}/reprocess", ['instruction' => str_repeat('a', 2001)])
-        ->assertStatus(422);
+        ->assertStatus(422)->assertJsonValidationErrors('instruction');
 
-    asReviewer()->getJson("/api/v1/emails/{$this->email->id}")->assertJsonPath('data.can_instruct', false);
+    asReviewer()->getJson("/api/v1/emails/{$this->email->id}")->assertJsonPath('data.can_instruct', true);
 });
 
 it('republishes a lost decision instead of the email', function () {

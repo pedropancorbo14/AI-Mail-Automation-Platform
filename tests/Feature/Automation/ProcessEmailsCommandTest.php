@@ -1,9 +1,7 @@
 <?php
 
 use App\AI\Agent\Enums\EmailReplyStatus;
-use App\AI\Contracts\LLMProvider;
-use App\AI\Embeddings\EmbeddingProvider;
-use App\AI\Exceptions\LLMUnavailableException;
+use App\AI\Remote\Contracts\EventStream;
 use App\Automation\AutomationMode;
 use App\Automation\EmailProcessor;
 use App\Automation\ProcessEmailJob;
@@ -11,28 +9,21 @@ use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Queue;
-use Tests\Fakes\FakeEmbeddingProvider;
-use Tests\Fakes\FakeLLMProvider;
 
 beforeEach(function () {
-    config(['ai.anthropic.api_key' => 'sk-ant-x']);
-    $this->llm = new FakeLLMProvider();
-    app()->instance(LLMProvider::class, $this->llm);
-    app()->instance(EmbeddingProvider::class, new FakeEmbeddingProvider());
+    $this->streams = app(EventStream::class);
 
     $this->tenant = Tenant::factory()->create();
     $this->email = inTenant($this->tenant, fn () => Email::factory()->create(['subject' => '¿Hacéis envíos a Canarias?', 'ingested_at' => now()]));
 });
 
 it('processes an email at once and shows how it went', function () {
-    $this->llm->respondWith(classificationData(['intent' => 'product_question']), agentReplyData());
+    $this->tenant->configureAutomation(AutomationMode::Off);
 
     $this->artisan('ai:process', ['email' => $this->email->id, '--now' => true])
         ->expectsOutputToContain('Procesando «¿Hacéis envíos a Canarias?»')
         ->expectsOutputToContain('Estado actual: Revisión humana (human_review)')
-        ->expectsOutputToContain('Respuesta propuesta por la IA (confianza 0.90)')
-        ->expectsOutputToContain('Borradores')
-        ->expectsOutputToContain("ai:trace {$this->email->id}")
+        ->expectsOutputToContain('automatización está desactivada')
         ->assertSuccessful();
 });
 
@@ -55,7 +46,7 @@ it('explains when an email was already decided', function () {
         ->expectsOutputToContain('usa --reprocess')
         ->assertFailed();
 
-    expect($this->llm->requests)->toBe([]);
+    expect($this->streams->entries)->toBe([]);
 });
 
 it('never reprocesses an email whose reply was already sent or tried', function (EmailReplyStatus $replyStatus) {
@@ -68,29 +59,9 @@ it('never reprocesses an email whose reply was already sent or tried', function 
         ->expectsOutputToContain('no se reprocesa para no enviarla dos veces')
         ->assertFailed();
 
-    expect($this->llm->requests)->toBe([])
+    expect($this->streams->entries['email.received.v1'] ?? [])->toBe([])
         ->and(inTenant($this->tenant, fn () => app(EmailProcessor::class)->process($this->email->fresh(), reprocess: true)))->toBeNull();
 })->with([EmailReplyStatus::Failed, EmailReplyStatus::Sent, EmailReplyStatus::Sending]);
-
-it('reports when the ai is temporarily unavailable', function () {
-    $this->llm->respondWith(new LLMUnavailableException('Anthropic no está disponible (529).'));
-
-    $this->artisan('ai:process', ['email' => $this->email->id, '--now' => true])
-        ->expectsOutputToContain('La IA no está disponible ahora')
-        ->assertFailed();
-
-    expect($this->email->fresh()->status)->toBe(EmailStatus::Processing);
-});
-
-it('warns when the ai is not configured and sends the email to a person', function () {
-    config(['ai.anthropic.api_key' => '']);
-
-    $this->artisan('ai:process', ['email' => $this->email->id, '--now' => true])
-        ->expectsOutputToContain('irá a revisión humana')
-        ->assertSuccessful();
-
-    expect($this->email->fresh()->status)->toBe(EmailStatus::HumanReview);
-});
 
 it('queues every pending email of every company', function () {
     Queue::fake();
@@ -117,11 +88,11 @@ it('queues the failed emails to be processed again', function () {
 it('reprocesses a failed email from the queue when nothing was sent', function () {
     $this->tenant->configureAutomation(AutomationMode::Draft);
     inTenant($this->tenant, fn () => $this->email->forceFill(['status' => EmailStatus::Failed])->save());
-    $this->llm->respondWith(classificationData(), agentReplyData());
 
     $this->artisan('ai:process', ['--failed' => true])->assertSuccessful();
 
-    expect($this->email->fresh()->status)->toBe(EmailStatus::HumanReview);
+    expect($this->email->fresh()->status)->toBe(EmailStatus::Processing) // publicado para ai-service
+        ->and($this->streams->entries['email.received.v1'])->toHaveCount(1);
 });
 
 it('validates its input', function () {

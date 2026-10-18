@@ -1,8 +1,5 @@
 <?php
 
-use App\AI\Contracts\LLMProvider;
-use App\AI\Embeddings\EmbeddingProvider;
-use App\Automation\EmailProcessor;
 use App\Mail\Enums\AttachmentStatus;
 use App\Mail\Enums\RecipientType;
 use App\Models\Email;
@@ -14,8 +11,6 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
-use Tests\Fakes\FakeEmbeddingProvider;
-use Tests\Fakes\FakeLLMProvider;
 
 beforeEach(function () {
     Storage::fake('local');
@@ -42,19 +37,23 @@ beforeEach(function () {
     });
 });
 
-/** Procesa el email con la IA simulada (clasificación + get_order + propuesta). */
+const DETAIL_REPLY = "Hola:\n\nTu pedido #45821 salió el 29 de septiembre con SEUR (seguimiento SEU123456789ES).\n\nUn saludo,\nEl equipo de atención al cliente";
+
+/** Procesa el email con ai-service simulado: clasificación, get_order y propuesta. */
 function processDetailEmail(): void
 {
-    config(['ai.anthropic.api_key' => 'sk-ant-x']);
-    $llm = (new FakeLLMProvider())->respondWith(
-        classificationData(),
-        FakeLLMProvider::toolUse([['get_order', ['order_number' => '45821']]]),
-        agentReplyData(),
-    );
-    app()->instance(LLMProvider::class, $llm);
-    app()->instance(EmbeddingProvider::class, new FakeEmbeddingProvider());
-
-    inTenant(test()->tenant, fn () => app(EmailProcessor::class)->process(test()->email->fresh()));
+    processRemote(test()->email);
+    applyAiResult(processedEvent(test()->email, [
+        'category' => 'order_status',
+        'draft' => DETAIL_REPLY,
+        'confidence' => 0.9,
+        'sources' => [['type' => 'order', 'reference' => '45821']],
+        'tool_calls' => [[
+            'tool' => 'get_order', 'arguments' => ['order_number' => '45821'],
+            'result' => ['order_number' => '45821', 'status' => 'shipped', 'shipment' => ['carrier' => 'SEUR', 'tracking_number' => 'SEU123456789ES']],
+            'status' => 'success', 'error' => null, 'duration_ms' => 35, 'origin' => 'plan',
+        ]],
+    ], ['order_numbers' => ['45821'], 'summary' => 'El cliente pregunta dónde está su pedido #45821.']));
 }
 
 function storedAttachment(Email $email, string $filename, string $content, AttachmentStatus $status = AttachmentStatus::Stored): EmailAttachment
@@ -111,18 +110,17 @@ it('shows everything that happened with an email', function () {
         ->and($response->json('data.status_history.2.user'))->toBeNull();
 
     $response->assertJsonPath('data.replies.0.status', 'draft')
-        ->assertJsonPath('data.replies.0.body', agentReplyData()['reply_body'])
+        ->assertJsonPath('data.replies.0.body', DETAIL_REPLY)
         ->assertJsonPath('data.replies.0.confidence', 0.9)
         ->assertJsonPath('data.replies.0.sources', [['type' => 'order', 'reference' => '45821']]);
 
     $response->assertJsonPath('data.agent_runs.0.stop_reason', 'end_turn')
         ->assertJsonPath('data.agent_runs.0.stop_reason_label', 'Respuesta final')
-        ->assertJsonCount(2, 'data.agent_runs.0.steps')
+        ->assertJsonCount(1, 'data.agent_runs.0.steps')
         ->assertJsonPath('data.agent_runs.0.steps.0.tool_calls.0.tool', 'get_order')
         ->assertJsonPath('data.agent_runs.0.steps.0.tool_calls.0.arguments', ['order_number' => '45821'])
         ->assertJsonPath('data.agent_runs.0.steps.0.tool_calls.0.status', 'success')
-        ->assertJsonPath('data.agent_runs.0.steps.0.tool_calls.0.result.shipment.tracking_number', 'SEU123456789ES')
-        ->assertJsonPath('data.agent_runs.0.steps.1.tool_calls', []);
+        ->assertJsonPath('data.agent_runs.0.steps.0.tool_calls.0.result.shipment.tracking_number', 'SEU123456789ES');
 
     // Ni el coste ni los tokens de la IA (de la clasificación, de la ejecución ni de cada paso):
     // son datos del operador (Grafana), no de los clientes.

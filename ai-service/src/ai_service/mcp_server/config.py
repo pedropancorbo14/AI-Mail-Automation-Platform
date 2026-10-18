@@ -17,8 +17,9 @@ class McpSettings(BaseSettings):
     token: SecretStr | None = None
     host: str = "0.0.0.0"  # noqa: S104 - dentro del contenedor; el compose no lo publica
     port: int = Field(default=8100, ge=1, le=65535)
-    # Datos de demostración: los MISMOS pedidos que el DemoOrderProvider de Laravel.
-    orders_file: Path = Path("database/seeders/demo/orders.json")
+    # Datos de demostración (pedidos y facturas de "Empresa Demo", coherentes
+    # con los emails de prueba). En la Fase 14, integraciones reales.
+    orders_file: Path = _DATA / "orders.json"
     tickets_file: Path = _DATA / "tickets.json"
     # Empresa (tenant_id de los eventos) → clave de los ficheros de demostración.
     demo_tenants: dict[int, str] = Field(default_factory=lambda: {1: "empresa-demo"})
