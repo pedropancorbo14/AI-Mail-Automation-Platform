@@ -1,0 +1,11 @@
+# Todo el microservicio en su propio namespace. Pod Security "restricted":
+# el API server rechaza cualquier pod que corra como root, pida capacidades,
+# escale privilegios o no use el perfil seccomp por defecto.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aimail-ai
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted

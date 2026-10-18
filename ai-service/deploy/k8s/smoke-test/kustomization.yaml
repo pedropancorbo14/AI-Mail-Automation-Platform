@@ -1,0 +1,17 @@
+# Prueba de humo, aparte del despliegue (un Job no se puede volver a aplicar):
+#
+#   kubectl -n aimail-ai delete job ai-service-smoke-test --ignore-not-found
+#   kubectl apply -k ai-service/deploy/k8s/smoke-test
+#   kubectl -n aimail-ai wait --for=condition=complete job/ai-service-smoke-test --timeout=180s
+#   kubectl -n aimail-ai logs job/ai-service-smoke-test
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aimail-ai
+
+resources:
+  - job.yaml
+
+configMapGenerator:
+  - name: ai-service-smoke-test
+    files:
+      - smoke_test.py

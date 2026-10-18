@@ -4298,6 +4298,71 @@ correos de prueba con lo que debe pasar, modo sombra y problemas típicos),
 enlazada desde el README raíz; sustituye al bloque desfasado de la Fase 1.
 Siguiente: Fase 6 (Kubernetes) cuando lo apruebe.
 
+### AI-Service, Fase 6 (Kubernetes): EN CURSO (2026-10-18)
+
+Misma rama `fase-ai-service`, misma forma de trabajo (un commit por tarea,
+tests en verde, CI comprobado tras cada push, documentación al día).
+
+**Objetivo:** desplegar el microservicio (worker `ai-service` + servidor
+MCP `ai-mcp`) en Kubernetes con manifiestos de calidad de producción
+(seguridad, sondas, despliegues sin cortes, escalado) y **probarlo en un
+clúster real**, no solo validar el YAML.
+
+**Entorno de la sesión en la nube:** kind no arranca (runc no puede crear
+los contenedores anidados del nodo) y los pods de Kubernetes fallan porque
+la VM **no permite `oom_score_adj` negativo** (el kubelet pone -998 a los
+sandbox). Solución **solo de la sesión**, fuera del repositorio: k3s v1.33
+con `--docker` y dockerd con un runtime por defecto que envuelve `runc` y
+sube a 0 los `oomScoreAdj` negativos del `config.json`
+(`/tmp/claude-0/bin/runc-clamp`). Imágenes de Docker Hub desde
+`mirror.gcr.io` renombradas en local (`imagePullPolicy: IfNotPresent`). En
+el equipo del usuario y en el CI, kind funciona sin nada de esto.
+
+**Decisiones tomadas:**
+- **Solo el microservicio en Kubernetes**; Laravel sigue en Docker Compose
+  (el despliegue de toda la plataforma es la Fase 16). En producción
+  comparten Redis y PostgreSQL.
+- **Kustomize** (dentro de `kubectl`) y no Helm: YAML normal + overlays,
+  sin plantillas. Helm compensaría para distribuirlo a terceros.
+- Namespace `aimail-ai` con **Pod Security `restricted`** (también las
+  dependencias del overlay local): sin root, solo lectura, sin capacidades,
+  seccomp, sin token de la API (`automountServiceAccountToken: false`).
+- Datos de demostración del MCP = el mismo `database/seeders/demo/orders.json`
+  de Laravel y el SQL de `contracts/database/`: se renderiza con
+  `--load-restrictor LoadRestrictionsNone` (kustomize rechaza también los
+  enlaces simbólicos a ficheros de fuera).
+- Secret **`ai-service-secrets` con nombre fijo** (en producción se crea
+  fuera del repositorio; lo usan el despliegue y la prueba de humo).
+- `ai-mcp` con una réplica (tickets de demostración en memoria).
+
+**Tareas:**
+- [x] 6.1 **Base, overlay local y prueba de humo.**
+  `ai-service/deploy/k8s/base`: Namespace (PSS restricted), ServiceAccounts
+  sin token, Deployment `ai-service` (`ai-service-worker`, envFrom
+  ConfigMap + Secret, startup/liveness `/health`, readiness `/ready`,
+  RollingUpdate `maxUnavailable: 0`, gracia 60 s, requests 100m/256Mi y
+  límite 512Mi, `/tmp` en emptyDir, anotaciones de Prometheus) + Service
+  8000; Deployment `ai-mcp` (solo su token y los datos de demostración por
+  ConfigMap) + Service 8100; ConfigMap `ai-service-config` generado (hash →
+  reinicio al cambiar). `overlays/local`: Redis (requirepass) y PostgreSQL
+  16 de pruebas sin root ni volúmenes (el rol `ai_service_checkpoints` es
+  dueño de la BD y el script de `contracts/database` crea su esquema), IA
+  simulada, secretos de desarrollo. `smoke-test/`: Job con la imagen del
+  servicio que publica un `email.received.v1` (Laura, pedido sin número) y
+  espera su `email.processed.v1`: plan `get_customer_orders`, `get_order`
+  pedido por la IA y `auto_send`. **Probado en k3s real:** 4 pods en
+  `restricted` sin avisos, `/ready` con redis/consumer/checkpoints, tablas
+  de checkpoints en `ai_service`, prueba de humo OK (primer intento falló
+  por el script: la categoría está en la raíz del evento, no en
+  `classification`). CI: paso **kubeconform** (Kubernetes 1.33, estricto)
+  sobre el overlay local y la prueba de humo. `deploy/` fuera de la imagen
+  (`.dockerignore`). README del servicio: sección "Kubernetes (Fase 6)"
+- [ ] 6.2 NetworkPolicies (denegar por defecto) probadas en el clúster
+- [ ] 6.3 Overlay de producción (réplicas, PDB, reparto entre nodos,
+  secretos fuera del repositorio)
+- [ ] 6.4 CI: desplegar en kind y pasar la prueba de humo
+- [ ] 6.5 README, guía para kind en el equipo del usuario y cierre
+
 ### Pendientes anotados para más adelante
 
 - **Herramientas por tipo de negocio (Fase 14, integraciones)** — pedido

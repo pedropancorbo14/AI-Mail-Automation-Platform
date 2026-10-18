@@ -272,3 +272,14 @@ jobs:
           # Sin token, la ruta MCP responde 401.
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8100/mcp)" = "401"
           docker stop -t 10 ai-mcp
+
+      # Manifiestos de Kubernetes: kustomize los renderiza (kubectl viene en el
+      # runner) y kubeconform los valida contra el esquema de la API.
+      - name: Validar los manifiestos de Kubernetes (kubeconform)
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /tmp kubeconform
+          for dir in overlays/local smoke-test; do
+            kubectl kustomize --load-restrictor LoadRestrictionsNone "deploy/k8s/$dir" \
+              | /tmp/kubeconform -strict -summary -kubernetes-version 1.33.0
+          done

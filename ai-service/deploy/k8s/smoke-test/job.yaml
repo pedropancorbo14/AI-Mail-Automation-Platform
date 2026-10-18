@@ -1,0 +1,50 @@
+# Prueba de humo: un Job de un solo intento con la misma imagen y los mismos
+# secretos que el worker. Se borra solo 10 minutos después de terminar.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ai-service-smoke-test
+  labels:
+    app.kubernetes.io/name: ai-service-smoke-test
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 180
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-service-smoke-test
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: smoke-test
+          image: aimail/ai-service:dev
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/smoke/smoke_test.py"]
+          env:
+            - name: AI_SERVICE_REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: ai-service-secrets, key: AI_SERVICE_REDIS_URL}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - name: script
+              mountPath: /smoke
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: ai-service-smoke-test

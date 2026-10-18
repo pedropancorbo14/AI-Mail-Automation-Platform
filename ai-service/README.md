@@ -64,7 +64,7 @@ del email, reglas finales y envío.
 1. [Por qué un microservicio](#por-qué-un-microservicio)
 2. [Arquitectura](#arquitectura)
 3. [Contrato de eventos](#contrato-de-eventos)
-4. [Cómo ejecutarlo](#cómo-ejecutarlo) · [**Probarlo en tu equipo (lista completa)**](#probarlo-en-tu-equipo-fases-15)
+4. [Cómo ejecutarlo](#cómo-ejecutarlo) · [Kubernetes](#kubernetes-fase-6) · [**Probarlo en tu equipo (lista completa)**](#probarlo-en-tu-equipo-fases-15)
 5. [Calidad: tests, tipos y reglas de capas](#calidad-tests-tipos-y-reglas-de-capas)
 6. [Observabilidad](#observabilidad)
 7. [Decisiones tomadas](#decisiones-tomadas)
@@ -746,6 +746,82 @@ Contrato (tarea 5.1): `specialists`, `tool_call.origin` y `mode`
 (`live`/`shadow`), ver [`contracts/README.md`](../contracts/README.md#especialistas-y-modo-sombra-fase-5-de-ai-service).
 Laravel ya descarta cualquier resultado en modo sombra sin tocar el email.
 
+## Kubernetes (Fase 6)
+
+> En curso. Hecho: base, overlay local y prueba de humo (tarea 6.1).
+
+Solo el microservicio va a Kubernetes (el worker `ai-service` y el servidor
+MCP `ai-mcp`); Laravel sigue en Docker Compose. En producción los dos
+comparten Redis (los streams) y PostgreSQL (lectura del RAG y checkpoints).
+
+```
+ai-service/deploy/k8s/
+├── base/               # Namespace, ServiceAccounts, Deployments, Services, ConfigMaps
+├── overlays/local/     # kind / k3s / Docker Desktop: Redis + PostgreSQL de pruebas, IA simulada
+└── smoke-test/         # Job que hace de Laravel y comprueba el flujo de punta a punta
+```
+
+**Kustomize** (viene dentro de `kubectl`) en vez de Helm: YAML normal con
+overlays por entorno, sin lenguaje de plantillas. Helm compensaría si el
+servicio se distribuyera a terceros.
+
+**Lo que fija la base:**
+
+- Namespace `aimail-ai` con **Pod Security `restricted`**: el API server
+  rechaza cualquier pod que corra como root, pida capacidades o no use
+  seccomp. Todos los pods (también Redis y PostgreSQL del overlay local)
+  corren sin root, con el sistema de archivos de solo lectura, sin
+  capacidades y sin token de la API de Kubernetes montado.
+- **Sondas**: `startupProbe` y `livenessProbe` sobre `/health` (si el
+  proceso no responde, se reinicia) y `readinessProbe` sobre `/ready`
+  (Redis, latido de los consumidores y checkpoints: si fallan, el pod sale
+  de la rotación sin reiniciarse).
+- **Despliegues sin cortes**: `maxUnavailable: 0`; al recibir SIGTERM el
+  worker deja de leer y termina los emails en curso
+  (`terminationGracePeriodSeconds: 60`). Lo que quede a medias lo reclama
+  otra réplica (`XAUTOCLAIM`).
+- **Escala en horizontal sin coordinación**: cada réplica es un consumidor
+  del mismo grupo de Redis Streams (su nombre es el del pod).
+- `ai-mcp` con **una réplica** a propósito (los tickets de demostración
+  viven en memoria) y sin acceso a la clave de Anthropic ni a Redis: solo
+  recibe su token.
+- Configuración en un ConfigMap generado (nombre con hash del contenido:
+  cambiar un valor reinicia los pods); secretos en `ai-service-secrets`,
+  que pone cada overlay.
+- Los pedidos de demostración son el mismo `database/seeders/demo/orders.json`
+  que usa Laravel (una sola copia). Por eso se renderiza con
+  `--load-restrictor LoadRestrictionsNone`: kustomize no lee por defecto
+  ficheros fuera de su carpeta.
+
+**Probarlo en local** (kind, k3s o el Kubernetes de Docker Desktop):
+
+```bash
+docker build -t aimail/ai-service:dev ai-service
+kind load docker-image aimail/ai-service:dev       # solo con kind
+kubectl kustomize --load-restrictor LoadRestrictionsNone \
+  ai-service/deploy/k8s/overlays/local | kubectl apply -f -
+kubectl -n aimail-ai rollout status deploy/ai-service deploy/ai-mcp
+kubectl apply -k ai-service/deploy/k8s/smoke-test
+kubectl -n aimail-ai wait --for=condition=complete job/ai-service-smoke-test --timeout=180s
+kubectl -n aimail-ai logs job/ai-service-smoke-test
+# OK: ai-service y ai-mcp responden de punta a punta
+```
+
+El Job publica un `email.received.v1` (Laura: "¿cuándo llega mi pedido?") y
+espera su `email.processed.v1`: debe consultar la lista de pedidos en
+`ai-mcp` (plan), pedir el detalle del más reciente (IA simulada) y
+recomendar `auto_send`. Para repetirlo:
+`kubectl -n aimail-ai delete job ai-service-smoke-test` y volver a
+aplicarlo.
+
+**Probado en un clúster real** (k3s v1.33 en la sesión; kind no arranca en
+ese entorno): los 4 pods con Pod Security `restricted` sin avisos, `/ready`
+con Redis, consumidores y checkpoints en verde, las tablas de checkpoints
+creadas en el esquema `ai_service` y la prueba de humo en verde
+(`get_customer_orders` del plan + `get_order` pedido por la IA → `auto_send`).
+En el CI, kubeconform valida los manifiestos renderizados contra el esquema
+de Kubernetes 1.33.
+
 ## Eventos: Redis Streams y el worker
 
 **Proceso `ai-service-worker`** (`entrypoints/worker.py`): un solo proceso
@@ -1216,4 +1292,4 @@ costes en Grafana). Solo responde con confianza a preguntas generales
 | 3 | Servidor MCP (CRM, ERP, tickets simulados) y tools | ✅ Hecha (probada de punta a punta con la IA simulada y el servidor MCP en Docker) |
 | 4 | Checkpointing, `interrupt` (acciones con aprobación humana), reprocesar con una indicación y límites del agente | ✅ Hecha (probada de punta a punta con la IA simulada, la API del panel y un reinicio del worker en mitad de la pausa) |
 | 5 | Supervisor con especialistas en paralelo, redactor agéntico y modo *shadow* (comparar con el motor de Laravel) | ✅ Hecha (probada de punta a punta con la IA simulada, el servidor MCP y los dos motores) |
-| 6 | Kubernetes (probado en kind) | Pendiente |
+| 6 | Kubernetes (Kustomize; probado en un clúster real) | En curso |

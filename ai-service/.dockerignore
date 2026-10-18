@@ -8,3 +8,4 @@ tests
 .env
 Dockerfile
 .dockerignore
+deploy

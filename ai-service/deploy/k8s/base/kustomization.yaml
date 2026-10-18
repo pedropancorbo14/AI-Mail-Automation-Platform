@@ -1,0 +1,36 @@
+# Base de ai-service para Kubernetes. No se aplica sola: le falta el Secret
+# ai-service-secrets, que pone cada overlay (local con valores de desarrollo,
+# production creado fuera del repositorio).
+#
+# Se renderiza con --load-restrictor LoadRestrictionsNone porque los datos de
+# demostración del servidor MCP son los mismos que usa Laravel
+# (database/seeders/demo/orders.json): una sola copia en el repositorio.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aimail-ai
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: ai-mail-automation
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - serviceaccounts.yaml
+  - ai-service.yaml
+  - ai-mcp.yaml
+
+# Configuración no secreta. El nombre lleva un hash del contenido: cambiar un
+# valor crea un ConfigMap nuevo y reinicia los pods que lo usan.
+configMapGenerator:
+  - name: ai-service-config
+    literals:
+      - AI_SERVICE_ENVIRONMENT=production
+      - AI_SERVICE_LOG_LEVEL=INFO
+      - AI_SERVICE_LLM_PROVIDER=anthropic
+      - AI_SERVICE_MCP_URL=http://ai-mcp:8100
+      - AI_SERVICE_OLLAMA_URL=http://ollama:11434
+      - AI_SERVICE_CONCURRENCY=4
+  - name: ai-mcp-demo-data
+    files:
+      - orders.json=../../../../database/seeders/demo/orders.json

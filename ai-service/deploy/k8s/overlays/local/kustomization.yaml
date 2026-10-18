@@ -1,0 +1,40 @@
+# Overlay para probar en un clúster local (kind, k3s, Docker Desktop) sin
+# gastar: IA simulada, Redis y PostgreSQL dentro del clúster y secretos de
+# desarrollo. NUNCA para producción (los secretos están en este fichero).
+#
+#   kubectl kustomize --load-restrictor LoadRestrictionsNone \
+#     ai-service/deploy/k8s/overlays/local | kubectl apply -f -
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aimail-ai
+
+resources:
+  - ../../base
+  - dependencies.yaml
+
+configMapGenerator:
+  - name: ai-service-config
+    behavior: merge
+    literals:
+      - AI_SERVICE_ENVIRONMENT=local
+      - AI_SERVICE_LLM_PROVIDER=simulated
+      - AI_SERVICE_SIMULATED_DELAY_MS=100
+  - name: postgres-init
+    files:
+      - ai_service_checkpoints.sql=../../../../../contracts/database/ai_service_checkpoints.sql
+
+# Valores de desarrollo, iguales que los de .env.docker.example.
+secretGenerator:
+  - name: local-dependencies
+    literals:
+      - REDIS_PASSWORD=local-redis-secret
+      - POSTGRES_PASSWORD=checkpoints-secret
+  # Nombre fijo, como el Secret de producción (que se crea fuera del
+  # repositorio): lo usan también la prueba de humo y el despliegue.
+  - name: ai-service-secrets
+    options:
+      disableNameSuffixHash: true
+    literals:
+      - AI_SERVICE_REDIS_URL=redis://:local-redis-secret@redis:6379/3
+      - AI_SERVICE_CHECKPOINT_DATABASE_URL=postgresql+psycopg://ai_service_checkpoints:checkpoints-secret@postgres:5432/ai_service
+      - AI_SERVICE_MCP_TOKEN=local-mcp-token
