@@ -3,7 +3,6 @@
 namespace App\Security;
 
 use App\Models\AiRequest;
-use App\Models\AiShadowRun;
 use App\Models\Email;
 use App\Models\Tenant;
 use App\Observability\MetricLabels;
@@ -66,13 +65,12 @@ class AiSpendGuard
         return $budget === null ? null : (float) $budget;
     }
 
-    /** Gasto de IA de hoy de la empresa en contexto (también las copias en modo sombra). */
+    /** Gasto de IA de hoy de la empresa en contexto. */
     public static function spentToday(): float
     {
         $since = now()->startOfDay();
 
-        return (float) AiRequest::where('created_at', '>=', $since)->sum('cost_usd')
-            + (float) AiShadowRun::where('created_at', '>=', $since)->sum('cost_usd');
+        return (float) AiRequest::where('created_at', '>=', $since)->sum('cost_usd');
     }
 
     /** Otros emails de la misma dirección en 24 h que ya pasaron por la IA. */

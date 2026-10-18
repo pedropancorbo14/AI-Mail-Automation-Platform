@@ -194,7 +194,7 @@ it('does not apply the same result twice', function () {
 });
 
 it('never applies a shadow result to the email', function () {
-    // Sin copia en sombra pendiente (ver ShadowModeTest): se descarta sin tocar nada.
+    // Una copia en sombra nunca toca el email: se descarta.
     deliverResult(processedEvent($this->email, ['mode' => 'shadow']));
     deliverResult(failedEvent($this->email, ['mode' => 'shadow']), 'email.processing_failed');
 
@@ -202,7 +202,7 @@ it('never applies a shadow result to the email', function () {
         ->and($this->mail->sent)->toBe([])
         ->and(inTenant($this->tenant, fn () => AiRequest::count()))->toBe(0)
         ->and(inTenant($this->tenant, fn () => $this->email->replies()->count()))->toBe(0)
-        ->and(resultMetric('missing'))->toBe(1.0);
+        ->and(resultMetric('shadow'))->toBe(1.0); // la métrica de processed (la otra cuenta en processing_failed)
 });
 
 it('acknowledges results of emails deleted in the meantime', function () {

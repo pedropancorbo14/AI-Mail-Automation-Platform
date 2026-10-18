@@ -59,7 +59,6 @@ class RemoteResultHandler
         private readonly AutoSendPolicy $policy,
         private readonly ReplySender $sender,
         private readonly RemoteCallRecorder $recorder,
-        private readonly ShadowResultHandler $shadow,
     ) {
     }
 
@@ -83,7 +82,10 @@ class RemoteResultHandler
 
         if (($event['mode'] ?? 'live') === 'shadow') {
             // Una copia en modo sombra nunca toca el email: solo se guarda para comparar.
-            return $this->shadow->handle($event, $type);
+            // Copias en sombra (comparaciones): nunca tocan el email; hoy nadie las pide.
+            Log::info('Resultado de IA en modo sombra descartado', ['email_id' => $event['email_id']]);
+
+            return 'shadow';
         }
 
         $email = Email::withoutGlobalScope(TenantScope::class)->with('tenant')->find($event['email_id']);

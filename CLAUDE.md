@@ -4712,6 +4712,16 @@ trabajar pedido por el usuario:** cuando todo esté hecho y el CI en verde,
   **Lección:** al cambiar el contrato, buscar también los productores de
   eventos fuera de los tests (la prueba de humo de Kubernetes)
 
+- [x] **R5.1 Modo sombra fuera de Laravel** (sin dos motores no hay nada
+  que comparar): `ShadowPublisher`, `ShadowComparator`,
+  `ShadowResultHandler`, `AiShadowRun` (migración que borra
+  `ai_shadow_runs`), `ai:shadow-compare`/`ai:shadow-report`, sus métricas,
+  la fila de Grafana y la configuración `AI_SHADOW_*`. **Se queda** el campo
+  `mode` del contrato y el modo sombra de ai-service (procesar sin efectos):
+  quitarlo rompería la v1 y servirá para comparar prompts o modelos en la
+  Fase 15. Laravel descarta cualquier resultado en sombra sin tocar el email
+  (resultado `shadow` en la métrica)
+
 **Decisiones abiertas que había (ya resueltas arriba):**
 1. Frontera: las reglas de envío y el control de gasto se quedan en
    Laravel (recomendado).
