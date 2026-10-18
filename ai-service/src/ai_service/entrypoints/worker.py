@@ -24,11 +24,17 @@ from redis.asyncio import Redis
 from ai_service.agents.email_graph import LangGraphEmailAgent
 from ai_service.application.contracts.events import EmailReviewResumed
 from ai_service.application.errors import LLMError
+from ai_service.application.use_cases.index_document import DeleteDocument
 from ai_service.application.use_cases.process_email import ProcessEmail
 from ai_service.application.use_cases.resume_review import ResumeReview
 from ai_service.config import Settings, get_settings
 from ai_service.entrypoints.consumer import ConsumerOptions, EventConsumer
-from ai_service.entrypoints.container import build_agent
+from ai_service.entrypoints.container import (
+    build_agent,
+    build_document_indexer,
+    build_knowledge_store,
+)
+from ai_service.entrypoints.document_consumer import DELETED, UPLOADED, DocumentConsumer
 from ai_service.entrypoints.http.app import create_app
 from ai_service.infrastructure.checkpoints.postgres import PostgresCheckpoints
 from ai_service.infrastructure.events.redis_streams import (
@@ -37,6 +43,7 @@ from ai_service.infrastructure.events.redis_streams import (
     RedisStreamConsumer,
     RedisStreamsEventBus,
 )
+from ai_service.infrastructure.knowledge.pgvector import PgVectorStore
 from ai_service.infrastructure.observability.logging import configure_logging, get_logger
 from ai_service.infrastructure.observability.metrics import ServiceMetrics
 
@@ -99,6 +106,24 @@ def build_resume_consumer(
     )
 
 
+def build_document_consumers(
+    settings: Settings, redis: Redis, metrics: ServiceMetrics, store: PgVectorStore
+) -> list[DocumentConsumer]:
+    """Indexar (`document.uploaded.v1`) y borrar (`document.deleted.v1`) documentos."""
+    bus = _bus(settings, redis)
+    return [
+        DocumentConsumer(
+            _stream(settings, redis, UPLOADED),
+            build_document_indexer(settings, store, bus),
+            metrics,
+            _options(settings),
+        ),
+        DocumentConsumer(
+            _stream(settings, redis, DELETED), DeleteDocument(store), metrics, _options(settings)
+        ),
+    ]
+
+
 def _bus(settings: Settings, redis: Redis) -> RedisStreamsEventBus:
     return RedisStreamsEventBus(
         redis, prefix=settings.stream_prefix, maxlen=settings.outgoing_maxlen
@@ -130,12 +155,17 @@ async def serve(settings: Settings) -> None:
     metrics = ServiceMetrics(settings.environment.value)
     redis = redis_client(settings)
     checkpoints = await open_checkpoints(settings)
-    # Un solo agente (y un solo grafo) para los dos consumidores.
+    # Un solo agente (y un solo grafo) para los dos consumidores de emails.
     agent = build_agent(settings, checkpointer=checkpoints.saver if checkpoints else None)
-    consumers = [
+    consumers: list[EventConsumer | DocumentConsumer] = [
         build_consumer(settings, redis, metrics, checkpoints, agent),
         build_resume_consumer(settings, redis, metrics, agent),
     ]
+    # Base de conocimiento: ai-service indexa y borra los documentos.
+    store = build_knowledge_store(settings)
+    if store is not None:
+        await store.setup()
+        consumers += build_document_consumers(settings, redis, metrics, store)
     stale_after = max(60.0, settings.read_block_ms / 1000 * 3)
 
     async def readiness() -> dict[str, bool]:
@@ -172,6 +202,8 @@ async def serve(settings: Settings) -> None:
         await redis.aclose()
         if checkpoints is not None:
             await checkpoints.aclose()
+        if store is not None:
+            await store.aclose()
 
 
 async def open_checkpoints(settings: Settings) -> PostgresCheckpoints | None:

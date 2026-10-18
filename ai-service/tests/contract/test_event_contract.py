@@ -10,17 +10,25 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from ai_service.application.contracts.events import (
+    DocumentDeleted,
+    DocumentIndexed,
+    DocumentIndexingFailed,
+    DocumentUploaded,
     EmailProcessed,
     EmailProcessingFailed,
     EmailReceived,
     EmailReviewResumed,
     InvalidEventError,
-    _Event,
+    _Envelope,
 )
 from ai_service.domain.category import Category
 from tests.support.contracts import CONTRACTS, load, validator
 
-MODELS: dict[str, type[_Event]] = {
+MODELS: dict[str, type[_Envelope]] = {
+    "document.uploaded.v1": DocumentUploaded,
+    "document.deleted.v1": DocumentDeleted,
+    "document.indexed.v1": DocumentIndexed,
+    "document.indexing_failed.v1": DocumentIndexingFailed,
     "email.received.v1": EmailReceived,
     "email.processed.v1": EmailProcessed,
     "email.processing_failed.v1": EmailProcessingFailed,
@@ -39,7 +47,7 @@ def _example(path: Path) -> Any:
 
 def test_the_schemas_are_valid_json_schema() -> None:
     schemas = list(CONTRACTS.glob("*.schema.json"))
-    assert len(schemas) == 5
+    assert len(schemas) == 9
     for path in schemas:
         Draft202012Validator.check_schema(load(path))
 

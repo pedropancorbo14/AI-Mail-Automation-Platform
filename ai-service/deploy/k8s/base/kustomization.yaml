@@ -31,6 +31,8 @@ configMapGenerator:
       - AI_SERVICE_LLM_PROVIDER=anthropic
       - AI_SERVICE_MCP_URL=http://ai-mcp:8100
       - AI_SERVICE_OLLAMA_URL=http://ollama:11434
+      # Laravel, para descargar el original de un documento al indexarlo (ruta firmada).
+      - AI_SERVICE_LARAVEL_URL=http://nginx
       - AI_SERVICE_CONCURRENCY=4
   - name: ai-mcp-demo-data
     files:

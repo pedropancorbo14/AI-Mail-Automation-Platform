@@ -205,6 +205,10 @@ return [
         'service_url' => env('AI_SERVICE_URL', 'http://ai-service:8000'),
         'internal_token' => env('AI_SERVICE_INTERNAL_TOKEN'),
         'http_timeout' => (int) env('AI_SERVICE_HTTP_TIMEOUT', 15),
+        // Caducidad del enlace firmado con el que ai-service descarga un documento
+        // para indexarlo, y cuándo se vuelve a publicar uno que sigue "Indexando".
+        'document_link_minutes' => (int) env('AI_DOCUMENT_LINK_MINUTES', 30),
+        'document_reconcile_after_minutes' => (int) env('AI_DOCUMENT_RECONCILE_MINUTES', 30),
     ],
 
     // Modo sombra (AI-Service, Fase 5): con AI_ENGINE=laravel, una muestra de

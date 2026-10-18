@@ -1,0 +1,32 @@
+{
+  "event_id": "7d9e6d4a-0b2a-4e9c-9f5a-8c3b4d5e6f70",
+  "event_version": 1,
+  "occurred_at": "2026-10-18T10:00:00.000000Z",
+  "trace_id": "doc0trace0000001",
+  "tenant_id": 1,
+  "document_id": 7,
+  "event_type": "document.indexed",
+  "causation_id": "5b7c4b2e-8f0e-4c7a-9d3e-6a1f2b3c4d5e",
+  "chunks_count": 5,
+  "embedding_model": "bge-m3",
+  "duration_ms": 3120,
+  "usage": {
+    "calls": [
+      {
+        "purpose": "ai_service.document_indexing",
+        "provider": "ollama",
+        "requested_model": "bge-m3",
+        "model": "bge-m3",
+        "status": "success",
+        "input_tokens": 640,
+        "output_tokens": 0,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 0,
+        "latency_ms": 2900,
+        "stop_reason": null,
+        "provider_request_id": null,
+        "error": null
+      }
+    ]
+  }
+}

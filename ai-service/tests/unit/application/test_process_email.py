@@ -276,7 +276,9 @@ async def test_live_emails_are_not_shadow() -> None:
     await ProcessEmail(agent, bus).execute(received())
 
     assert agent.shadow_runs == [False]
-    assert bus.published[0].mode == "live"
+    [event] = bus.published
+    assert isinstance(event, EmailProcessed)
+    assert event.mode == "live"
 
 
 def test_the_event_without_enabled_tools_only_allows_the_catalog_defaults() -> None:

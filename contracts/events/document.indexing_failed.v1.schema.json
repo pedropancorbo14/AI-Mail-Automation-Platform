@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/events/document.indexing_failed.v1.schema.json",
+  "title": "document.indexing_failed.v1",
+  "description": "ai-service lo publica cuando no puede indexar el documento y no tiene sentido reintentar (los errores temporales los reintenta él).",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "$ref": "common.schema.json#/$defs/event_id"
+    },
+    "event_type": {
+      "const": "document.indexing_failed"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "occurred_at": {
+      "$ref": "common.schema.json#/$defs/occurred_at"
+    },
+    "trace_id": {
+      "$ref": "common.schema.json#/$defs/trace_id"
+    },
+    "tenant_id": {
+      "$ref": "common.schema.json#/$defs/tenant_id"
+    },
+    "document_id": {
+      "$ref": "common.schema.json#/$defs/document_id"
+    },
+    "causation_id": {
+      "description": "event_id del document.uploaded.v1 que provocó este resultado (Laravel lo compara con el último que publicó: un resultado de un indexado anterior no pisa uno nuevo).",
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/event_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error_code": {
+      "description": "unsupported: formato no soportado; empty: sin texto; no_text: PDF sin texto extraíble (escaneado, sin OCR); unreadable: dañado o con contraseña; too_large: supera el tamaño máximo; download: no se pudo descargar de Laravel tras los reintentos; embeddings: el modelo de embeddings no responde o está mal configurado; internal: error inesperado.",
+      "type": "string",
+      "enum": [
+        "unsupported",
+        "empty",
+        "no_text",
+        "unreadable",
+        "too_large",
+        "download",
+        "embeddings",
+        "internal"
+      ]
+    },
+    "message": {
+      "description": "Motivo apto para el usuario (se ve en el panel).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "usage": {
+      "description": "Llamadas a modelos (embeddings) del indexado; Laravel guarda una fila de ai_requests por cada una.",
+      "type": "object",
+      "properties": {
+        "calls": {
+          "$ref": "common.schema.json#/$defs/llm_calls"
+        }
+      },
+      "required": [
+        "calls"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "occurred_at",
+    "trace_id",
+    "tenant_id",
+    "document_id",
+    "error_code",
+    "message",
+    "retryable",
+    "usage"
+  ],
+  "additionalProperties": true
+}

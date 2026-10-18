@@ -3,6 +3,9 @@
 namespace App\Console\Commands;
 
 use App\AI\Remote\AIEngine;
+use App\AI\Remote\DocumentIndexPublisher;
+use App\Documents\Enums\DocumentStatus;
+use App\Models\Document;
 use App\AI\Remote\EmailEventPublisher;
 use App\AI\Remote\Exceptions\InvalidEventException;
 use App\AI\Remote\ReviewResumedPublisher;
@@ -32,7 +35,7 @@ class ReconcileRemoteAI extends Command
 
     protected $description = 'Vuelve a publicar (o pasa a una persona) los emails sin respuesta del servicio de IA';
 
-    public function handle(EmailEventPublisher $publisher, ReviewResumedPublisher $resumes, TenantService $tenants): int
+    public function handle(EmailEventPublisher $publisher, ReviewResumedPublisher $resumes, DocumentIndexPublisher $documents, TenantService $tenants): int
     {
         $limit = now()->subMinutes((int) config('ai.remote.reconcile_after_minutes'));
         $maxAttempts = (int) config('ai.remote.max_publish_attempts');
@@ -80,17 +83,59 @@ class ReconcileRemoteAI extends Command
                 }
             });
 
+        if ($remote) {
+            $counts += $this->reconcileDocuments($documents, $tenants, $maxAttempts);
+        }
+
         if (array_sum($counts) > 0) {
             Log::warning('Emails sin respuesta del servicio de IA', $counts);
         }
 
         $this->info(sprintf(
-            'Republicados: %d · A una persona (sin IA): %d · Al motor de Laravel: %d',
+            'Republicados: %d · A una persona (sin IA): %d · Al motor de Laravel: %d · Documentos republicados: %d · Documentos con error: %d',
             $counts['republished'],
             $counts['to_person'],
             $counts['local'],
+            $counts['documents_republished'] ?? 0,
+            $counts['documents_failed'] ?? 0,
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Documentos que siguen "Indexando" sin respuesta de ai-service: se vuelven a
+     * publicar (con un enlace nuevo, el anterior pudo caducar) y, agotados los
+     * intentos, pasan a error para que una persona los reindexe.
+     *
+     * @return array{documents_republished: int, documents_failed: int}
+     */
+    private function reconcileDocuments(DocumentIndexPublisher $publisher, TenantService $tenants, int $maxAttempts): array
+    {
+        $counts = ['documents_republished' => 0, 'documents_failed' => 0];
+        $limit = now()->subMinutes((int) config('ai.remote.document_reconcile_after_minutes'));
+
+        // Consulta global deliberada: el comando revisa todas las empresas.
+        Document::withoutGlobalScope(TenantScope::class)
+            ->with('tenant')
+            ->where('status', DocumentStatus::Processing)
+            ->whereNotNull('index_requested_at')
+            ->where('index_requested_at', '<', $limit)
+            ->chunkById(100, function ($documents) use ($publisher, $tenants, $maxAttempts, &$counts) {
+                foreach ($documents as $document) {
+                    $tenants->runAs($document->tenant, function () use ($document, $publisher, $maxAttempts, &$counts) {
+                        if ($document->index_attempts >= $maxAttempts) {
+                            $document->markFailed('El servicio de IA no respondió al indexarlo: vuelve a intentarlo con "Reindexar".');
+                            $counts['documents_failed']++;
+
+                            return;
+                        }
+                        $publisher->upload($document);
+                        $counts['documents_republished']++;
+                    });
+                }
+            });
+
+        return $counts;
     }
 }

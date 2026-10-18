@@ -1,0 +1,16 @@
+{
+  "event_id": "8e0f7e5b-1c3b-4fad-8a6b-9d4c5e6f7081",
+  "event_version": 1,
+  "occurred_at": "2026-10-18T10:00:00.000000Z",
+  "trace_id": "doc0trace0000001",
+  "tenant_id": 1,
+  "document_id": 7,
+  "event_type": "document.indexing_failed",
+  "causation_id": "5b7c4b2e-8f0e-4c7a-9d3e-6a1f2b3c4d5e",
+  "error_code": "no_text",
+  "message": "El PDF no contiene texto extraíble (¿es un documento escaneado? El OCR no está soportado todavía).",
+  "retryable": false,
+  "usage": {
+    "calls": []
+  }
+}

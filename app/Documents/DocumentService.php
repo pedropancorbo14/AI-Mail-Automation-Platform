@@ -5,7 +5,10 @@ namespace App\Documents;
 use App\AI\Embeddings\EmbeddingInputType;
 use App\AI\Embeddings\EmbeddingService;
 use App\AI\Exceptions\LLMException;
+use App\AI\Remote\AIEngine;
+use App\AI\Remote\DocumentIndexPublisher;
 use App\Documents\Chunking\TextChunk;
+use App\Documents\Enums\DocumentStatus;
 use App\Documents\Chunking\TextChunker;
 use App\Documents\Exceptions\DocumentProcessingException;
 use App\Documents\Extraction\DocumentTextExtractor;
@@ -87,9 +90,28 @@ class DocumentService
             throw new DocumentProcessingException('Este documento ya está subido.');
         }
 
-        ProcessDocumentJob::dispatch($tenant->id, $document->id);
+        $this->queueIndexing($document);
 
         return $document;
+    }
+
+    /** Vuelve a indexar (p. ej. tras cambiar el modelo de embeddings). */
+    public function reindex(Document $document): void
+    {
+        $document->forceFill(['status' => DocumentStatus::Pending, 'error' => null])->save();
+        $this->queueIndexing($document);
+    }
+
+    /** Con el motor remoto lo indexa ai-service; si no, el trabajo de Laravel. */
+    private function queueIndexing(Document $document): void
+    {
+        if (AIEngine::current()->isRemote()) {
+            app(DocumentIndexPublisher::class)->upload($document);
+
+            return;
+        }
+
+        ProcessDocumentJob::dispatch($document->tenant_id, $document->id);
     }
 
     /**
@@ -150,8 +172,14 @@ class DocumentService
 
     public function delete(Document $document): void
     {
-        $document->delete();   // los trozos se borran en cascada
+        $document->delete();   // los trozos de Laravel se borran en cascada
         Storage::disk($document->disk)->delete($document->path);
+
+        // Los fragmentos de ai-service también (se publica aunque el motor actual
+        // sea el de Laravel: pudo indexarse antes con el remoto).
+        if (AIEngine::current()->isRemote() || $document->index_event_id !== null) {
+            app(DocumentIndexPublisher::class)->deleted($document->tenant_id, $document->id);
+        }
     }
 
     /** Texto que se convierte en vector: el trozo con su contexto (título y sección). */

@@ -10,6 +10,7 @@ from ai_service.application.dto import (
     DraftContext,
     DraftConversation,
     DraftResult,
+    EmbeddingBatch,
     EmbeddingResult,
     LLMCall,
     PendingAction,
@@ -146,6 +147,7 @@ class FakeEmbeddings:
     model: str = "bge-m3"
     error: LLMError | None = None
     queries: list[str] = field(default_factory=list)
+    documents: list[list[str]] = field(default_factory=list)
     tokens: int = 12
 
     async def embed_query(self, text: str) -> EmbeddingResult:
@@ -160,6 +162,23 @@ class FakeEmbeddings:
             output_tokens=0,
         )
         return EmbeddingResult((1.0, 0.0), call)
+
+    async def embed_documents(self, texts: list[str], batch_size: int = 16) -> EmbeddingBatch:
+        """Un vector por texto (determinista: por su longitud) y una llamada por lote."""
+        self.documents.append(list(texts))
+        if self.error:
+            raise self.error
+        calls = tuple(
+            make_call(
+                "ai_service.document_indexing",
+                provider="ollama",
+                model=self.model,
+                input_tokens=self.tokens,
+                output_tokens=0,
+            )
+            for _ in range(0, len(texts), batch_size)
+        )
+        return EmbeddingBatch(tuple((float(len(t)), 1.0) for t in texts), calls)
 
 
 @dataclass

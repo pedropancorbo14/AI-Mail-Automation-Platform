@@ -6,6 +6,7 @@ use App\AI\Remote\Contracts\EventStream;
 use App\AI\Remote\Data\StreamMessage;
 use App\AI\Remote\Exceptions\InvalidEventException;
 use App\AI\Remote\Exceptions\TenantMismatchException;
+use App\AI\Remote\DocumentResultHandler;
 use App\AI\Remote\RemoteResultHandler;
 use App\Observability\Metrics;
 use Illuminate\Console\Command;
@@ -36,7 +37,7 @@ class ConsumeAIResults extends Command
     {
         $group = (string) config('ai.remote.consumer_group');
         $consumer = (string) config('ai.remote.consumer_name');
-        $names = RemoteResultHandler::streams();
+        $names = [...RemoteResultHandler::streams(), ...DocumentResultHandler::streams()];
 
         foreach ($names as $stream) {
             $streams->ensureGroup($stream, $group);
@@ -72,10 +73,15 @@ class ConsumeAIResults extends Command
 
     private function process(StreamMessage $message, EventStream $streams, RemoteResultHandler $handler, Metrics $metrics, string $group): void
     {
-        $event = str_contains($message->stream, RemoteResultHandler::FAILED) ? 'processing_failed' : 'processed';
+        $document = DocumentResultHandler::handles($message->stream);
+        $event = match (true) {
+            $document => str_contains($message->stream, DocumentResultHandler::FAILED) ? 'document_failed' : 'document_indexed',
+            str_contains($message->stream, RemoteResultHandler::FAILED) => 'processing_failed',
+            default => 'processed',
+        };
 
         try {
-            $result = $handler->handle($message);
+            $result = $document ? app(DocumentResultHandler::class)->handle($message) : $handler->handle($message);
             $streams->ack($message, $group);
         } catch (InvalidEventException $e) {
             $result = $e instanceof TenantMismatchException ? 'tenant_mismatch' : 'invalid';

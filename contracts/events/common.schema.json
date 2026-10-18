@@ -28,6 +28,11 @@
       "type": "integer",
       "minimum": 1
     },
+    "document_id": {
+      "description": "Id del documento en Laravel (documents.id).",
+      "type": "integer",
+      "minimum": 1
+    },
     "category": {
       "description": "Intención del email. Mismos valores que App\\AI\\Classification\\EmailIntent de Laravel.",
       "type": "string",

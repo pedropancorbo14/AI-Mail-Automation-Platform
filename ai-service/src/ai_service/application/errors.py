@@ -86,3 +86,19 @@ class AgentError(Exception):
 
 class KnowledgeBaseError(Exception):
     """No se pudo consultar la base de conocimiento (PostgreSQL)."""
+
+
+class DocumentProcessingError(Exception):
+    """El documento no se puede indexar y reintentar no cambiaría nada (formato,
+    vacío, PDF escaneado, dañado, demasiado grande). `message` es apto para el
+    usuario: se ve en el panel."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+class DocumentDownloadError(Exception):
+    """No se pudo descargar el original de Laravel (red, 5xx, URL caducada):
+    temporal, se reintenta."""

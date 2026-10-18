@@ -4662,6 +4662,49 @@ trabajar pedido por el usuario:** cuando todo esté hecho y el CI en verde,
   respondió tras N intentos: lo atiende una persona.") en vez de `failed`:
   sin IA una persona sigue pudiendo contestar
 
+- [x] **R2. Indexado de documentos en ai-service** (R2.1–R2.5 en un
+  commit: contrato, almacén, Python y Laravel no funcionan por separado).
+  Contrato: `document.uploaded.v1` (Laravel → ai-service: título, tipo,
+  tamaño, sha256 y `download_path` = **ruta relativa firmada** que ai-service
+  une a su `AI_SERVICE_LARAVEL_URL`: el evento nunca elige el host),
+  `document.deleted.v1`, `document.indexed.v1` (nº de fragmentos, modelo,
+  `usage.calls` de embeddings) y `document.indexing_failed.v1` (`error_code`
+  unsupported/empty/no_text/unreadable/too_large/download/embeddings/
+  internal + mensaje para el panel); `common.document_id`; `_Envelope` común
+  en Python. **Fragmentos de ai-service** en `ai_service.knowledge_chunks`
+  (su esquema, el rol de los checkpoints; `PgVectorStore.setup()` crea la
+  tabla, el índice por empresa+documento y el HNSW al arrancar;
+  `replace_document` en transacción, `delete_document`, búsqueda por empresa
+  y modelo; `AI_SERVICE_DATABASE_URL` pasa a ser ese rol). Python: extracción
+  con **pypdf 6.19** (PDF por página, Markdown por encabezado, HTML, texto;
+  mismos errores y mensajes que Laravel), `TextChunker` portado (mismos
+  2000/200), `OllamaEmbeddings.embed_documents` por lotes (una llamada por
+  lote, el error lleva las ya hechas), `LaravelDocumentSource` (solo rutas
+  `/internal/documents/…`, sin redirecciones, tamaño máximo mientras
+  descarga; 401/403/404 definitivos, red/5xx temporales), caso de uso
+  `IndexDocument`/`DeleteDocument` y `DocumentConsumer` (uno a uno, duplicados
+  por `event_id`, contrato roto → DLQ, temporal → reintento y, agotado,
+  `indexing_failed` con su código). Laravel: migración
+  `add_remote_indexing_to_documents` (`index_event_id`,
+  `index_requested_at`, `index_attempts`), ruta
+  **`/internal/documents/{id}/content`** (`signed:relative`, 30 min,
+  `application/octet-stream`, fuera del comodín del panel),
+  `DocumentIndexPublisher` (subir/reindexar → processing + evento after
+  commit; borrar → `document.deleted.v1`), `DocumentResultHandler` en
+  `ai:consume-results` (listo/error, embeddings a `ai_requests`, empresa
+  distinta → DLQ, documento ya borrado → vuelve a pedir el borrado, resultado
+  de un documento que ya no está "Indexando" → `stale`), reconciliador de
+  documentos atascados (republica con enlace nuevo; agotados → error
+  "Reindexar") y **`php artisan kb:reindex {--tenant=} {--all}`**;
+  `kb:search` por la API interna. NetworkPolicy: salida al 80 (Laravel).
+  **Prueba en la sesión:** `kb:reindex --tenant=1` → ai-service descargó los
+  4 documentos por la ruta firmada de `php artisan serve` y los indexó con
+  **los mismos fragmentos que Laravel (5, 5, 5 y 7)**; `ai:consume-results` →
+  4 `applied` y los documentos `ready`; `kb:search` respondió por la API
+  interna. **Encontrado con los tests:** el caso de uso no convertía un fallo
+  de descarga en reintento y, al agotarlo, el código salía `embeddings`
+  (ahora el error temporal lleva su propio código). 438 tests de Python
+
 **Decisiones abiertas que había (ya resueltas arriba):**
 1. Frontera: las reglas de envío y el control de gasto se quedan en
    Laravel (recomendado).

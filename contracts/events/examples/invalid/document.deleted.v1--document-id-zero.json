@@ -1,0 +1,9 @@
+{
+  "event_id": "6c8d5c3f-9a1f-4d8b-8e4f-7b2a3c4d5e6f",
+  "event_version": 1,
+  "occurred_at": "2026-10-18T10:00:00.000000Z",
+  "trace_id": "doc0trace0000001",
+  "tenant_id": 1,
+  "document_id": 0,
+  "event_type": "document.deleted"
+}

@@ -6,11 +6,15 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from ai_service.agents.email_graph import LangGraphEmailAgent
 from ai_service.application.errors import LLMConfigurationError
-from ai_service.application.ports import LLMPort
+from ai_service.application.ports import EventBusPort, LLMPort
+from ai_service.application.services.chunking import TextChunker
 from ai_service.application.services.knowledge import KnowledgeRetriever, RetrievalOptions
+from ai_service.application.use_cases.index_document import IndexDocument
 from ai_service.config import Environment, Settings
 from ai_service.domain.confidence import Confidence
 from ai_service.domain.policy import DecisionPolicy
+from ai_service.infrastructure.documents.download import LaravelDocumentSource
+from ai_service.infrastructure.documents.extraction import DocumentTextExtractor
 from ai_service.infrastructure.embeddings.ollama import OllamaEmbeddings
 from ai_service.infrastructure.knowledge.pgvector import PgVectorStore
 from ai_service.infrastructure.llm.anthropic import AnthropicLLM
@@ -28,18 +32,51 @@ def build_llm(settings: Settings) -> LLMPort:
     return AnthropicLLM.from_settings(settings)
 
 
-def build_retriever(settings: Settings) -> KnowledgeRetriever | None:
+def build_embeddings(settings: Settings) -> OllamaEmbeddings:
+    return OllamaEmbeddings.create(
+        settings.ollama_url,
+        model=settings.embedding_model,
+        dimensions=settings.embedding_dimensions,
+        timeout=settings.embedding_timeout_seconds,
+    )
+
+
+def build_knowledge_store(settings: Settings) -> PgVectorStore | None:
     if settings.database_url is None:
         return None
+    return PgVectorStore.create(
+        settings.database_url.get_secret_value(), settings.embedding_dimensions
+    )
+
+
+def build_retriever(
+    settings: Settings, store: PgVectorStore | None = None
+) -> KnowledgeRetriever | None:
+    store = store or build_knowledge_store(settings)
+    if store is None:
+        return None
     return KnowledgeRetriever(
-        OllamaEmbeddings.create(
-            settings.ollama_url,
-            model=settings.embedding_model,
-            dimensions=settings.embedding_dimensions,
-            timeout=settings.embedding_timeout_seconds,
-        ),
-        PgVectorStore.create(settings.database_url.get_secret_value()),
+        build_embeddings(settings),
+        store,
         RetrievalOptions(limit=settings.rag_limit, min_similarity=settings.rag_min_similarity),
+    )
+
+
+def build_document_indexer(
+    settings: Settings, store: PgVectorStore, bus: EventBusPort
+) -> IndexDocument:
+    return IndexDocument(
+        LaravelDocumentSource(
+            settings.laravel_url,
+            timeout=settings.document_download_timeout_seconds,
+            max_bytes=settings.document_max_mb * 1024 * 1024,
+        ),
+        DocumentTextExtractor(),
+        TextChunker(settings.chunk_max_chars, settings.chunk_overlap_chars),
+        build_embeddings(settings),
+        store,
+        bus,
+        batch_size=settings.embedding_batch_size,
     )
 
 

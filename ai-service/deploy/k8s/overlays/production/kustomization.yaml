@@ -28,6 +28,7 @@ configMapGenerator:
     literals:
       # Ollama de la plataforma (embeddings del RAG, mismo modelo que Laravel).
       - AI_SERVICE_OLLAMA_URL=http://ollama.aimail-platform.svc.cluster.local:11434
+      - AI_SERVICE_LARAVEL_URL=http://nginx.aimail-platform.svc.cluster.local
 
 patches:
   # Dos réplicas del worker, en nodos distintos si los hay: una puede caer o

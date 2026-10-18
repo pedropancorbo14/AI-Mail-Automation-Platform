@@ -154,6 +154,14 @@ class EmbeddingResult:
 
 
 @dataclass(frozen=True, slots=True)
+class EmbeddingBatch:
+    """Vectores de varios textos (en su orden) y las llamadas que costó."""
+
+    vectors: tuple[tuple[float, ...], ...]
+    calls: tuple[LLMCall, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class RetrievalResult:
     """Lo que encontró el RAG para un email (y lo que costó buscarlo)."""
 

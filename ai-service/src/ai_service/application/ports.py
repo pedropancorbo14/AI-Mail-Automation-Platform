@@ -9,6 +9,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
 from ai_service.application.contracts.events import (
+    DocumentIndexed,
+    DocumentIndexingFailed,
     EmailProcessed,
     EmailProcessingFailed,
 )
@@ -18,6 +20,7 @@ from ai_service.application.dto import (
     DraftContext,
     DraftConversation,
     DraftResult,
+    EmbeddingBatch,
     EmbeddingResult,
     PendingAction,
     ToolAnswer,
@@ -27,9 +30,10 @@ from ai_service.application.dto import (
 )
 from ai_service.domain.classification import Classification
 from ai_service.domain.email import Email, TenantId
-from ai_service.domain.knowledge import KnowledgeChunk
+from ai_service.domain.knowledge import DocumentSection, KnowledgeChunk, TextChunk
 
-OutgoingEvent = EmailProcessed | EmailProcessingFailed
+EmailOutgoingEvent = EmailProcessed | EmailProcessingFailed
+OutgoingEvent = EmailOutgoingEvent | DocumentIndexed | DocumentIndexingFailed
 
 
 class LLMPort(Protocol):
@@ -90,13 +94,15 @@ class EventBusPort(Protocol):
 
 
 class EmbeddingPort(Protocol):
-    """Convierte una pregunta en un vector, con el MISMO modelo que indexó los
-    documentos en Laravel (si no, la búsqueda no encuentra lo correcto)."""
+    """Convierte preguntas y fragmentos en vectores, con el MISMO modelo al
+    indexar y al buscar (si no, la búsqueda no encuentra lo correcto)."""
 
     @property
     def model(self) -> str: ...
 
     async def embed_query(self, text: str) -> EmbeddingResult: ...
+
+    async def embed_documents(self, texts: list[str], batch_size: int = 16) -> EmbeddingBatch: ...
 
 
 class VectorStorePort(Protocol):
@@ -115,6 +121,36 @@ class VectorStorePort(Protocol):
         limit: int,
         min_similarity: float,
     ) -> list[KnowledgeChunk]: ...
+
+
+class KnowledgeIndexPort(Protocol):
+    """Escritura de la base de conocimiento de ai-service, siempre por empresa.
+    Errores: `KnowledgeBaseError`."""
+
+    async def replace_document(
+        self,
+        tenant_id: TenantId,
+        document_id: int,
+        title: str,
+        chunks: Sequence[TextChunk],
+        vectors: Sequence[Sequence[float]],
+        embedding_model: str,
+    ) -> None: ...
+
+    async def delete_document(self, tenant_id: TenantId, document_id: int) -> int: ...
+
+
+class DocumentSourcePort(Protocol):
+    """Descarga el original de un documento (de Laravel). Errores:
+    `DocumentProcessingError` (definitivo) o `DocumentDownloadError` (temporal)."""
+
+    async def fetch(self, path: str) -> bytes: ...
+
+
+class TextExtractorPort(Protocol):
+    """Texto por secciones (página, apartado). Errores: `DocumentProcessingError`."""
+
+    def extract(self, content: bytes, mime_type: str) -> list[DocumentSection]: ...
 
 
 class ToolPort(Protocol):

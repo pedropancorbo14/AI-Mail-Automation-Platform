@@ -25,6 +25,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // cookies, CSRF ni throttle); las protege su propio token.
         then: function () {
             Route::get('/metrics', App\Http\Controllers\MetricsController::class)->name('metrics');
+            // Descarga del original para ai-service (ruta firmada y con caducidad).
+            Route::get('/internal/documents/{document}/content', App\Http\Controllers\DocumentContentController::class)
+                ->whereNumber('document')->middleware('signed:relative')->name('internal.documents.content');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

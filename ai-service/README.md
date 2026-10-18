@@ -920,6 +920,21 @@ búsqueda vuelve en la respuesta y Laravel la guarda en `ai_requests` como las
 demás. El servidor MCP expone `GET /capabilities?tenant_id=` (con su token)
 para saber qué herramientas tienen datos.
 
+### Indexado de documentos
+
+ai-service indexa la documentación de las empresas (antes lo hacía
+Laravel). Laravel guarda el fichero, los permisos y el estado, y publica
+`document.uploaded.v1` con una ruta firmada; el consumidor de documentos
+descarga el original (`LaravelDocumentSource`: solo `/internal/documents/…`,
+tamaño máximo, sin redirecciones), extrae el texto por secciones (pypdf para
+PDF; Markdown por encabezado; HTML; texto), lo trocea con el mismo algoritmo
+que tenía Laravel, calcula los embeddings con bge-m3 en lotes y sustituye los
+fragmentos del documento en **su propia tabla** (`ai_service.knowledge_chunks`,
+su esquema y su rol). Responde `document.indexed.v1` o
+`document.indexing_failed.v1`; los fallos temporales (descarga, Ollama,
+PostgreSQL) se reintentan. `document.deleted.v1` borra los fragmentos.
+Para pasar los documentos ya existentes: `php artisan kb:reindex --all`.
+
 ### Depuración y modo degradado
 
 - `php artisan ai:process {email} --now` publica el email y **espera** el

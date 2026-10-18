@@ -11,7 +11,7 @@ from ai_service.application.mappers import (
     processed_event,
     thread_id_for,
 )
-from ai_service.application.ports import EmailAgentPort, EventBusPort, OutgoingEvent
+from ai_service.application.ports import EmailAgentPort, EmailOutgoingEvent, EventBusPort
 from ai_service.domain.errors import DomainError
 
 Outcome = Literal["processed", "failed"]
@@ -20,7 +20,7 @@ Outcome = Literal["processed", "failed"]
 @dataclass(frozen=True, slots=True)
 class ProcessingResult:
     outcome: Outcome
-    event: OutgoingEvent
+    event: EmailOutgoingEvent
 
 
 class ProcessEmail:

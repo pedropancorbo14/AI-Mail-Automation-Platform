@@ -3,9 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Documents\DocumentService;
-use App\Documents\Enums\DocumentStatus;
 use App\Documents\Exceptions\DocumentProcessingException;
-use App\Documents\ProcessDocumentJob;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documents\StoreDocumentRequest;
 use App\Http\Resources\DocumentResource;
@@ -73,8 +71,7 @@ class DocumentController extends Controller
     {
         Gate::authorize('update', $document);
 
-        $document->forceFill(['status' => DocumentStatus::Pending, 'error' => null])->save();
-        ProcessDocumentJob::dispatch($document->tenant_id, $document->id);
+        $this->documents->reindex($document);
         $this->audit->record('document.reindexed', $document, $document->title);
 
         return new DocumentResource($document->refresh());

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/events/document.indexed.v1.schema.json",
+  "title": "document.indexed.v1",
+  "description": "ai-service lo publica cuando el documento queda indexado: Laravel lo marca como listo.",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "$ref": "common.schema.json#/$defs/event_id"
+    },
+    "event_type": {
+      "const": "document.indexed"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "occurred_at": {
+      "$ref": "common.schema.json#/$defs/occurred_at"
+    },
+    "trace_id": {
+      "$ref": "common.schema.json#/$defs/trace_id"
+    },
+    "tenant_id": {
+      "$ref": "common.schema.json#/$defs/tenant_id"
+    },
+    "document_id": {
+      "$ref": "common.schema.json#/$defs/document_id"
+    },
+    "causation_id": {
+      "description": "event_id del document.uploaded.v1 que provocó este resultado (Laravel lo compara con el último que publicó: un resultado de un indexado anterior no pisa uno nuevo).",
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/event_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "chunks_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000
+    },
+    "embedding_model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "usage": {
+      "description": "Llamadas a modelos (embeddings) del indexado; Laravel guarda una fila de ai_requests por cada una.",
+      "type": "object",
+      "properties": {
+        "calls": {
+          "$ref": "common.schema.json#/$defs/llm_calls"
+        }
+      },
+      "required": [
+        "calls"
+      ],
+      "additionalProperties": false
+    },
+    "duration_ms": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    }
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "occurred_at",
+    "trace_id",
+    "tenant_id",
+    "document_id",
+    "chunks_count",
+    "embedding_model",
+    "usage"
+  ],
+  "additionalProperties": true
+}

@@ -55,13 +55,21 @@ class Settings(BaseSettings):
     # Laravel ya recorta el cuerpo; esto es una segunda barrera (avisando al modelo).
     max_body_chars: int = Field(default=20_000, ge=1000)
 
-    # --- RAG (documentación de la empresa) ---
-    # Rol de PostgreSQL de SOLO LECTURA (ai_service_reader, con RLS por empresa).
-    # Sin URL, el grafo redacta sin documentación.
+    # --- RAG (documentación de la empresa: la indexa y la busca ai-service) ---
+    # Rol propio de PostgreSQL (ai_service_checkpoints: solo su esquema
+    # ai_service, donde están los fragmentos). Sin URL, sin RAG ni indexado.
     database_url: SecretStr | None = None
     ollama_url: str = "http://ollama:11434"
-    # El MISMO modelo con el que Laravel indexó los documentos.
+    # El MISMO modelo al indexar y al buscar.
     embedding_model: str = "bge-m3"
+    embedding_batch_size: int = Field(default=16, ge=1, le=128)
+    # Indexado: URL interna de Laravel para descargar el original (el evento solo
+    # trae la ruta firmada), tamaño máximo y troceado (los valores de Laravel).
+    laravel_url: str = "http://nginx"
+    document_max_mb: int = Field(default=20, ge=1, le=100)
+    document_download_timeout_seconds: float = Field(default=60.0, gt=0)
+    chunk_max_chars: int = Field(default=2000, ge=100)
+    chunk_overlap_chars: int = Field(default=200, ge=0)
     embedding_dimensions: int = Field(default=1024, ge=1)
     embedding_timeout_seconds: float = Field(default=30.0, gt=0)
     rag_limit: int = Field(default=5, ge=1, le=20)

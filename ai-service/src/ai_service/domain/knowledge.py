@@ -26,3 +26,21 @@ class KnowledgeChunk:
         if heading:
             return f"{self.title}, sección «{heading}»"
         return self.title
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentSection:
+    """Texto de un trozo con origen propio (una página de un PDF, un apartado
+    de un Markdown): los fragmentos nunca mezclan secciones, así la cita es exacta."""
+
+    text: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class TextChunk:
+    """Fragmento listo para indexar, con la metadata de su sección."""
+
+    text: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    estimated_tokens: int = 0

@@ -44,7 +44,9 @@ class InvalidEventError(ValueError):
     """El mensaje no cumple el contrato. Nunca se reintenta: va a la cola de errores."""
 
 
-class _Event(BaseModel):
+class _Envelope(BaseModel):
+    """Sobre común de todos los eventos (common.schema.json)."""
+
     model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
 
     event_id: uuid.UUID = Field(default_factory=uuid.uuid4)
@@ -52,7 +54,6 @@ class _Event(BaseModel):
     occurred_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     trace_id: TraceId
     tenant_id: TenantId
-    email_id: EmailId
 
     def to_json_dict(self) -> dict[str, Any]:
         """Forma exacta del contrato (alias como `from`, fechas en RFC 3339)."""
@@ -69,6 +70,12 @@ class _Event(BaseModel):
             return cls.model_validate_json(raw)
         except ValidationError as error:
             raise InvalidEventError(f"{cls.__name__} no cumple el contrato: {error}") from error
+
+
+class _Event(_Envelope):
+    """Evento de un email."""
+
+    email_id: EmailId
 
 
 class EmailReceived(_Event):
@@ -250,3 +257,65 @@ class EmailReviewResumed(_Event):
     action_id: uuid.UUID
     approved: StrictBool  # "yes" o 1 no valen: es la decisión de una persona
     reviewer_id: Annotated[int, Field(ge=1)] | None = None
+
+
+# --- Documentos de la base de conocimiento (el indexado es de ai-service) ---
+
+DocumentId = Annotated[int, Field(ge=1)]
+MimeType = Literal["application/pdf", "text/plain", "text/markdown", "text/html"]
+DocumentErrorCode = Literal[
+    "unsupported",
+    "empty",
+    "no_text",
+    "unreadable",
+    "too_large",
+    "download",
+    "embeddings",
+    "internal",
+]
+
+
+class _DocumentEvent(_Envelope):
+    document_id: DocumentId
+
+
+class DocumentUploaded(_DocumentEvent):
+    """`document.uploaded.v1`: Laravel pide indexar (o reindexar) un documento."""
+
+    event_type: Literal["document.uploaded"] = "document.uploaded"
+    title: str = Field(min_length=1, max_length=255)
+    mime_type: MimeType
+    size: int = Field(ge=1, le=104_857_600)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # Ruta RELATIVA y firmada: el host lo pone ai-service (nunca el evento).
+    download_path: str = Field(
+        max_length=2000, pattern=r"^/internal/documents/[0-9]+/content\?[A-Za-z0-9=&%._-]+$"
+    )
+
+
+class DocumentDeleted(_DocumentEvent):
+    """`document.deleted.v1`: Laravel borró el documento; fuera sus fragmentos."""
+
+    event_type: Literal["document.deleted"] = "document.deleted"
+
+
+class DocumentIndexed(_DocumentEvent):
+    """`document.indexed.v1`: documento indexado (Laravel lo marca listo)."""
+
+    event_type: Literal["document.indexed"] = "document.indexed"
+    causation_id: uuid.UUID | None = None
+    chunks_count: int = Field(ge=1, le=100_000)
+    embedding_model: str = Field(min_length=1, max_length=100)
+    usage: Usage
+    duration_ms: Annotated[int, Field(ge=0)] | None = None
+
+
+class DocumentIndexingFailed(_DocumentEvent):
+    """`document.indexing_failed.v1`: no se puede indexar (motivo para el usuario)."""
+
+    event_type: Literal["document.indexing_failed"] = "document.indexing_failed"
+    causation_id: uuid.UUID | None = None
+    error_code: DocumentErrorCode
+    message: str = Field(min_length=1, max_length=500)
+    retryable: bool
+    usage: Usage

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/events/document.uploaded.v1.schema.json",
+  "title": "document.uploaded.v1",
+  "description": "Laravel lo publica al subir o reindexar un documento de la base de conocimiento. ai-service descarga el original por la URL firmada, extrae el texto, lo trocea, calcula los embeddings y guarda los fragmentos en su propio esquema (sustituyendo los anteriores del documento).",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "$ref": "common.schema.json#/$defs/event_id"
+    },
+    "event_type": {
+      "const": "document.uploaded"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "occurred_at": {
+      "$ref": "common.schema.json#/$defs/occurred_at"
+    },
+    "trace_id": {
+      "$ref": "common.schema.json#/$defs/trace_id"
+    },
+    "tenant_id": {
+      "$ref": "common.schema.json#/$defs/tenant_id"
+    },
+    "document_id": {
+      "$ref": "common.schema.json#/$defs/document_id"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Título del documento (para citarlo: \"Título, pág. 3\")."
+    },
+    "mime_type": {
+      "type": "string",
+      "enum": [
+        "application/pdf",
+        "text/plain",
+        "text/markdown",
+        "text/html"
+      ]
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 104857600
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "download_path": {
+      "description": "Ruta RELATIVA y firmada de Laravel (caduca) para descargar el original. ai-service la une a su URL de Laravel configurada: el evento nunca elige a qué host se conecta (anti-SSRF).",
+      "type": "string",
+      "pattern": "^/internal/documents/[0-9]+/content\\?[A-Za-z0-9=&%._-]+$",
+      "maxLength": 2000
+    }
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "occurred_at",
+    "trace_id",
+    "tenant_id",
+    "document_id",
+    "title",
+    "mime_type",
+    "size",
+    "sha256",
+    "download_path"
+  ],
+  "additionalProperties": true
+}

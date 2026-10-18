@@ -1,20 +1,20 @@
-"""Búsqueda en pgvector con el rol de solo lectura y RLS reales."""
+"""Base de conocimiento de ai-service en pgvector real: su propio esquema y
+rol, todo por empresa."""
 
-import json
 import math
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import ProgrammingError
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ai_service.application.errors import KnowledgeBaseError
 from ai_service.domain.email import TenantId
+from ai_service.domain.knowledge import TextChunk
 from ai_service.infrastructure.knowledge.pgvector import PgVectorStore
 
 DIMS = 1024
+ACME, GLOBEX = TenantId(1), TenantId(2)
 
 
 def unit(*hot: int) -> list[float]:
@@ -26,177 +26,99 @@ def unit(*hot: int) -> list[float]:
     return [x / norm for x in v]
 
 
-def literal(vector: Sequence[float]) -> str:
-    return "[" + ",".join(str(x) for x in vector) + "]"
+@pytest.fixture
+async def store(knowledge_db: tuple[AsyncEngine, str]) -> AsyncIterator[PgVectorStore]:
+    _, url = knowledge_db
+    store = PgVectorStore.create(url, DIMS)
+    await store.setup()
+    yield store
+    await store.aclose()
 
 
-async def add_document(
-    admin: AsyncEngine,
-    tenant: int,
-    title: str,
-    chunks: Sequence[tuple[str, list[float], dict[str, Any]]],
-    *,
-    status: str = "ready",
+async def index(
+    store: PgVectorStore,
+    tenant: TenantId,
+    document: int,
+    *items: tuple[str, list[float]],
+    title: str = "Envíos",
     model: str = "bge-m3",
-) -> int:
-    async with admin.begin() as conn:
-        doc_id = int(
+) -> None:
+    chunks = [TextChunk(text, {"heading": text.split()[0]}) for text, _ in items]
+    await store.replace_document(tenant, document, title, chunks, [v for _, v in items], model)
+
+
+async def test_the_table_lives_in_the_ai_service_schema_and_setup_is_idempotent(
+    store: PgVectorStore, knowledge_db: tuple[AsyncEngine, str]
+) -> None:
+    await store.setup()
+    admin, _ = knowledge_db
+    async with admin.connect() as conn:
+        schemas = (
             (
                 await conn.execute(
                     text(
-                        "INSERT INTO documents (tenant_id, title, status, embedding_model) "
-                        "VALUES (:t, :title, :s, :m) RETURNING id"
-                    ),
-                    {"t": tenant, "title": title, "s": status, "m": model},
+                        "SELECT table_schema FROM information_schema.tables "
+                        "WHERE table_name = 'knowledge_chunks'"
+                    )
                 )
-            ).scalar_one()
-        )
-        for position, (content, vector, metadata) in enumerate(chunks):
-            await conn.execute(
-                text(
-                    "INSERT INTO document_chunks "
-                    "(tenant_id, document_id, position, content, metadata, embedding) "
-                    "VALUES (:t, :d, :p, :c, CAST(:meta AS jsonb), CAST(:v AS vector))"
-                ),
-                {
-                    "t": tenant,
-                    "d": doc_id,
-                    "p": position,
-                    "c": content,
-                    "meta": json.dumps(metadata),
-                    "v": literal(vector),
-                },
             )
-    return doc_id
+            .scalars()
+            .all()
+        )
+    assert schemas == ["ai_service"]
 
 
-async def run_as_reader(reader: str, sql: str) -> None:
-    engine = create_async_engine(reader)
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("SELECT set_config('app.tenant_id', '1', true)"))
-            await conn.execute(text(sql))
-    finally:
-        await engine.dispose()
+async def test_search_only_returns_chunks_of_the_tenant(store: PgVectorStore) -> None:
+    await index(store, ACME, 1, ("Canarias 14,95 €", unit(1)))
+    await index(store, GLOBEX, 1, ("Secreto de Globex", unit(1)), title="Globex")
+
+    found = await store.search(ACME, unit(1), embedding_model="bge-m3", limit=5, min_similarity=0.1)
+
+    assert [c.content for c in found] == ["Canarias 14,95 €"]
+    assert found[0].source == "Envíos, sección «Canarias»"
+    assert found[0].similarity == 1.0
 
 
-async def search(reader: str, tenant: int, vector: list[float], **kwargs: Any) -> list[Any]:
-    store = PgVectorStore.create(reader)
-    try:
-        options: dict[str, Any] = {"embedding_model": "bge-m3", "limit": 5, "min_similarity": 0.45}
-        return await store.search(TenantId(tenant), vector, **(options | kwargs))
-    finally:
-        await store.aclose()
+async def test_reindexing_replaces_the_chunks_of_the_document(store: PgVectorStore) -> None:
+    await index(store, ACME, 7, ("Viejo", unit(1)), ("Otro viejo", unit(2)))
+    await index(store, ACME, 7, ("Nuevo", unit(1)))
+
+    found = await store.search(ACME, unit(1), embedding_model="bge-m3", limit=5, min_similarity=0.0)
+
+    assert [c.content for c in found] == ["Nuevo"]
 
 
-async def test_finds_the_closest_chunks_with_their_source(
-    knowledge_db: tuple[AsyncEngine, str],
-) -> None:
-    admin, reader = knowledge_db
-    await add_document(
-        admin,
-        1,
-        "Política de devoluciones",
-        [
-            ("Tienes 30 días para devolver.", unit(1), {"heading": "Plazo para devolver"}),
-            ("Envíos a Canarias: 14,95 €.", unit(2), {"page": 3}),
-            ("Algo parecido.", unit(1, 5), {}),
-        ],
+async def test_deleting_only_touches_that_tenant_and_document(store: PgVectorStore) -> None:
+    await index(store, ACME, 7, ("De Acme", unit(1)))
+    await index(store, GLOBEX, 7, ("De Globex", unit(1)))
+
+    assert await store.delete_document(ACME, 7) == 1
+
+    assert (
+        await store.search(ACME, unit(1), embedding_model="bge-m3", limit=5, min_similarity=0.0)
+        == []
     )
-
-    results = await search(reader, 1, unit(1))
-
-    assert [r.content for r in results] == ["Tienes 30 días para devolver.", "Algo parecido."]
-    assert results[0].similarity == 1.0
-    assert results[0].source == "Política de devoluciones, sección «Plazo para devolver»"
-    assert 0.45 < results[1].similarity < 1
-
-
-async def test_never_returns_another_tenants_documents(
-    knowledge_db: tuple[AsyncEngine, str],
-) -> None:
-    admin, reader = knowledge_db
-    await add_document(admin, 1, "Acme", [("Datos de Acme", unit(1), {})])
-    await add_document(admin, 2, "Globex", [("Datos de Globex", unit(1), {})])  # mismo vector
-
-    acme = await search(reader, 1, unit(1))
-    globex = await search(reader, 2, unit(1))
-    nobody = await search(reader, 3, unit(1))
-
-    assert [r.title for r in acme] == ["Acme"]
-    assert [r.title for r in globex] == ["Globex"]
-    assert nobody == []
-
-
-async def test_row_level_security_is_a_second_barrier(
-    knowledge_db: tuple[AsyncEngine, str],
-) -> None:
-    # Aunque una consulta olvidara el WHERE tenant_id, RLS solo deja ver la empresa
-    # de la sesión; sin empresa en la sesión, nada.
-    admin, reader = knowledge_db
-    await add_document(admin, 1, "Acme", [("Datos de Acme", unit(1), {})])
-    await add_document(admin, 2, "Globex", [("Datos de Globex", unit(1), {})])
-    engine = create_async_engine(reader)
-    try:
-        async with engine.begin() as conn:
-            assert (await conn.execute(text("SELECT count(*) FROM document_chunks"))).scalar() == 0
-            await conn.execute(text("SELECT set_config('app.tenant_id', '2', true)"))
-            titles = (await conn.execute(text("SELECT title FROM documents"))).scalars().all()
-        assert titles == ["Globex"]
-    finally:
-        await engine.dispose()
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "SELECT path FROM documents",
-        "UPDATE document_chunks SET content = 'x'",
-        "DELETE FROM documents",
-        "INSERT INTO documents (tenant_id, title) VALUES (1, 'x')",
-    ],
-)
-async def test_the_reader_cannot_write_or_read_other_columns(
-    knowledge_db: tuple[AsyncEngine, str], sql: str
-) -> None:
-    _, reader = knowledge_db
-    with pytest.raises(ProgrammingError, match="permission denied"):
-        await run_as_reader(reader, sql)
-
-
-async def test_only_ready_documents_of_the_same_embedding_model(
-    knowledge_db: tuple[AsyncEngine, str],
-) -> None:
-    admin, reader = knowledge_db
-    await add_document(admin, 1, "Listo", [("ok", unit(1), {})])
-    await add_document(admin, 1, "Indexando", [("no", unit(1), {})], status="processing")
-    await add_document(admin, 1, "Otro modelo", [("no", unit(1), {})], model="nomic-embed")
-
-    assert [r.title for r in await search(reader, 1, unit(1))] == ["Listo"]
-
-
-async def test_respects_the_similarity_threshold_and_the_limit(
-    knowledge_db: tuple[AsyncEngine, str],
-) -> None:
-    admin, reader = knowledge_db
-    await add_document(
-        admin,
-        1,
-        "Doc",
-        [(f"trozo {i}", unit(1, 10 + i), {}) for i in range(6)] + [("lejos", unit(9), {})],
+    still = await store.search(
+        GLOBEX, unit(1), embedding_model="bge-m3", limit=5, min_similarity=0.0
     )
+    assert [c.content for c in still] == ["De Globex"]
 
-    assert len(await search(reader, 1, unit(1), limit=3)) == 3
-    assert [r.content for r in await search(reader, 1, unit(9))] == ["lejos"]
-    assert await search(reader, 1, unit(9), min_similarity=1.01) == []
+
+async def test_only_chunks_of_the_same_embedding_model_with_the_threshold_and_limit(
+    store: PgVectorStore,
+) -> None:
+    await index(store, ACME, 1, ("Parecido", unit(1, 2)), ("Lejano", unit(9)), ("Igual", unit(1)))
+    await index(store, ACME, 2, ("Otro modelo", unit(1)), model="otro-modelo")
+
+    found = await store.search(ACME, unit(1), embedding_model="bge-m3", limit=1, min_similarity=0.5)
+
+    assert [c.content for c in found] == ["Igual"]
+    more = await store.search(ACME, unit(1), embedding_model="bge-m3", limit=5, min_similarity=0.5)
+    assert [c.content for c in more] == ["Igual", "Parecido"]
 
 
 async def test_database_errors_become_knowledge_base_errors() -> None:
-    store = PgVectorStore.create("postgresql+psycopg://nadie:mal@127.0.0.1:1/nada")
-    try:
-        with pytest.raises(KnowledgeBaseError, match="No se pudo consultar la documentación"):
-            await store.search(
-                TenantId(1), unit(1), embedding_model="bge-m3", limit=5, min_similarity=0.4
-            )
-    finally:
-        await store.aclose()
+    store = PgVectorStore.create("postgresql+psycopg://nadie:x@127.0.0.1:1/nada", DIMS)
+    with pytest.raises(KnowledgeBaseError):
+        await store.search(ACME, unit(1), embedding_model="bge-m3", limit=5, min_similarity=0.1)
+    await store.aclose()

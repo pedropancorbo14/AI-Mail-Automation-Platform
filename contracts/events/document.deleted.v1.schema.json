@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/events/document.deleted.v1.schema.json",
+  "title": "document.deleted.v1",
+  "description": "Laravel lo publica al borrar un documento (o por retención): ai-service borra sus fragmentos.",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "$ref": "common.schema.json#/$defs/event_id"
+    },
+    "event_type": {
+      "const": "document.deleted"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "occurred_at": {
+      "$ref": "common.schema.json#/$defs/occurred_at"
+    },
+    "trace_id": {
+      "$ref": "common.schema.json#/$defs/trace_id"
+    },
+    "tenant_id": {
+      "$ref": "common.schema.json#/$defs/tenant_id"
+    },
+    "document_id": {
+      "$ref": "common.schema.json#/$defs/document_id"
+    }
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "occurred_at",
+    "trace_id",
+    "tenant_id",
+    "document_id"
+  ],
+  "additionalProperties": true
+}

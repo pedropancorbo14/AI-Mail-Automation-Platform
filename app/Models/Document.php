@@ -39,6 +39,8 @@ class Document extends Model
             'size' => 'integer',
             'chunks_count' => 'integer',
             'processed_at' => 'datetime',
+            'index_requested_at' => 'datetime',
+            'index_attempts' => 'integer',
         ];
     }
 

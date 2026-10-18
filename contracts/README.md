@@ -114,6 +114,17 @@ Campos opcionales (la v1 no se rompe):
   `search_company_documents`: nunca datos de clientes sin que la empresa lo
   decida).
 
+## Documentos de la base de conocimiento (el indexado es de ai-service)
+
+- **`document.uploaded.v1`** (Laravel → ai-service): al subir o reindexar.
+  Lleva título, tipo, tamaño, sha256 y `download_path`: una **ruta relativa
+  firmada** de Laravel (caduca a los 30 min) que ai-service une a su
+  `AI_SERVICE_LARAVEL_URL`; el evento nunca decide a qué host se conecta.
+- **`document.deleted.v1`** (Laravel → ai-service): borra sus fragmentos.
+- **`document.indexed.v1`** / **`document.indexing_failed.v1`** (ai-service →
+  Laravel): listo (nº de fragmentos, modelo y llamadas de embeddings) o error
+  con un motivo para el panel (`error_code`).
+
 ## Añadir un ejemplo
 
 Un fichero por caso, con el nombre `<evento>.v<N>--<caso>.json` (sin

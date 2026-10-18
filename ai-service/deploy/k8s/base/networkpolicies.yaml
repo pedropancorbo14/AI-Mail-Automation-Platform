@@ -65,10 +65,12 @@ spec:
               app.kubernetes.io/name: ai-mcp
       ports:
         - {protocol: TCP, port: 8100}
-    # Redis, PostgreSQL y Ollama: en producción son de la plataforma (fuera de
-    # este namespace y con IP que no conoce el manifiesto), así que se abre el
-    # puerto, no el destino. La API de Anthropic, por HTTPS.
+    # Redis, PostgreSQL, Ollama y Laravel (descarga de documentos, puerto 80):
+    # en producción son de la plataforma (fuera de este namespace y con IP que
+    # no conoce el manifiesto), así que se abre el puerto, no el destino. La API
+    # de Anthropic, por HTTPS.
     - ports:
+        - {protocol: TCP, port: 80}
         - {protocol: TCP, port: 6379}
         - {protocol: TCP, port: 5432}
         - {protocol: TCP, port: 11434}

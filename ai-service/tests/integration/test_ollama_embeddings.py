@@ -75,3 +75,38 @@ async def test_connection_errors_are_retryable_and_billed_as_failed() -> None:
 
     assert caught.value.retryable
     assert caught.value.calls[0].status == "failed"
+
+
+async def test_documents_are_embedded_in_batches_keeping_the_order() -> None:
+    batches: list[list[str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        texts = json.loads(request.content)["input"]
+        batches.append(texts)
+        vectors = [[float(len(t)), 0, 0, 0] for t in texts]
+        return httpx.Response(200, json={"embeddings": vectors, "prompt_eval_count": len(texts)})
+
+    result = await embeddings(httpx.MockTransport(handler)).embed_documents(
+        ["a", "bb", "ccc", "dddd", "eeeee"], batch_size=2
+    )
+
+    assert batches == [["a", "bb"], ["ccc", "dddd"], ["eeeee"]]
+    assert len(result.vectors) == 5
+    assert [c.purpose for c in result.calls] == ["ai_service.document_indexing"] * 3
+    assert [c.input_tokens for c in result.calls] == [2, 2, 1]
+
+
+async def test_a_failed_batch_reports_the_calls_already_made() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"embeddings": [[1, 0, 0, 0]] * 2})
+
+    with pytest.raises(LLMUnavailableError) as error:
+        await embeddings(httpx.MockTransport(handler)).embed_documents(["a", "b", "c", "d"], 2)
+
+    assert [c.status for c in error.value.calls] == ["success", "failed"]
