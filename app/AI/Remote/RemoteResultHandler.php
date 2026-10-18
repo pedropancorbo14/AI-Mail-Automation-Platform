@@ -6,8 +6,6 @@ use App\AI\Agent\Enums\AgentRunStatus;
 use App\AI\Agent\Enums\AgentStopReason;
 use App\AI\Classification\EmailClassification;
 use App\AI\Classification\EmailIntent;
-use App\AI\CostCalculator;
-use App\AI\Data\LLMUsage;
 use App\AI\Enums\AiRequestStatus;
 use App\AI\Remote\Data\StreamMessage;
 use App\AI\Remote\Exceptions\InvalidEventException;
@@ -60,7 +58,7 @@ class RemoteResultHandler
         private readonly TenantService $tenants,
         private readonly AutoSendPolicy $policy,
         private readonly ReplySender $sender,
-        private readonly CostCalculator $costs,
+        private readonly RemoteCallRecorder $recorder,
         private readonly ShadowResultHandler $shadow,
     ) {
     }
@@ -155,37 +153,12 @@ class RemoteResultHandler
     }
 
     /**
-     * Una fila de ai_requests por llamada al modelo (también las fallidas: se
-     * facturan). El coste lo calcula Laravel con sus precios (config/ai.php).
-     *
      * @param  list<array<string, mixed>>  $calls
      * @return list<AiRequest>
      */
     private function recordRequests(Email $email, array $calls): array
     {
-        return array_map(function (array $call) use ($email) {
-            $usage = new LLMUsage($call['input_tokens'], $call['output_tokens'], $call['cache_write_tokens'], $call['cache_read_tokens']);
-
-            return AiRequest::create([
-                'email_id' => $email->id,
-                'purpose' => $call['purpose'],
-                'provider' => $call['provider'],
-                'requested_model' => $call['requested_model'],
-                'model' => $call['model'],
-                'used_fallback' => $call['model'] !== $call['requested_model'],
-                'input_tokens' => $usage->inputTokens,
-                'output_tokens' => $usage->outputTokens,
-                'cache_write_tokens' => $usage->cacheWriteTokens,
-                'cache_read_tokens' => $usage->cacheReadTokens,
-                'cost_usd' => $this->costs->forUsage($call['model'], $usage),
-                'latency_ms' => $call['latency_ms'],
-                'status' => AiRequestStatus::from($call['status']),
-                'stop_reason' => $call['stop_reason'] ?? null,
-                'error' => $call['error'] ?? null,
-                'provider_request_id' => $call['provider_request_id'] ?? null,
-                'response' => ['source' => 'ai-service', 'prompt' => $call['prompt'] ?? null],
-            ]);
-        }, $calls);
+        return $this->recorder->record($email, $calls);
     }
 
     /**

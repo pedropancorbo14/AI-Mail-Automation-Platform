@@ -277,3 +277,19 @@ async def test_live_emails_are_not_shadow() -> None:
 
     assert agent.shadow_runs == [False]
     assert bus.published[0].mode == "live"
+
+
+def test_the_event_without_enabled_tools_only_allows_the_catalog_defaults() -> None:
+    from ai_service.application.contracts.events import EmailReceived
+    from ai_service.application.mappers import email_from_event
+    from tests.support.contracts import example
+
+    without = email_from_event(EmailReceived.model_validate(example("email.received.v1")))
+    assert without.enabled_tools == frozenset({"search_company_documents"})
+
+    with_tools = email_from_event(
+        EmailReceived.model_validate(example("email.received.v1--enabled-tools"))
+    )
+    assert with_tools.enabled_tools == frozenset(
+        {"get_customer_orders", "get_order", "search_company_documents"}
+    )

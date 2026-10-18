@@ -98,6 +98,22 @@ Campos opcionales (la v1 no se rompe):
   (`pending_action` y `thread_id` a null) y **Laravel nunca la aplica al
   email**: solo guarda el resultado para la comparación.
 
+## Herramientas por empresa (retirada del motor de Laravel)
+
+- **`tools/catalog.json`** (validado por `tools/catalog.schema.json`) es el
+  **catálogo único** de herramientas de la IA: nombre, etiqueta y
+  descripción para el panel, `kind` (`read` o `write`: las de escritura solo
+  se proponen y las aprueba una persona), especialista, si viene activada
+  por defecto y si necesita al cliente. Laravel lo usa para el panel y la
+  activación por empresa (`tenant_tools`); ai-service, para planificar,
+  ofrecer al modelo y ejecutar. Tests en los dos lados comprueban que
+  coinciden con lo que implementa cada uno (y con el servidor MCP).
+- **`email.received.v1` → `enabled_tools`**: las herramientas activadas en la
+  empresa (las calcula Laravel). ai-service **solo usa esas**; ausente o
+  null = solo las activadas por defecto en el catálogo (hoy
+  `search_company_documents`: nunca datos de clientes sin que la empresa lo
+  decida).
+
 ## Añadir un ejemplo
 
 Un fichero por caso, con el nombre `<evento>.v<N>--<caso>.json` (sin

@@ -10,8 +10,9 @@ from pydantic import BaseModel
 from ai_service import __version__
 from ai_service.application.ports import EmailAgentPort
 from ai_service.config import Settings, get_settings
-from ai_service.entrypoints.container import build_agent
+from ai_service.entrypoints.container import build_agent, build_retriever, build_tools
 from ai_service.entrypoints.http.debug import debug_router
+from ai_service.entrypoints.http.internal import internal_router
 from ai_service.infrastructure.observability.logging import configure_logging, get_logger
 from ai_service.infrastructure.observability.metrics import PROMETHEUS_CONTENT_TYPE, ServiceMetrics
 
@@ -68,6 +69,16 @@ def create_app(
     if settings.debug_endpoints and not settings.is_production:
         config = settings
         app.include_router(debug_router(agent_factory or (lambda: build_agent(config))))
+
+    if settings.internal_token is not None:
+        config = settings
+        retriever = build_retriever(config)
+        tools = build_tools(config)
+        app.include_router(
+            internal_router(
+                settings.internal_token.get_secret_value(), lambda: retriever, lambda: tools
+            )
+        )
 
     return app
 

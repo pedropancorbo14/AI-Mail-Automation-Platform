@@ -4430,7 +4430,7 @@ fusionar la rama, probar con Claude real (`AI_SERVICE_LLM_PROVIDER=
 anthropic`), retirar el motor de IA de Laravel cuando ai-service lo iguale,
 o seguir con las fases 14–17 de la plataforma.
 
-### Retirada del motor de IA de Laravel: EN CURSO (2026-10-18), rama `retirada-motor-laravel`
+### Retirada del motor de IA de Laravel: EN CURSO (2026-10-18), rama `fase-retirada-motor-laravel`
 
 Pedido por el usuario: **toda la lógica de la IA en el microservicio**.
 Hoy conviven dos motores que hacen lo mismo (`AI_ENGINE=laravel|python`,
@@ -4462,7 +4462,7 @@ tarea, tests en verde, CI comprobado tras cada push, documentación al día.
   - El catálogo de intenciones (`EmailIntent`) como espejo del contrato
     (ya validado por test).
 
-**Etapas y tareas** (rama propuesta: **`retirada-motor-laravel`**, creada
+**Etapas y tareas** (rama propuesta: **`fase-retirada-motor-laravel`**, creada
 desde `fase-ai-service`, que aún no está fusionada):
 
 - **R1. Paridad funcional en ai-service** (el motor de Laravel sigue por
@@ -4579,7 +4579,7 @@ más piezas en marcha en local; reindexar todos los documentos una vez.
 recomendado"):** las reglas de envío y el control de gasto se quedan en
 Laravel; el fichero a indexar llega por **URL firmada temporal**; puerta de
 calidad con Claude real antes de cambiar de motor; rama
-`retirada-motor-laravel` desde `fase-ai-service`. **Cambio en la forma de
+`fase-retirada-motor-laravel` desde `fase-ai-service`. **Cambio en la forma de
 trabajar pedido por el usuario:** cuando todo esté hecho y el CI en verde,
 **push a `main`** con todo (fast-forward; `main` es ancestro de la rama).
 
@@ -4616,6 +4616,38 @@ trabajar pedido por el usuario:** cuando todo esté hecho y el CI en verde,
   `mail:sync` parado deja el bloqueo de `ShouldBeUnique` en Redis (claves con
   `\`: borrarlas con `EVAL` y `KEYS`, `read` sin `-r` se come las barras)
 
+- [x] **R1.1 Herramientas por empresa** + **R1.2 API interna** (un commit:
+  comparten `TenantToolService`). Catálogo único
+  `contracts/tools/catalog.json` (+ esquema; 8 herramientas: búsqueda,
+  ficha, pedido, pedidos, factura, facturas, tickets —lectura— y
+  `create_support_ticket` —escritura—; por defecto solo la búsqueda).
+  `email.received.v1` con `enabled_tools` (opcional, nullable, sin
+  repetidos); ai-service: `Email.enabled_tools` (`None` = sin restricción,
+  solo tests/depuración; del evento siempre un conjunto: ausente → por
+  defecto), `allows_tool`/`allowed_tools` aplicados en el plan de cada
+  especialista, la búsqueda (`retrieve`), las herramientas del modelo y las
+  acciones. Laravel: `App\AI\ToolCatalog`, `TenantToolService::
+  enabledNames()` (catálogo + `tenant_tools`; `set()` acepta herramientas
+  del catálogo aunque Laravel no las implemente) → `EmailEventPublisher`.
+  API interna de ai-service (`entrypoints/http/internal.py`, token
+  `AI_SERVICE_INTERNAL_TOKEN`, sin él no se monta): `POST
+  /internal/v1/knowledge/search` y `GET /internal/v1/tools?tenant_id=`
+  (disponibilidad desde `GET /capabilities` del servidor MCP; `null` si no
+  responde). Laravel: `AiServiceClient` (`AI_SERVICE_URL`, token, timeout;
+  la llamada de embeddings se guarda en `ai_requests` con
+  `RemoteCallRecorder`, extraído de `RemoteResultHandler`), búsqueda del
+  panel y lista de herramientas (`catalogStatusFor`) desde ai-service con el
+  motor remoto; panel: disponibilidad desconocida se puede activar.
+  NetworkPolicy: entra Laravel por el 8000. Tests: catálogo (esquema,
+  nombres, por defecto, servidor MCP), grafo (herramienta desactivada no se
+  planifica ni se ofrece, sin búsqueda no hay RAG, sin la acción no se
+  propone), mapeador, API interna (token, 404 sin token, empresa, 503,
+  disponibilidad, MCP caído), Pest `AiServiceApiTest` y en publicación,
+  Vitest. **Entorno de la sesión:** los tests de Laravel corren ahora contra
+  un PostgreSQL con **pgvector 0.8** (`mirror.gcr.io/pgvector/pgvector:pg16`
+  en el puerto 5433): desaparecen los 25 fallos de entorno; quedan 8 que
+  solo fallan en paralelo (helpers entre archivos, nombre de la BD)
+
 **Decisiones abiertas que había (ya resueltas arriba):**
 1. Frontera: las reglas de envío y el control de gasto se quedan en
    Laravel (recomendado).
@@ -4625,7 +4657,7 @@ trabajar pedido por el usuario:** cuando todo esté hecho y el CI en verde,
 3. Puerta de calidad con Claude real (3–5 $) antes de cambiar de motor
    (recomendado) o cambiar solo con la IA simulada (no recomendado: nunca
    se ha medido ai-service con Claude).
-4. Rama nueva `retirada-motor-laravel` desde `fase-ai-service`
+4. Rama nueva `fase-retirada-motor-laravel` desde `fase-ai-service`
    (recomendado) o seguir en `fase-ai-service`.
 
 ### Pendientes anotados para más adelante

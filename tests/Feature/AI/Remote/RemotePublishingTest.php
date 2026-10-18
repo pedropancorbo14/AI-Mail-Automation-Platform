@@ -8,6 +8,7 @@ use App\Automation\ProcessEmailJob;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
 use App\Models\Tenant;
+use App\Tools\TenantToolService;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
@@ -65,6 +66,26 @@ it('publishes email.received.v1 and leaves the email waiting in processing', fun
         ->and($email->ai_requested_at)->not->toBeNull()
         ->and($email->ai_request_attempts)->toBe(1);
 });
+
+it('sends the tools the company enabled: the catalog defaults plus its own', function () {
+    processRemote($this->email);
+    [$event] = $this->streams->payloads(RECEIVED_STREAM);
+    expect($event['enabled_tools'])->toBe(['search_company_documents']);
+
+    app(TenantToolService::class)->enable($this->tenant, 'get_order');
+    app(TenantToolService::class)->enable($this->tenant, 'get_customer_invoices'); // solo en ai-service
+    app(TenantToolService::class)->disable($this->tenant, 'search_company_documents');
+    $other = remoteEmail($this->tenant, ['subject' => 'Otro']);
+    processRemote($other);
+
+    [, $event] = $this->streams->payloads(RECEIVED_STREAM);
+    app(EventContract::class)->validate('email.received.v1', $event);
+    expect($event['enabled_tools'])->toBe(['get_customer_invoices', 'get_order']);
+});
+
+it('rejects tools that are not in the catalog', function () {
+    app(TenantToolService::class)->enable($this->tenant, 'drop_database');
+})->throws(InvalidArgumentException::class);
 
 it('does not need an Anthropic key in Laravel with the remote engine', function () {
     processRemote($this->email);

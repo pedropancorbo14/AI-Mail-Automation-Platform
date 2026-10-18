@@ -65,6 +65,15 @@ class Email:
     # Indicación de una persona del equipo al reprocesar desde el panel. Es de la
     # empresa (no del cliente), pero no cambia las reglas de la decisión.
     review_instruction: str | None = None
+    # Herramientas activadas para la empresa (las decide Laravel). None = sin
+    # restricción (tests y depuración); del evento siempre llega un conjunto.
+    enabled_tools: frozenset[str] | None = None
+
+    def allows_tool(self, tool: str) -> bool:
+        return self.enabled_tools is None or tool in self.enabled_tools
+
+    def allowed_tools(self, available: frozenset[str]) -> frozenset[str]:
+        return available if self.enabled_tools is None else available & self.enabled_tools
 
     def __post_init__(self) -> None:
         if self.email_id < 1:

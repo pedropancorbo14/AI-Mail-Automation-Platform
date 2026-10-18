@@ -47,6 +47,13 @@
       "type": ["string", "null"],
       "maxLength": 2000
     },
+    "enabled_tools": {
+      "description": "Herramientas activadas para la empresa (las calcula Laravel con su configuración; ver contracts/tools/catalog.json). ai-service solo planifica, ofrece al modelo y ejecuta estas. Ausente o null = solo las activadas por defecto en el catálogo.",
+      "type": ["array", "null"],
+      "items": { "$ref": "common.schema.json#/$defs/tool_name" },
+      "uniqueItems": true,
+      "maxItems": 50
+    },
     "mode": {
       "description": "shadow: el email lo procesa el motor de Laravel y esta copia solo sirve para comparar (ver common.mode). Ausente = live.",
       "$ref": "common.schema.json#/$defs/mode",

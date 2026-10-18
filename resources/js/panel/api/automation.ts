@@ -9,7 +9,7 @@ export interface AutomationSettings {
     auto_send_intents: EmailIntent[];
     auto_send_intents_custom: boolean;
     intents: { value: EmailIntent; allows_auto_send: boolean }[];
-    tools: { tool: string; enabled: boolean; available: boolean; source: 'company' | 'default' }[];
+    tools: { tool: string; enabled: boolean; available: boolean | null; source: 'company' | 'default' }[];
     platform: {
         ai_configured: boolean;
         auto_send_enabled: boolean;

@@ -22,3 +22,5 @@ yarn-error.log
 docker-compose.override.yml
 .env.staging
 .env.production
+# Volcado de Redis si se arranca redis-server en la raíz del repo
+dump.rdb

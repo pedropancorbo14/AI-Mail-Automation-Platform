@@ -155,6 +155,23 @@ class DemoData:
             ]
         }
 
+    def availability(self, tenant_id: int) -> dict[str, bool]:
+        """Qué herramientas tienen datos para la empresa (el panel lo muestra:
+        activar una sin datos no sirve). Pedidos, facturas y ficha salen de los
+        pedidos; los tickets, del helpdesk (en la demo, toda empresa conocida)."""
+        slug = self.tenants.get(tenant_id)
+        has_orders = bool(slug and self.orders.get(slug))
+        has_helpdesk = slug is not None
+        return {
+            "get_order": has_orders,
+            "get_customer_orders": has_orders,
+            "get_customer": has_orders,
+            "get_invoice": has_orders,
+            "get_customer_invoices": has_orders,
+            "get_customer_tickets": has_helpdesk,
+            "create_support_ticket": has_helpdesk,
+        }
+
     def create_ticket(
         self,
         tenant_id: int,

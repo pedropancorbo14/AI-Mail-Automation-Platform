@@ -124,6 +124,8 @@ async def test_the_worker_waits_for_a_person_and_resumes_with_the_approval(
             "from": "marcos@cliente.test",
             "subject": "La lámpara no enciende",
             "body": "Hola, la lámpara que compré no enciende. ¿Qué hago?",
+            # La empresa tiene activados los tickets (consultarlos y proponer abrir uno).
+            "enabled_tools": ["create_support_ticket", "get_customer_tickets"],
         }
         try:
             await publish(redis, RECEIVED, received)

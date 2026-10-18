@@ -74,6 +74,8 @@ class AIServiceProvider extends ServiceProvider
 
         // Herramientas de la IA: solo las de config('ai.tools.available'), construidas desde el
         // contenedor. "scoped" por lo mismo: las herramientas guardan servicios del tenant.
+        $this->app->singleton(\App\AI\ToolCatalog::class);
+
         $this->app->scoped(ToolRegistry::class, fn ($app) => new ToolRegistry(
             array_map(fn (string $class) => $app->make($class), config('ai.tools.available', [])),
         ));

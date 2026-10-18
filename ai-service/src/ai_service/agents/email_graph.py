@@ -429,9 +429,11 @@ class LangGraphEmailAgent:
         }
 
     async def _retrieve(self, state: EmailState) -> dict[str, Any]:
-        if self._retriever is None:  # sin RAG configurado: se redacta sin documentación
-            return {"visited": ["retrieve"]}
         email = state["email"]
+        # Sin RAG configurado o con la búsqueda desactivada en la empresa: se
+        # redacta sin documentación.
+        if self._retriever is None or not email.allows_tool(SEARCH_TOOL):
+            return {"visited": ["retrieve"]}
         started = time.perf_counter()
         result = await self._retriever.retrieve(email)
         record = ToolCallRecord(
@@ -482,7 +484,10 @@ class LangGraphEmailAgent:
             return {"visited": visited}
         email = state["email"]
         plan = plan_for(
-            specialist, state["classification"], self._tools.available, primary=state["primary"]
+            specialist,
+            state["classification"],
+            email.allowed_tools(self._tools.available),
+            primary=state["primary"],
         )
         plan = plan[: self._max_tool_calls]
         context = ToolContext(tenant_id=email.tenant_id, customer=email.sender)
@@ -508,7 +513,7 @@ class LangGraphEmailAgent:
             state["email"],
             state["classification"],
             state["tool_calls"],
-            self._actions.available_actions,
+            state["email"].allowed_tools(self._actions.available_actions),
         )
         return {"proposals": [action]} if action else {}
 
@@ -559,9 +564,12 @@ class LangGraphEmailAgent:
         las mismas durante la conversación."""
         if self._max_model_rounds <= 0:
             return ()
+        email = state["email"]
         available = self._tools.available if self._tools is not None else frozenset()
         return tools_for_model(
-            state.get("specialists", ()), available, search=self._retriever is not None
+            state.get("specialists", ()),
+            email.allowed_tools(available),
+            search=self._retriever is not None and email.allows_tool(SEARCH_TOOL),
         )
 
     async def _draft(self, state: EmailState) -> dict[str, Any]:

@@ -150,5 +150,14 @@ def build_app(data: DemoData, token: str) -> ASGIApp:
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "service": "ai-mcp"})
 
+    async def capabilities(request: Request) -> JSONResponse:
+        """Disponibilidad de cada herramienta para una empresa (con token)."""
+        try:
+            tenant_id = int(request.query_params.get("tenant_id", ""))
+        except ValueError:
+            return JSONResponse({"error": "tenant_id no válido"}, status_code=422)
+        return JSONResponse({"tenant_id": tenant_id, "tools": data.availability(tenant_id)})
+
     app.add_route("/health", health, methods=["GET"])
+    app.add_route("/capabilities", capabilities, methods=["GET"])
     return BearerAuth(app, token)

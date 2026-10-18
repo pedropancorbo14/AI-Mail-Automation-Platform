@@ -151,18 +151,19 @@ onMounted(async () => {
                 <NGridItem span="24 l:12">
                     <NCard title="Herramientas del agente" size="small">
                         <NText depth="3" class="settings__hint">
-                            Lo que la IA puede consultar para preparar las respuestas. Nunca modifica nada y solo ve datos del cliente que escribe.
+                            Lo que la IA puede consultar para preparar las respuestas. Solo ve datos del cliente que escribe y nunca modifica nada por su cuenta: lo que cambia datos (abrir un ticket) solo lo propone y una persona lo aprueba.
                         </NText>
                         <div v-for="tool in settings.tools" :key="tool.tool" class="settings__tool">
                             <NSwitch
-                                :value="tool.enabled && tool.available"
-                                :disabled="!canManage || !tool.available || saving"
+                                :value="tool.enabled && tool.available !== false"
+                                :disabled="!canManage || tool.available === false || saving"
                                 :data-test="`tool-${tool.tool}`"
                                 @update:value="(enabled: boolean) => save(() => setToolEnabled(tool.tool, enabled), enabled ? 'Herramienta activada.' : 'Herramienta desactivada.')"
                             />
                             <div>
                                 <strong>{{ toolLabels[tool.tool]?.label ?? tool.tool }}</strong>
-                                <NText v-if="!tool.available" type="warning"> · sin datos configurados</NText>
+                                <NText v-if="tool.available === false" type="warning"> · sin datos configurados</NText>
+                                <NText v-else-if="tool.available === null" depth="3"> · disponibilidad desconocida (el servicio de IA no responde)</NText>
                                 <NText depth="3" class="settings__description">{{ toolLabels[tool.tool]?.description }}</NText>
                             </div>
                         </div>

@@ -52,7 +52,8 @@ class McpToolClient:
         timeout_seconds: float = 10.0,
         max_result_chars: int = 8000,
     ) -> None:
-        self._url = url.rstrip("/") + "/mcp"
+        self._base = url.rstrip("/")
+        self._url = self._base + "/mcp"
         self._token = token
         self._allowed = allowed
         self._actions = actions
@@ -66,6 +67,22 @@ class McpToolClient:
     @property
     def available_actions(self) -> frozenset[str]:
         return self._actions
+
+    async def availability(self, tenant_id: int) -> dict[str, bool] | None:
+        """Qué herramientas tienen datos para la empresa (para el panel). None si
+        el servidor MCP no responde: el panel lo muestra como desconocido."""
+        try:
+            async with httpx2.AsyncClient(
+                headers={"Authorization": f"Bearer {self._token}"}, timeout=self._timeout
+            ) as http:
+                response = await http.get(
+                    f"{self._base}/capabilities", params={"tenant_id": tenant_id}
+                )
+                response.raise_for_status()
+                tools = response.json().get("tools", {})
+        except Exception:  # red, token, servidor caído
+            return None
+        return {str(name): bool(value) for name, value in tools.items()}
 
     async def execute(self, action: PendingAction, context: ToolContext) -> ToolCallRecord:
         """Ejecuta una acción YA APROBADA por una persona (idempotente)."""

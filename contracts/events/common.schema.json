@@ -115,6 +115,11 @@
       "type": "string",
       "enum": ["orders", "billing", "support", "general"]
     },
+    "tool_name": {
+      "description": "Nombre de una herramienta de la IA (ver contracts/tools/catalog.json).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
     "thread_id": {
       "description": "Ejecución del grafo de ai-service en pausa esperando a una persona (checkpoint de LangGraph). Laravel la devuelve tal cual para reanudarla.",
       "type": "string",

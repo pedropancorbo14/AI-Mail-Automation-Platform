@@ -29,7 +29,8 @@ spec:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}
 ---
-# ai-service: entra solo Prometheus (métricas) y sale a lo que usa.
+# ai-service: entran Prometheus (métricas) y Laravel (API interna, con token)
+# y sale a lo que usa.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -45,6 +46,15 @@ spec:
           podSelector:
             matchLabels:
               app.kubernetes.io/name: prometheus
+      ports:
+        - {protocol: TCP, port: 8000}
+    # Laravel (app y workers, etiqueta app.kubernetes.io/name: laravel): API
+    # interna /internal/v1 (búsqueda del panel, herramientas por empresa).
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: laravel
       ports:
         - {protocol: TCP, port: 8000}
   egress:

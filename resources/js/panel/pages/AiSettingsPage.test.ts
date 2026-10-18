@@ -23,6 +23,8 @@ const settings: AutomationSettings = {
     tools: [
         { tool: 'search_company_documents', enabled: true, available: true, source: 'default' },
         { tool: 'get_order', enabled: false, available: true, source: 'default' },
+        { tool: 'get_invoice', enabled: false, available: false, source: 'default' },
+        { tool: 'get_customer_tickets', enabled: true, available: null, source: 'company' },
     ],
     platform: { ai_configured: true, auto_send_enabled: true, model: 'claude-opus-5-5', min_confidence: 0.75, max_auto_replies_per_address: 3 },
 };
@@ -79,5 +81,20 @@ describe('configuración de la IA', () => {
         await flushPromises();
 
         expect(wrapper.text()).toMatch(/Queja\s+· siempre una persona/);
+    });
+
+    it('distingue herramientas sin datos de disponibilidad desconocida (ai-service no responde)', async () => {
+        loginAs(['tenant.view', 'automation.manage']);
+
+        const wrapper = mount(Wrapped);
+        await flushPromises();
+
+        expect(wrapper.get('[data-test="tool-get_invoice"]').classes()).toContain('n-switch--disabled');
+        expect(wrapper.text()).toContain('sin datos configurados');
+        // Desconocida: se puede activar y se ve activada.
+        const tickets = wrapper.get('[data-test="tool-get_customer_tickets"]');
+        expect(tickets.classes()).not.toContain('n-switch--disabled');
+        expect(tickets.classes()).toContain('n-switch--active');
+        expect(wrapper.text()).toContain('disponibilidad desconocida');
     });
 });

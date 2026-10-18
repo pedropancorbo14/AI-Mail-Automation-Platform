@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\AI\Remote\AIEngine;
 use App\AI\AIService;
 use App\AI\Classification\EmailIntent;
 use App\Automation\AutomationMode;
@@ -94,7 +95,7 @@ class AutomationController extends Controller
                 'value' => $intent->value,
                 'allows_auto_send' => $intent->allowsAutoSend(),
             ], EmailIntent::cases()),
-            'tools' => array_map(fn (array $tool) => [...$tool, 'source' => $tool['source'] === 'empresa' ? 'company' : 'default'], $this->tools->statusFor($tenant)),
+            'tools' => array_map(fn (array $tool) => [...$tool, 'source' => $tool['source'] === 'empresa' ? 'company' : 'default'], AIEngine::current()->isRemote() ? $this->tools->catalogStatusFor($tenant) : $this->tools->statusFor($tenant)),
             'platform' => [
                 'ai_configured' => AIService::enabled(),
                 'auto_send_enabled' => (bool) config('ai.automation.auto_send_enabled'),

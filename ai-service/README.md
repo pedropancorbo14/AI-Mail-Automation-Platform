@@ -871,6 +871,55 @@ Kubernetes 1.33), carga la imagen recién construida, despliega el overlay
 local con sus NetworkPolicies y pasa la prueba de humo; si algo falla,
 vuelca pods, eventos y logs.
 
+## Único motor de IA (retirada del motor de Laravel)
+
+Hasta ahora Laravel tenía su propio motor de IA (Fases 5–9) y ai-service era
+opcional (`AI_ENGINE=python`). Se retira el de Laravel: **toda la lógica de
+IA vive aquí**. Laravel conserva la configuración de cada empresa, las reglas
+de envío (`AutoSendPolicy`, `ReplyContentGuard`), el control de gasto y el
+registro de costes (ver el plan en `CLAUDE.md`).
+
+### Puerta de calidad con Claude real
+
+Antes de retirar nada se comparó con Claude real (modo sombra) sobre el
+conjunto de [`evals/gate_dataset.py`](evals/gate_dataset.py) (32 correos, 14
+intenciones). El saldo de la cuenta se agotó tras 13 correos (pedidos,
+devoluciones, cancelaciones, facturas, un cobro duplicado); resultados en
+[`evals/retirement-gate-2026-10-18.json`](evals/retirement-gate-2026-10-18.json):
+
+| Medida | Resultado |
+|---|---|
+| Misma intención | 13/13 (100 %) |
+| Misma decisión | 11/13 (84,6 %): en los 2 desacuerdos **ai-service es más prudente** (umbral de confianza 0,85 frente a 0,75) |
+| Envíos automáticos de ai-service donde Laravel pedía persona | 0 |
+| Coste medio por email | 0,054 $ (ai-service) frente a 0,067 $ (Laravel), −19 % |
+
+Pendiente: completar los 19 correos sin comparar (preguntas de producto,
+soporte, quejas, spam, inyección…) con saldo, antes de producción.
+
+### Herramientas por empresa
+
+Laravel manda en cada `email.received.v1` las herramientas activadas en la
+empresa (`enabled_tools`, catálogo único en `contracts/tools/catalog.json`).
+`Email.enabled_tools` las lleva por el grafo y **todos** los puntos las
+respetan: el plan de cada especialista, la búsqueda en la documentación
+(sin `search_company_documents` no se consulta), lo que se ofrece al modelo
+al redactar y las acciones que se proponen (sin `create_support_ticket`
+activada no se propone ningún ticket). Sin `enabled_tools` en el evento,
+solo las activadas por defecto.
+
+### API interna para el panel
+
+Lo que el panel necesita al momento no puede esperar a un evento:
+`POST /internal/v1/knowledge/search` y `GET /internal/v1/tools` (ver
+[Endpoints HTTP](#endpoints-http)). Solo red interna (en Kubernetes, la
+NetworkPolicy deja entrar a los pods `app.kubernetes.io/name: laravel` por
+el 8000) y con token comparado en tiempo constante. La empresa la pone
+Laravel, que ya autenticó a la persona; la llamada de embeddings de cada
+búsqueda vuelve en la respuesta y Laravel la guarda en `ai_requests` como las
+demás. El servidor MCP expone `GET /capabilities?tenant_id=` (con su token)
+para saber qué herramientas tienen datos.
+
 ## Eventos: Redis Streams y el worker
 
 **Proceso `ai-service-worker`** (`entrypoints/worker.py`): un solo proceso
@@ -1148,6 +1197,8 @@ sirve para operar el servicio.
 | `GET /health` | *Liveness*: el proceso responde (Kubernetes lo reinicia si falla) |
 | `GET /metrics` | Métricas Prometheus |
 | `GET /docs` | Documentación OpenAPI (no en producción) |
+| `POST /internal/v1/knowledge/search` | **API interna para Laravel** (token `AI_SERVICE_INTERNAL_TOKEN`; sin él no existe): búsqueda en la documentación de una empresa para el panel ("Probar la búsqueda") y `kb:search` |
+| `GET /internal/v1/tools?tenant_id=` | **API interna**: catálogo de herramientas y si cada una tiene datos para la empresa (`null` = el servidor MCP no responde) |
 | `POST /debug/process` | Procesa un email de prueba con el modelo **real** y devuelve la decisión, el borrador y las llamadas, sin eventos. Solo con `AI_SERVICE_DEBUG_ENDPOINTS=true` y nunca en producción (cuesta dinero) |
 
 `/ready` (Redis disponible) llega con el consumidor en la tarea 1.7.

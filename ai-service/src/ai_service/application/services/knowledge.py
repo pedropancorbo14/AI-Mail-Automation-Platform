@@ -41,7 +41,9 @@ class KnowledgeRetriever:
     async def retrieve(self, email: Email) -> RetrievalResult:
         return await self.search(email.tenant_id, self.query_for(email))
 
-    async def search(self, tenant_id: TenantId, query: str) -> RetrievalResult:
+    async def search(
+        self, tenant_id: TenantId, query: str, limit: int | None = None
+    ) -> RetrievalResult:
         """Búsqueda con una pregunta propia (la del modelo al redactar, Fase 5),
         siempre en la documentación de `tenant_id`."""
         query = query.strip()[: self._options.max_query_chars]
@@ -56,7 +58,7 @@ class KnowledgeRetriever:
                 tenant_id,
                 embedding.vector,
                 embedding_model=self._embeddings.model,
-                limit=self._options.limit,
+                limit=limit or self._options.limit,
                 min_similarity=self._options.min_similarity,
             )
         except KnowledgeBaseError as error:

@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "description": "Catálogo único de las herramientas de la IA. Lo usan ai-service (planificar, ofrecer al modelo, ejecutar) y Laravel (panel y activación por empresa). Una herramienta que no esté aquí no existe para la IA.",
+  "tools": [
+    {
+      "name": "search_company_documents",
+      "label": "Buscar en la documentación",
+      "description": "Busca en la documentación de la empresa (políticas, FAQs, manuales) para responder con lo que dice y citarla.",
+      "kind": "read",
+      "specialist": "general",
+      "default_enabled": true,
+      "requires_customer": false
+    },
+    {
+      "name": "get_customer",
+      "label": "Consultar la ficha del cliente",
+      "description": "Datos básicos del cliente que escribe (nombre, número de pedidos). Nunca de otro cliente.",
+      "kind": "read",
+      "specialist": "general",
+      "default_enabled": false,
+      "requires_customer": true
+    },
+    {
+      "name": "get_order",
+      "label": "Consultar un pedido",
+      "description": "Estado, productos y envío de un pedido del cliente que escribe. Un pedido de otro cliente se trata como inexistente.",
+      "kind": "read",
+      "specialist": "orders",
+      "default_enabled": false,
+      "requires_customer": true
+    },
+    {
+      "name": "get_customer_orders",
+      "label": "Consultar los pedidos del cliente",
+      "description": "Lista de pedidos del cliente que escribe, del más reciente al más antiguo.",
+      "kind": "read",
+      "specialist": "orders",
+      "default_enabled": false,
+      "requires_customer": true
+    },
+    {
+      "name": "get_invoice",
+      "label": "Consultar una factura",
+      "description": "Importe, fecha y estado de una factura del cliente que escribe.",
+      "kind": "read",
+      "specialist": "billing",
+      "default_enabled": false,
+      "requires_customer": true
+    },
+    {
+      "name": "get_customer_invoices",
+      "label": "Consultar las facturas del cliente",
+      "description": "Lista de facturas del cliente que escribe.",
+      "kind": "read",
+      "specialist": "billing",
+      "default_enabled": false,
+      "requires_customer": true
+    },
+    {
+      "name": "get_customer_tickets",
+      "label": "Consultar los tickets de soporte",
+      "description": "Tickets de soporte abiertos y cerrados del cliente que escribe.",
+      "kind": "read",
+      "specialist": "support",
+      "default_enabled": false,
+      "requires_customer": true
+    },
+    {
+      "name": "create_support_ticket",
+      "label": "Abrir un ticket de soporte",
+      "description": "Propone abrir un ticket de soporte para el cliente. Modifica datos: nunca se hace sin que una persona lo apruebe en el panel.",
+      "kind": "write",
+      "specialist": "support",
+      "default_enabled": false,
+      "requires_customer": true
+    }
+  ]
+}

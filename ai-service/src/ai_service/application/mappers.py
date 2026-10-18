@@ -17,6 +17,7 @@ from ai_service.application.contracts.events import (
 )
 from ai_service.application.dto import AgentOutcome, LLMCall
 from ai_service.application.errors import AgentError
+from ai_service.application.services.tool_catalog import DEFAULT_ENABLED_TOOLS
 from ai_service.domain.email import Email, EmailAddress, TenantId
 
 
@@ -33,6 +34,9 @@ def email_from_event(event: EmailReceived) -> Email:
         attachment_names=tuple(event.attachment_names),
         tenant_name=event.tenant_name,
         review_instruction=(event.review_instruction or "").strip() or None,
+        enabled_tools=(
+            DEFAULT_ENABLED_TOOLS if event.enabled_tools is None else frozenset(event.enabled_tools)
+        ),
     )
 
 

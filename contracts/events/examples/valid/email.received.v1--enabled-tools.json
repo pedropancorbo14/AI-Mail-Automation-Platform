@@ -1,0 +1,22 @@
+{
+  "event_id": "0b8f6c1e-3a52-4c1f-9a77-2f1d5e4b9c10",
+  "event_type": "email.received",
+  "event_version": 1,
+  "occurred_at": "2026-10-17T10:00:00.123456Z",
+  "trace_id": "9f2c4e6a8b1d4f3e",
+  "tenant_id": 1,
+  "email_id": 42,
+  "from": "cliente@cliente.test",
+  "subject": "¿Dónde está mi pedido #45821?",
+  "body": "Hola, hice el pedido #45821 hace una semana y no me ha llegado. ¿Me decís algo?\nGracias, Juan",
+  "received_at": "2026-10-17T09:59:58Z",
+  "from_name": "Juan Pérez",
+  "body_truncated": false,
+  "attachment_names": [],
+  "tenant_name": "Empresa Demo",
+  "enabled_tools": [
+    "get_customer_orders",
+    "get_order",
+    "search_company_documents"
+  ]
+}

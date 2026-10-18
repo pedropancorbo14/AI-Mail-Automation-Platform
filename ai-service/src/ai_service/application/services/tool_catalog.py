@@ -22,6 +22,10 @@ from ai_service.domain.specialist import Specialist
 
 SEARCH_TOOL = "search_company_documents"
 
+# Activadas para una empresa que no ha configurado nada (contracts/tools/catalog.json,
+# un test comprueba que coinciden): solo la documentación, nunca datos de clientes.
+DEFAULT_ENABLED_TOOLS = frozenset({SEARCH_TOOL})
+
 
 def _schema(properties: dict[str, dict[str, str]]) -> dict[str, object]:
     return {

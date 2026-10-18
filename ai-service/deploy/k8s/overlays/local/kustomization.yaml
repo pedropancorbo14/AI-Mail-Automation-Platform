@@ -39,3 +39,4 @@ secretGenerator:
       - AI_SERVICE_REDIS_URL=redis://:local-redis-secret@redis:6379/3
       - AI_SERVICE_CHECKPOINT_DATABASE_URL=postgresql+psycopg://ai_service_checkpoints:checkpoints-secret@postgres:5432/ai_service
       - AI_SERVICE_MCP_TOKEN=local-mcp-token
+      - AI_SERVICE_INTERNAL_TOKEN=local-internal-token

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/tools/catalog.schema.json",
+  "title": "Catálogo de herramientas de la IA",
+  "type": "object",
+  "properties": {
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "$ref": "../events/common.schema.json#/$defs/tool_name" },
+          "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "kind": { "enum": ["read", "write"] },
+          "specialist": { "$ref": "../events/common.schema.json#/$defs/specialist" },
+          "default_enabled": { "type": "boolean" },
+          "requires_customer": { "type": "boolean" }
+        },
+        "required": ["name", "label", "description", "kind", "specialist", "default_enabled", "requires_customer"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["version", "tools"],
+  "additionalProperties": false
+}

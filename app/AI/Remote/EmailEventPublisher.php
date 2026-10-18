@@ -5,6 +5,7 @@ namespace App\AI\Remote;
 use App\AI\Remote\Contracts\EventStream;
 use App\Mail\Support\HtmlToText;
 use App\Models\Email;
+use App\Tools\TenantToolService;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -107,6 +108,8 @@ class EmailEventPublisher
             // Indicación de la persona al reprocesar: la respuesta la revisa siempre una persona.
             'review_instruction' => $mode === 'live' && $email->ai_review_instruction ? mb_substr($email->ai_review_instruction, 0, 2000) : null,
             'mode' => $mode,
+            // La empresa decide qué herramientas usa la IA; ai-service solo usa estas.
+            'enabled_tools' => app(TenantToolService::class)->enabledNames($email->tenant),
         ];
     }
 

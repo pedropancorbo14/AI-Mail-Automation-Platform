@@ -123,6 +123,9 @@ class Settings(BaseSettings):
     # POST /debug/process: procesa un email de prueba con el modelo real (cuesta
     # dinero). Desactivado por defecto y nunca disponible en producción.
     debug_endpoints: bool = False
+    # API interna síncrona para Laravel (búsqueda en la documentación,
+    # herramientas por empresa). Sin token no se monta (404).
+    internal_token: SecretStr | None = None
 
     @property
     def is_production(self) -> bool:

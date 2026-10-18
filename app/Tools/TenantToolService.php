@@ -2,6 +2,7 @@
 
 namespace App\Tools;
 
+use App\AI\ToolCatalog;
 use App\Models\Tenant;
 use App\Models\TenantTool;
 use App\Tenancy\TenantService;
@@ -20,7 +21,28 @@ class TenantToolService
     public function __construct(
         private readonly ToolRegistry $registry,
         private readonly TenantService $tenants,
+        private readonly ToolCatalog $catalog,
     ) {
+    }
+
+    /**
+     * Herramientas del catálogo activadas en la empresa (tenant_tools; sin
+     * fila, las activadas por defecto en el catálogo), en orden alfabético.
+     * Se mandan a ai-service en cada evento: solo usa estas.
+     *
+     * @return list<string>
+     */
+    public function enabledNames(Tenant $tenant): array
+    {
+        $settings = $this->tenants->runAs($tenant, fn () => TenantTool::pluck('enabled', 'tool')->all());
+        $defaults = $this->catalog->defaults();
+        $names = array_values(array_filter(
+            $this->catalog->names(),
+            fn (string $name) => $settings[$name] ?? in_array($name, $defaults, true),
+        ));
+        sort($names);
+
+        return $names;
     }
 
     /** @return list<AITool> Herramientas que se ofrecen a la IA en esta empresa (orden estable). */
@@ -69,6 +91,27 @@ class TenantToolService
         });
     }
 
+    /**
+     * Estado de cada herramienta del catálogo compartido con ai-service (motor
+     * remoto): activada en la empresa y, según ai-service, si tiene datos que
+     * consultar (null = ai-service no responde).
+     *
+     * @return list<array{tool: string, enabled: bool, available: bool|null, source: string}>
+     */
+    public function catalogStatusFor(Tenant $tenant): array
+    {
+        $settings = $this->tenants->runAs($tenant, fn () => TenantTool::pluck('enabled', 'tool')->all());
+        $enabled = $this->enabledNames($tenant);
+        $availability = app(\App\AI\Remote\AiServiceClient::class)->toolAvailability($tenant);
+
+        return array_map(fn (string $name) => [
+            'tool' => $name,
+            'enabled' => in_array($name, $enabled, true),
+            'available' => $availability[$name] ?? null,
+            'source' => array_key_exists($name, $settings) ? 'empresa' : 'por defecto',
+        ], $this->catalog->names());
+    }
+
     public function enable(Tenant $tenant, string $name): void
     {
         $this->set($tenant, $name, true);
@@ -81,7 +124,7 @@ class TenantToolService
 
     private function set(Tenant $tenant, string $name, bool $enabled): void
     {
-        if (! $this->registry->has($name)) {
+        if (! $this->registry->has($name) && ! $this->catalog->has($name)) {
             throw new InvalidArgumentException("La herramienta {$name} no existe.");
         }
 

@@ -92,11 +92,22 @@ class EmailReceived(_Event):
     review_instruction: str | None = Field(default=None, max_length=2000)
     # shadow: el motor de Laravel procesa el email; esto es solo para comparar (Fase 5).
     mode: Mode = "live"
+    # Herramientas activadas para la empresa (las decide Laravel). None = el
+    # evento no las trae: solo las activadas por defecto en el catálogo.
+    enabled_tools: list[ToolName] | None = Field(default=None, max_length=50)
 
     @model_validator(mode="after")
     def _shadow_without_instruction(self) -> Self:
         if self.mode == "shadow" and self.review_instruction is not None:
             raise ValueError("una copia en modo sombra no lleva indicación de una persona")
+        return self
+
+    @model_validator(mode="after")
+    def _unique_tools(self) -> Self:
+        if self.enabled_tools is not None and len(set(self.enabled_tools)) != len(
+            self.enabled_tools
+        ):
+            raise ValueError("enabled_tools no puede repetir herramientas")
         return self
 
 

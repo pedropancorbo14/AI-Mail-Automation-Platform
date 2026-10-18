@@ -162,6 +162,8 @@ services:
       # Herramientas (Fase 3): CRM, ERP y tickets en el servidor MCP.
       AI_SERVICE_MCP_URL: http://ai-mcp:8100
       AI_SERVICE_MCP_TOKEN: ${AI_SERVICE_MCP_TOKEN:-local-mcp-token}
+      # API interna síncrona para Laravel (búsqueda del panel, herramientas).
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-local-internal-token}
     # Solo local: /health, /ready, /metrics y (si se activa) /debug/process.
     ports:
       - "127.0.0.1:${AI_SERVICE_PORT:-8001}:8000"

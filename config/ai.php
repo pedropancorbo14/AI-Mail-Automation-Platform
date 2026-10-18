@@ -200,6 +200,11 @@ return [
         // Contraseña del rol de los checkpoints de LangGraph de ai-service
         // (ai_service_checkpoints: solo su esquema ai_service).
         'checkpoints_db_password' => env('AI_SERVICE_CHECKPOINTS_DB_PASSWORD', 'checkpoints-secret'),
+        // API interna síncrona de ai-service (búsqueda en la documentación para
+        // el panel, herramientas disponibles por empresa). Solo red interna.
+        'service_url' => env('AI_SERVICE_URL', 'http://ai-service:8000'),
+        'internal_token' => env('AI_SERVICE_INTERNAL_TOKEN'),
+        'http_timeout' => (int) env('AI_SERVICE_HTTP_TIMEOUT', 15),
     ],
 
     // Modo sombra (AI-Service, Fase 5): con AI_ENGINE=laravel, una muestra de
