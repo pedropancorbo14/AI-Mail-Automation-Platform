@@ -494,6 +494,18 @@ server.py (herramientas MCP, finas)
   legible ("El sistema de pedidos de la empresa no responde"), nunca como
   "no encontrado": así la respuesta no afirma algo falso y va a una persona.
 
+**API estándar** (`integrations/standard_api.py`): el proveedor genérico para
+empresas con un ERP o programa propio, y para los pedidos importados por CSV
+(Laravel la implementa). Especificación, esquemas y ejemplos en
+[`contracts/integrations/`](../contracts/integrations/README.md). Token
+Bearer, sin redirecciones, 5 s y 1 MB como máximo, cada respuesta validada
+contra el contrato (modelos Pydantic **estrictos**, equivalentes a los JSON
+Schema: un test comprueba que aceptan y rechazan los mismos ejemplos). 401/403
+→ "rechazó las credenciales"; 429/5xx/red → "no responde"; JSON o esquema no
+válidos, redirección o 404 de una lista → "respuesta no válida"; solo el 404
+de un pedido o factura concretos es "no encontrado". El token nunca aparece en
+mensajes ni logs.
+
 **Datos de demostración** (`integrations/demo.py`, `DemoIntegrations`):
 pedidos en `mcp_server/data/orders.json`, facturas derivadas de ellos (una
 `FAC-<pedido>` por pedido facturado) y tickets en `mcp_server/data/tickets.json`

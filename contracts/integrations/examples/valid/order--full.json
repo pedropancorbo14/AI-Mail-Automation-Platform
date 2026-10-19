@@ -1,0 +1,24 @@
+{
+  "number": "45821",
+  "customer_email": "cliente@cliente.test",
+  "status": "shipped",
+  "placed_at": "2026-09-28T10:12:00+02:00",
+  "customer_name": "Cliente Pérez",
+  "total": 89.9,
+  "currency": "EUR",
+  "items": [
+    {"name": "Lámpara de mesa Nórdica", "quantity": 1, "unit_price": 59.9, "sku": "LMP-200"},
+    {"name": "Pack 2 bombillas LED E27", "quantity": 2, "unit_price": 15.0, "sku": null}
+  ],
+  "shipment": {
+    "carrier": "SEUR",
+    "tracking_number": "SEU123456789ES",
+    "tracking_url": "https://www.seur.com/livetracking/?segOnlineIdentificador=SEU123456789ES",
+    "shipped_at": "2026-09-29T17:40:00+02:00",
+    "estimated_delivery": "2026-10-01T20:00:00+02:00",
+    "delivered_at": null
+  },
+  "shipping_city": "Zaragoza",
+  "shipping_country": "ES",
+  "internal_warehouse": "ZGZ-2"
+}

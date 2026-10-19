@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/integrations/invoice.v1.schema.json",
+  "title": "Factura (API estándar v1)",
+  "description": "Una factura de un cliente. Campos desconocidos se ignoran (lector tolerante).",
+  "type": "object",
+  "required": ["number", "customer_email", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "number": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "customer_email": {
+      "type": "string",
+      "pattern": "^[^@\\s]+@[^@\\s]+$",
+      "maxLength": 254
+    },
+    "status": {
+      "description": "paid = pagada, refunded = abonada (devolución), pending = pendiente de pago.",
+      "type": "string",
+      "enum": ["paid", "refunded", "pending"]
+    },
+    "order_number": { "type": ["string", "null"], "maxLength": 64 },
+    "issued_at": { "type": ["string", "null"], "format": "date-time" },
+    "total": { "type": ["number", "null"] },
+    "currency": { "type": ["string", "null"], "pattern": "^[A-Z]{3}$" }
+  }
+}

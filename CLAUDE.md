@@ -4814,12 +4814,25 @@ cada integración permite automatizar más.
 **Plan acordado con el usuario (en este orden: primero lo que sirve a
 todos):**
 1. Interfaces de proveedor en el servidor MCP (la demo, una implementación más)
-2. Importación de pedidos por **CSV** (empresas sin sistema: Excel, a mano)
-3. **API estándar de la plataforma** (especificación propia que implementa
-   el ERP o programa de la empresa; credenciales cifradas, anti-SSRF)
-4. Conectores de tiendas (WooCommerce, PrestaShop, Shopify): traductores al
+2. **API estándar de la plataforma**: especificación (`contracts/integrations/`)
+   + proveedor del servidor MCP
+3. Importación de pedidos por **CSV** en Laravel, que **implementa la API
+   estándar** para servirlos
+4. La API estándar apuntando al sistema de la empresa: configuración por
+   empresa, credenciales cifradas, anti-SSRF
+5. Conectores de tiendas (WooCommerce, PrestaShop, Shopify): traductores al
    mismo formato
-5. Herramientas para negocios sin pedidos (citas, contratos, tickets)
+6. Herramientas para negocios sin pedidos (citas, contratos, tickets)
+
+**Decisión (aprobada por el usuario, 2026-10-19, "opción B"):** los pedidos
+importados por CSV **se guardan en Laravel** (dueño de los datos de negocio:
+permisos, auditoría, retención y `data:forget-address` los cubren sin trabajo
+extra; Python sigue sin escribir tablas de Laravel) y Laravel los sirve
+**implementando la API estándar**: el servidor MCP solo necesita un proveedor
+genérico para el CSV y para el ERP propio de una empresa. Descartado guardarlos
+en ai-service (el servidor MCP necesitaría PostgreSQL y el borrado de datos
+tendría que llegar a otro servicio). Por eso la API estándar (antes tarea 3)
+va antes que el CSV.
 
 Descartado: acceso directo a la BD de la empresa (sección 13) y conector
 genérico configurable (URL y campos a mano) salvo demanda real. Valorado
@@ -4853,7 +4866,41 @@ para empresas con equipo técnico: que conecten su propio servidor MCP.
   MCP. 444 tests de Python en verde con Redis y PostgreSQL reales. **Prueba
   en el stack** (IA simulada): pedido propio 45821 → `get_order` → enviado
   solo; pedido ajeno 76540 → error → revisión humana; `ai:tools 1` muestra la
-  disponibilidad desde la capa nueva
+  disponibilidad desde la capa nueva (`6448646`)
+- [x] 2. **API estándar.** Contrato en **`contracts/integrations/`**:
+  `README.md` (especificación para el informático de la empresa: endpoints,
+  reglas, qué hace la plataforma con cada respuesta, versionado),
+  `standard-api.v1.openapi.yaml` (OpenAPI 3.1 que referencia los esquemas),
+  JSON Schema 2020-12 `schemas/{order,invoice,order-list,invoice-list}.v1`
+  (lector tolerante arriba; estados fijos —pedidos `pending_payment` …
+  `returned`, facturas `paid`/`refunded`/`pending`—, moneda ISO 4217, país
+  ISO alfa-2, nunca dirección completa, `tracking_url` solo http/https,
+  listas de máx. 100) y ejemplos `examples/{valid,invalid}/<esquema>--<caso>`.
+  Endpoints (solo lectura, relativos a la URL base de la empresa):
+  `GET /v1/orders/{number}?customer_email=` (404 = no existe o es de otro),
+  `GET /v1/orders?customer_email=&limit=` (`{"data": [...]}`, nunca 404) y
+  lo mismo para `/v1/invoices`; `Authorization: Bearer`. Python:
+  `mcp_server/integrations/standard_api.py`: `StandardApiClient` (`get_one`
+  → None en 404, `get_list`; sin redirecciones, 5 s, máx. 1 MB cortado
+  mientras se descarga, número codificado en la ruta, token nunca en
+  mensajes ni logs), `StandardApiOrders`/`StandardApiInvoices`, modelos
+  Pydantic **estrictos** (`strict=True`: "89.90" no es un importe ni un
+  número una fecha) y `standard_api_integrations(client, orders, invoices)`
+  (una empresa puede implementar solo una parte). Errores → `IntegrationError`
+  (401/403 "rechazó las credenciales", 429/5xx/red "no responde", JSON o
+  esquema no válidos, redirección o 404 de una lista "respuesta no válida").
+  La URL base de momento sale de la configuración de la plataforma; el
+  anti-SSRF llega con la configuración por empresa (tarea 4). Tests:
+  `tests/contract/test_standard_api_contract.py` (esquemas válidos, cada
+  esquema con su modelo, **los ejemplos válidos pasan y los inválidos fallan
+  en el esquema y en el modelo**, OpenAPI con los 4 endpoints y los
+  esquemas compartidos) y `tests/integration/test_standard_api.py` (petición
+  con token, cliente y número codificado, límite acotado, 404, facturas,
+  12 fallos que nunca son "no encontrado" —redirección a 169.254.169.254 no
+  seguida, importe como texto, fecha como número…—, 404 de lista, respuesta
+  enorme, token fuera de los logs, implementación parcial, y con
+  `BusinessTools` una API que no filtra por cliente no enseña datos ajenos).
+  484 tests de Python en verde con Redis y PostgreSQL reales
 
 **Lecciones del entorno (2026-10-19):** tras traer cambios con migraciones,
 el entorno local del usuario no estaba migrado desde la Fase 13 y ai-service

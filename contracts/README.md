@@ -21,6 +21,13 @@ un esquema o un modelo sin el otro, falla el CI.
 
 Definiciones comunes en [`events/common.schema.json`](events/common.schema.json).
 
+Otros contratos de esta carpeta: el catálogo de herramientas
+([`tools/`](tools/)), el SQL de los roles de ai-service
+([`database/`](database/)) y la **API estándar de datos de clientes**
+([`integrations/`](integrations/README.md)), que implementan los ERP o
+programas propios de las empresas (y la plataforma, para los pedidos
+importados por CSV) para que el servidor MCP consulte sus pedidos y facturas.
+
 ## Reglas
 
 - **Sobre común en todos:** `event_id` (UUID; quien consume no procesa dos

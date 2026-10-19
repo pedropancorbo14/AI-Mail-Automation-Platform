@@ -1,0 +1,9 @@
+{
+  "number": "F2026-0042",
+  "customer_email": "cliente@cliente.test",
+  "status": "paid",
+  "order_number": "44102",
+  "issued_at": "2026-07-14T19:05:00+02:00",
+  "total": 34.5,
+  "currency": "EUR"
+}

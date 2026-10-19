@@ -1,0 +1,6 @@
+{
+  "data": [
+    {"number": "78123", "customer_email": "laura@cliente.test", "status": "processing", "placed_at": "2026-10-05T09:31:00+02:00", "total": 129, "currency": "EUR"},
+    {"number": "74400", "customer_email": "laura@cliente.test", "status": "cancelled", "placed_at": "2026-08-02T18:00:00+02:00"}
+  ]
+}

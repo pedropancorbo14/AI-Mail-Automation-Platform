@@ -1,0 +1,98 @@
+openapi: 3.1.0
+info:
+  title: API estándar de datos de clientes (v1)
+  version: 1.0.0
+  description: |
+    API que implementa el sistema de una empresa (ERP, programa propio) para
+    que la plataforma consulte los pedidos y facturas **del cliente que
+    escribe un email**. Solo lectura. Ver `README.md` (reglas de seguridad,
+    errores, límites).
+servers:
+  - url: https://erp.ejemplo.com/aimail
+    description: URL base que configura la empresa en la plataforma (siempre HTTPS).
+security:
+  - bearer: []
+paths:
+  /v1/orders/{number}:
+    get:
+      summary: Un pedido del cliente
+      parameters:
+        - $ref: "#/components/parameters/Number"
+        - $ref: "#/components/parameters/CustomerEmail"
+      responses:
+        "200":
+          description: El pedido (debe ser de `customer_email`).
+          content:
+            application/json:
+              schema: { $ref: "schemas/order.v1.schema.json" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/orders:
+    get:
+      summary: Pedidos del cliente, del más reciente al más antiguo
+      parameters:
+        - $ref: "#/components/parameters/CustomerEmail"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Lista (vacía si no tiene pedidos; nunca 404).
+          content:
+            application/json:
+              schema: { $ref: "schemas/order-list.v1.schema.json" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/invoices/{number}:
+    get:
+      summary: Una factura del cliente
+      parameters:
+        - $ref: "#/components/parameters/Number"
+        - $ref: "#/components/parameters/CustomerEmail"
+      responses:
+        "200":
+          description: La factura (debe ser de `customer_email`).
+          content:
+            application/json:
+              schema: { $ref: "schemas/invoice.v1.schema.json" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/invoices:
+    get:
+      summary: Facturas del cliente, de la más reciente a la más antigua
+      parameters:
+        - $ref: "#/components/parameters/CustomerEmail"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Lista (vacía si no tiene facturas; nunca 404).
+          content:
+            application/json:
+              schema: { $ref: "schemas/invoice-list.v1.schema.json" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: Clave que la empresa genera en su sistema y guarda (cifrada) en la plataforma.
+  parameters:
+    Number:
+      name: number
+      in: path
+      required: true
+      description: Número tal como lo escribió el cliente, normalizado ("#45821" → "45821"), codificado en la URL.
+      schema: { type: string, maxLength: 64 }
+    CustomerEmail:
+      name: customer_email
+      in: query
+      required: true
+      description: Remitente del email, en minúsculas. Devolver SOLO datos de este cliente.
+      schema: { type: string, maxLength: 254 }
+    Limit:
+      name: limit
+      in: query
+      required: true
+      schema: { type: integer, minimum: 1, maximum: 100 }
+  responses:
+    NotFound:
+      description: No existe, o existe pero es de otro cliente (misma respuesta en los dos casos).
+    Unauthorized:
+      description: Clave ausente o incorrecta (también vale 403).
