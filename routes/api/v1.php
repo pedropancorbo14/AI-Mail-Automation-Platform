@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\KnowledgeSearchController;
 use App\Http\Controllers\Api\V1\MailConnectionController;
 use App\Http\Controllers\Api\V1\MailOAuthController;
+use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\ReviewHistoryController;
 use App\Http\Controllers\Api\V1\ReviewQueueController;
 use App\Http\Controllers\Api\V1\TenantController;
@@ -91,4 +92,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Registro de auditoría (solo lectura): quién hizo qué en la empresa.
     Route::get('/audit-logs', [AuditLogController::class, 'index']);
+
+    // Pedidos importados por CSV (Fase 14): los consulta la IA por el servidor MCP.
+    Route::get('/orders', [OrderController::class, 'index']);
+    Route::get('/orders/template', [OrderController::class, 'template']);
+    Route::post('/orders/import', [OrderController::class, 'import'])->middleware('throttle:10,1');
+    Route::delete('/orders', [OrderController::class, 'destroyAll']);
 });

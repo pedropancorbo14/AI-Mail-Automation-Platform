@@ -1,0 +1,3 @@
+﻿Nº pedido;Email;Nombre;Estado;Fecha;Total;Moneda;Productos;Transportista;Seguimiento;URL seguimiento;Fecha envío;Entrega prevista;Fecha entrega;Ciudad;País
+45821;cliente@ejemplo.com;Ana Pérez;Enviado;28/09/2026;89,90;EUR;"1x Lámpara de mesa; 2x Bombilla LED";SEUR;SEU123456789ES;https://www.seur.com/;29/09/2026;01/10/2026;;Zaragoza;ES
+45822;luis@ejemplo.com;Luis Gómez;En preparación;05/10/2026;129,00;EUR;2x Silla roble;;;;;;;Valencia;ES

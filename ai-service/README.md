@@ -506,6 +506,16 @@ válidos, redirección o 404 de una lista → "respuesta no válida"; solo el 40
 de un pedido o factura concretos es "no encontrado". El token nunca aparece en
 mensajes ni logs.
 
+**Qué tiene conectado cada empresa** (`integrations/laravel.py`,
+`LaravelIntegrations`): con `AI_SERVICE_MCP_LARAVEL_URL` y
+`AI_SERVICE_MCP_LARAVEL_TOKEN` (= `AI_SERVICE_DATA_TOKEN` de Laravel), el
+servidor MCP pregunta a `GET /internal/integrations/{empresa}` (caché de 60 s,
+`AI_SERVICE_MCP_INTEGRATIONS_CACHE_SECONDS`). Pedidos importados por CSV →
+la API estándar que sirve Laravel en `/internal/standard-api/{empresa}`; nada
+configurado → datos de demostración. Si Laravel no responde, se sigue con la
+última configuración conocida; sin ninguna, error legible (nunca "la empresa
+no tiene datos"), y `/capabilities` responde 503.
+
 **Datos de demostración** (`integrations/demo.py`, `DemoIntegrations`):
 pedidos en `mcp_server/data/orders.json`, facturas derivadas de ellos (una
 `FAC-<pedido>` por pedido facturado) y tickets en `mcp_server/data/tickets.json`
@@ -847,8 +857,8 @@ servicio se distribuyera a terceros.
   viven en memoria) y sin acceso a la clave de Anthropic ni a Redis: solo
   recibe su token.
 - **Red denegada por defecto** (NetworkPolicies): cada pod solo habla con lo
-  que necesita. `ai-mcp` solo recibe de `ai-service` y no sale a ningún
-  sitio (solo DNS); `ai-service` recibe solo de Prometheus (métricas) y sale
+  que necesita. `ai-mcp` solo recibe de `ai-service` y solo sale, por los
+  puertos 80/443, a Laravel (datos de las empresas, Fase 14); `ai-service` recibe solo de Prometheus (métricas) y sale
   a `ai-mcp`, a Redis/PostgreSQL/Ollama por puerto (en producción están fuera
   del namespace, con IP que el manifiesto no conoce) y a HTTPS (Anthropic).
   En el overlay local, Redis y PostgreSQL solo aceptan a quien los usa.

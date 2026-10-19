@@ -23,7 +23,8 @@ const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 const reviewQueue = useReviewQueueStore();
-const collapsed = ref(false);
+// En un móvil el menú abierto (220 px) dejaba casi sin sitio al contenido.
+const collapsed = ref(typeof window !== 'undefined' && window.innerWidth < 768);
 
 // Número de casos que esperan a una persona junto a "Revisión".
 onMounted(() => auth.can('emails.view') && reviewQueue.start());

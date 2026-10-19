@@ -28,6 +28,15 @@ return Application::configure(basePath: dirname(__DIR__))
             // Descarga del original para ai-service (ruta firmada y con caducidad).
             Route::get('/internal/documents/{document}/content', App\Http\Controllers\DocumentContentController::class)
                 ->whereNumber('document')->middleware('signed:relative')->name('internal.documents.content');
+            // Datos de cada empresa para el servidor MCP (Fase 14), con su token.
+            Route::middleware(App\Http\Middleware\RequireDataToken::class)->prefix('internal')->group(function () {
+                Route::get('/integrations/{tenant}', App\Http\Controllers\Internal\IntegrationsController::class)
+                    ->whereNumber('tenant');
+                Route::get('/standard-api/{tenant}/v1/orders', [App\Http\Controllers\Internal\StandardApiController::class, 'orders'])
+                    ->whereNumber('tenant');
+                Route::get('/standard-api/{tenant}/v1/orders/{number}', [App\Http\Controllers\Internal\StandardApiController::class, 'order'])
+                    ->whereNumber('tenant')->where('number', '[^/]{1,64}');
+            });
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

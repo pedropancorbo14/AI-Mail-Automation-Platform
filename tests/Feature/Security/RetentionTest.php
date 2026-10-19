@@ -153,7 +153,7 @@ it('forgets every email of an address, as sender or recipient, only in that comp
 
     $log = inTenant($this->tenant, fn () => AuditLog::sole());
     expect($log->action)->toBe('retention.address_forgotten')
-        ->and($log->metadata)->toEqual(['address_sha256' => hash('sha256', 'ana@cliente.test'), 'emails' => 2])
+        ->and($log->metadata)->toEqual(['address_sha256' => hash('sha256', 'ana@cliente.test'), 'emails' => 2, 'orders' => 0])
         ->and(json_encode($log->getAttributes()))->not->toContain('ana@');
 });
 

@@ -2,6 +2,7 @@
 
 namespace App\Security\Retention;
 
+use App\Models\CustomerOrder;
 use App\Models\Email;
 use App\Models\EmailRecipient;
 use App\Models\Tenant;
@@ -78,8 +79,14 @@ class RetentionService
     public function forgetAddress(Tenant $tenant, string $address, bool $dryRun = false): int
     {
         $address = mb_strtolower(trim($address));
+        $orders = 0;
 
-        $count = $this->tenants->runAs($tenant, function () use ($address, $dryRun) {
+        $count = $this->tenants->runAs($tenant, function () use ($address, $dryRun, &$orders) {
+            // Pedidos que la empresa importó por CSV (Fase 14): también son suyos.
+            if (! $dryRun) {
+                $orders = CustomerOrder::where('customer_email', $address)->delete();
+            }
+
             $ids = Email::whereRaw('lower(from_email) = ?', [$address])->pluck('id')
                 ->merge(EmailRecipient::whereRaw('lower(email) = ?', [$address])->pluck('email_id'))
                 ->unique();
@@ -104,9 +111,17 @@ class RetentionService
         });
 
         if (! $dryRun) {
-            $this->audit->record('retention.address_forgotten', metadata: ['address_sha256' => hash('sha256', $address), 'emails' => $count], tenantId: $tenant->id);
+            $this->audit->record('retention.address_forgotten', metadata: ['address_sha256' => hash('sha256', $address), 'emails' => $count, 'orders' => $orders], tenantId: $tenant->id);
         }
 
         return $count;
+    }
+
+    /** Pedidos importados de una dirección en la empresa (para avisar antes de borrar). */
+    public function ordersOf(Tenant $tenant, string $address): int
+    {
+        $address = mb_strtolower(trim($address));
+
+        return $this->tenants->runAs($tenant, fn () => CustomerOrder::where('customer_email', $address)->count());
     }
 }

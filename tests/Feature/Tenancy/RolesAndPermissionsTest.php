@@ -49,5 +49,5 @@ it('returns the permissions of the user in /auth/me', function () {
     $this->actingAs(User::factory()->agent()->create(), 'sanctum')
         ->getJson('/api/v1/auth/me')
         ->assertOk()
-        ->assertJsonPath('data.permissions', [Permission::DOCUMENTS_VIEW, Permission::EMAILS_REVIEW, Permission::EMAILS_VIEW, Permission::MAIL_CONNECTIONS_VIEW, Permission::TENANT_VIEW, Permission::USERS_VIEW]);
+        ->assertJsonPath('data.permissions', [Permission::DOCUMENTS_VIEW, Permission::EMAILS_REVIEW, Permission::EMAILS_VIEW, Permission::MAIL_CONNECTIONS_VIEW, Permission::ORDERS_VIEW, Permission::TENANT_VIEW, Permission::USERS_VIEW]);
 });

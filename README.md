@@ -669,9 +669,32 @@ comparten Laravel y ai-service:
 - **Los datos de un cliente solo se le enseñan a ese cliente:** empresa y
   remitente los pone el backend, nunca el modelo; un pedido de otra persona
   se responde como si no existiera.
-- **Datos de demostración:** todavía no hay integraciones reales (Fase
-  14): pedidos, facturas y tickets de "Empresa Demo" en
-  `ai-service/src/ai_service/mcp_server/data/`.
+- **De dónde salen los datos (Fase 14):** el servidor MCP pregunta a
+  Laravel qué tiene conectado cada empresa. Hoy, **pedidos importados por
+  CSV** (ver abajo); si una empresa no tiene nada, los datos de demostración
+  de "Empresa Demo" (`ai-service/src/ai_service/mcp_server/data/`). Una
+  empresa sin ningún sistema sigue funcionando: la IA responde con su
+  documentación y pasa a una persona lo que dependa de un pedido.
+
+### Pedidos importados por CSV (Fase 14)
+
+Para empresas sin tienda online conectada (un Excel, un programa propio):
+**Pedidos → Importar CSV** en el panel (permiso `orders.manage`; los agentes
+los ven con `orders.view`), con plantilla descargable.
+
+- **Formato pensado para un Excel en español:** separador `;` o `,`, UTF-8
+  o Windows-1252, cabeceras en español o en inglés ("Nº pedido", "Email",
+  "Estado"…), estados en español ("Enviado"), decimales con coma, fechas
+  `dd/mm/aaaa` y productos como `2x Silla roble; 1x Mesa`.
+- **Todo o nada:** con una fila mal no se importa nada y se dice qué falla
+  en cada fila. Volver a subir el fichero **actualiza por número de pedido**.
+- **Cómo llegan a la IA:** Laravel guarda los pedidos (tabla
+  `customer_orders`, por empresa) y los sirve con la **API estándar**
+  ([`contracts/integrations/`](contracts/integrations/README.md)) en una ruta
+  interna protegida con `AI_SERVICE_DATA_TOKEN`; el servidor MCP la consulta
+  con el mismo proveedor que usará el ERP propio de una empresa.
+- Importar y borrar quedan en la auditoría (sin datos de clientes), y
+  `data:forget-address` borra también los pedidos de esa persona.
 
 ```bash
 docker compose exec app php artisan ai:tools 1                      # estado (y si tienen datos, según ai-service)
@@ -823,6 +846,7 @@ por Laravel en `/`. Cada empresa ve y gestiona **solo lo suyo**.
 | Detalle del email | Mensaje (texto o formato original aislado), adjuntos, clasificación, **respuesta propuesta** con los motivos de revisión, **historial de estados** y **lo que hizo la IA** (cada paso y cada herramienta con lo que consultó y lo que vio) | `emails.view` |
 | **Buzones** | Añadir IMAP (con **autodetección**), conectar Microsoft 365 / Gmail (OAuth), probar, editar, desactivar, eliminar | `mail_connections.view` / `.manage` |
 | **Documentación** | Subir, reindexar y eliminar documentos (se refresca mientras indexa) y **probar la búsqueda**: lo que encontraría la IA, con su fuente | `documents.view` / `.manage` |
+| **Pedidos** | Importar pedidos por CSV (plantilla, errores por fila, todo o nada), buscar y borrarlos ([Pedidos por CSV](#pedidos-importados-por-csv-fase-14)) | `orders.view` / `.manage` |
 | **Ajustes de la IA** | Modo (`off` / `draft` / `auto`, con confirmación), intenciones que se responden solas, herramientas del agente | `tenant.view` / `automation.manage` |
 | **Empresa y usuarios** | Nombre de la empresa, usuarios y roles | `tenant.view`, `users.*` |
 
@@ -1418,6 +1442,10 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | POST | `/emails/{id}/review-checks` | `emails.review` | Avisos de las comprobaciones automáticas sobre un texto (`body`, `reply_id` opcional) |
 | GET | `/reviews` | `emails.view` | Historial de decisiones (filtros `decision`, `user`, `from`, `to`; paginado) |
 | GET | `/reviews/summary?days=7\|30\|90` | `emails.view` | Resumen: pendientes, esperas, propuestas de la IA aprobadas sin cambios, por persona |
+| GET | `/orders?q=` | `orders.view` | Pedidos importados por CSV (búsqueda por número, email o nombre) |
+| GET | `/orders/template` | `orders.manage` | Plantilla CSV para rellenar en Excel |
+| POST | `/orders/import` | `orders.manage` | Importa un CSV (`file`): todo o nada; 422 con `rows` (errores por fila) |
+| DELETE | `/orders` | `orders.manage` | Borra todos los pedidos importados de la empresa |
 
 ```bash
 # Login

@@ -199,6 +199,10 @@ services:
     command: ai-service-mcp
     environment:
       AI_SERVICE_MCP_TOKEN: ${AI_SERVICE_MCP_TOKEN:-local-mcp-token}
+      # Qué tiene conectado cada empresa y sus pedidos importados por CSV
+      # (Fase 14): los lee de Laravel a través de nginx, con el token de datos.
+      AI_SERVICE_MCP_LARAVEL_URL: http://nginx
+      AI_SERVICE_MCP_LARAVEL_TOKEN: ${AI_SERVICE_DATA_TOKEN:-local-data-token}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=3).status == 200 else 1)"]
       interval: 15s

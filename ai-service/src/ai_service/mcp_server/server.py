@@ -180,7 +180,12 @@ def build_app(tools: BusinessTools, token: str) -> ASGIApp:
             tenant_id = int(request.query_params.get("tenant_id", ""))
         except ValueError:
             return JSONResponse({"error": "tenant_id no válido"}, status_code=422)
-        return JSONResponse({"tenant_id": tenant_id, "tools": await tools.availability(tenant_id)})
+        try:
+            availability = await tools.availability(tenant_id)
+        except IntegrationError as error:
+            # Laravel lo trata como "disponibilidad desconocida".
+            return JSONResponse({"error": str(error)}, status_code=503)
+        return JSONResponse({"tenant_id": tenant_id, "tools": availability})
 
     app.add_route("/health", health, methods=["GET"])
     app.add_route("/capabilities", capabilities, methods=["GET"])

@@ -50,6 +50,12 @@ class Permission extends Model
      */
     public const string EMAILS_REVIEW = 'emails.review';
 
+    /** Ver los pedidos que la empresa ha importado (CSV). */
+    public const string ORDERS_VIEW = 'orders.view';
+
+    /** Importar pedidos por CSV y borrar los importados. */
+    public const string ORDERS_MANAGE = 'orders.manage';
+
     /**
      * Catálogo completo (nombre => descripción). Cada permiso se registra
      * como Gate en AppServiceProvider y se guarda en BD con el seeder.
@@ -70,6 +76,8 @@ class Permission extends Model
         self::AUDIT_VIEW => 'Ver el registro de auditoría',
         self::EMAILS_DELETE => 'Borrar emails y sus datos',
         self::EMAILS_REVIEW => 'Revisar, aprobar y responder emails',
+        self::ORDERS_VIEW => 'Ver los pedidos importados',
+        self::ORDERS_MANAGE => 'Importar pedidos por CSV y borrarlos',
     ];
 
     /** @return BelongsToMany<Role, $this> */

@@ -33,13 +33,15 @@ class ForgetAddress extends Command
 
         if (! $this->option('force')) {
             $count = $retention->forgetAddress($tenant, $address, dryRun: true);
-            $this->info("{$count} emails de {$address} en «{$tenant->name}». Repite con --force para borrarlos.");
+            $orders = $retention->ordersOf($tenant, $address);
+            $this->info("{$count} emails de {$address} y {$orders} pedidos importados en «{$tenant->name}». Repite con --force para borrarlos.");
 
             return self::SUCCESS;
         }
 
+        $orders = $retention->ordersOf($tenant, $address);
         $count = $retention->forgetAddress($tenant, $address);
-        $this->info("Borrados {$count} emails de {$address} en «{$tenant->name}» (adjuntos y contenido de la IA incluidos).");
+        $this->info("Borrados {$count} emails de {$address} en «{$tenant->name}» (adjuntos y contenido de la IA incluidos) y {$orders} pedidos importados.");
 
         return self::SUCCESS;
     }

@@ -4900,7 +4900,58 @@ para empresas con equipo técnico: que conecten su propio servidor MCP.
   seguida, importe como texto, fecha como número…—, 404 de lista, respuesta
   enorme, token fuera de los logs, implementación parcial, y con
   `BusinessTools` una API que no filtra por cliente no enseña datos ajenos).
-  484 tests de Python en verde con Redis y PostgreSQL reales
+  484 tests de Python en verde con Redis y PostgreSQL reales (`f1d1d27`)
+- [x] 3. **Pedidos por CSV en Laravel, servidos con la API estándar.**
+  Tabla **`customer_orders`** (tenant restrict, único tenant+número, índice
+  tenant+email+fecha; mismos campos que `order.v1`, email en minúsculas,
+  `items` jsonb) y modelo `CustomerOrder` (`BelongsToTenant`, nada asignable
+  en masa, `toStandardApi()`). **`App\ERP\Csv\OrderCsvImporter`**: separador
+  `;`/`,`/tab detectado, UTF-8 (con BOM) o Windows-1252, cabeceras en inglés
+  o español normalizadas (`Str::ascii`: "Nº pedido" → `no_pedido`), estados
+  en español, importes "89,90"/"1.234,56 €"/"1,234.56", fechas ISO o
+  `dd/mm/aaaa`/`j/n/Y` sin desbordes (31/02 no vale), productos "2x Silla;
+  1x Mesa", http(s) en el seguimiento, país y moneda ISO; **todo o nada** con
+  errores por fila (máx. 50 devueltos, todos contados; repetidos en el
+  fichero), máx. 20.000 filas y 5 MB (`config/integrations.php`); **upsert
+  por número** (cuenta nuevos y actualizados). Permisos **`orders.view`**
+  (todos) y **`orders.manage`** (owner, admin). API del panel: `GET
+  /orders?q=` (con `meta.total_orders`/`last_imported_at`), `GET
+  /orders/template` (`resources/templates/pedidos-plantilla.csv`, **un test
+  la importa tal cual**), `POST /orders/import` (throttle 10/min; 422 con
+  `rows` y `total_row_errors`), `DELETE /orders`. Auditoría
+  `orders.imported` (fichero y recuentos, sin datos de clientes) y
+  `orders.deleted`, categoría `orders`. `data:forget-address` y
+  `RetentionService::forgetAddress` borran también sus pedidos (`orders` en
+  la auditoría). **Rutas internas** (fuera de web/api, middleware
+  `RequireDataToken`: `AI_SERVICE_DATA_TOKEN`, 404 sin él):
+  `GET /internal/integrations/{tenant}` (`orders: {type: csv}` si tiene
+  pedidos importados; empresa desactivada → nada) y la API estándar en
+  `/internal/standard-api/{tenant}/v1/orders[/{number}]` (solo del
+  `customer_email`; ajeno = 404 igual que inexistente; 400 sin cliente o con
+  `limit` fuera de 1–100). **Servidor MCP:**
+  `integrations/laravel.py` (`LaravelIntegrations`: consulta la
+  configuración con caché por empresa —60 s—, `csv` → `StandardApiOrders`
+  sobre Laravel, tipo desconocido ignorado, nada configurado → respaldo con
+  los datos de demostración; Laravel caído → última configuración conocida o
+  `IntegrationError`, nunca "sin datos"); `McpSettings.laravel_url/
+  laravel_token/integrations_cache_seconds` y `build_resolver()`;
+  `/capabilities` responde 503 si no sabe qué tiene la empresa. Compose:
+  `ai-mcp` con `AI_SERVICE_MCP_LARAVEL_URL=http://nginx` y el token de
+  datos; NetworkPolicy de `ai-mcp` con salida a 80/443. Panel: página
+  **Pedidos** (`/pedidos`, menú con icono de carrito): importar, plantilla,
+  errores por fila, búsqueda, paginación, borrar todos; `ApiError.body`
+  (cuerpo completo del error). **Arreglado de paso:** el menú lateral
+  arrancaba abierto también en un móvil (220 px de 390): ahora plegado por
+  debajo de 768 px. Tests: Pest `tests/Feature/ERP/` (importador 16,
+  API del panel 9, API estándar interna 14 —respuestas validadas con los
+  **mismos JSON Schema y ejemplos** que Python—), Python
+  `test_laravel_integrations.py` (9) y Vitest `OrdersPage.test.ts` (3).
+  **Prueba en el stack** (IA simulada): CSV importado por la API → Elena
+  pregunta por su pedido 90001 → `get_order` desde Laravel → **enviada sola**
+  con MRW y el seguimiento; otro cliente pide el 90001 → "no hay ningún
+  pedido" → revisión humana; auditoría con la importación y el borrado.
+  Panel revisado con Chromium (escritorio y móvil). Los pedidos de prueba se
+  borraron: "Empresa Demo" vuelve a los datos de demostración
 
 **Lecciones del entorno (2026-10-19):** tras traer cambios con migraciones,
 el entorno local del usuario no estaba migrado desde la Fase 13 y ai-service

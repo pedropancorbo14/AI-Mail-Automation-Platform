@@ -14,6 +14,7 @@ export const categoryLabels: Record<AuditCategory, string> = {
     document: 'Documentación',
     email: 'Emails',
     retention: 'Retención de datos',
+    orders: 'Pedidos',
 };
 
 const actionLabels: Record<string, string> = {
@@ -48,6 +49,8 @@ const actionLabels: Record<string, string> = {
     'email.assigned': 'Cambió a quién está asignado un email',
     'retention.emails_purged': 'Borrado automático de emails antiguos',
     'retention.address_forgotten': 'Borró todos los emails de una persona (derecho de supresión)',
+    'orders.imported': 'Importó pedidos desde un CSV',
+    'orders.deleted': 'Borró todos los pedidos importados',
 };
 
 /** Acciones desconocidas (de una versión más nueva) se muestran tal cual. */
@@ -128,6 +131,13 @@ export function describeMetadata(entry: AuditLogEntry): string[] {
         lines.push(`Tokens de API revocados: ${meta.revoked_count}`);
     } else if (entry.action.startsWith('retention.') && meta.emails !== undefined) {
         lines.push(`Emails borrados: ${meta.emails}${meta.days ? ` (más de ${meta.days} días)` : ''}`);
+        if (Number(meta.orders) > 0) {
+            lines.push(`Pedidos importados borrados: ${meta.orders}`);
+        }
+    } else if (entry.action === 'orders.imported') {
+        lines.push(`${meta.filename ?? 'CSV'}: ${meta.created} nuevos, ${meta.updated} actualizados`);
+    } else if (entry.action === 'orders.deleted') {
+        lines.push(`Pedidos borrados: ${meta.orders}`);
     } else if (entry.action === 'email.reply_approved') {
         lines.push(meta.edited ? 'Con cambios en el texto' : 'Tal cual la propuso la IA');
     } else if (entry.action === 'email.assigned') {

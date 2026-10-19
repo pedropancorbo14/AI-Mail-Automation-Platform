@@ -12,6 +12,8 @@ export class ApiError extends Error {
         public readonly status: number,
         message: string,
         public readonly errors: FieldErrors = {},
+        /** Cuerpo completo de la respuesta (p. ej. errores por fila de un CSV). */
+        public readonly body: Record<string, unknown> = {},
     ) {
         super(message);
         this.name = 'ApiError';
@@ -124,6 +126,7 @@ export async function request<T>(method: Method, path: string, options: { body?:
             response.status,
             data.message ?? defaultMessages[response.status] ?? 'Ha ocurrido un error. Inténtalo de nuevo.',
             data.errors ?? {},
+            data,
         );
     }
 

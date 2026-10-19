@@ -23,3 +23,9 @@ class McpSettings(BaseSettings):
     tickets_file: Path = _DATA / "tickets.json"
     # Empresa (tenant_id de los eventos) → clave de los ficheros de demostración.
     demo_tenants: dict[int, str] = Field(default_factory=lambda: {1: "empresa-demo"})
+    # Laravel: qué tiene conectado cada empresa y los pedidos importados por CSV
+    # (Fase 14). Sin URL, solo los datos de demostración. Con URL, el token es
+    # obligatorio (AI_SERVICE_DATA_TOKEN en Laravel).
+    laravel_url: str | None = None
+    laravel_token: SecretStr | None = None
+    integrations_cache_seconds: float = Field(default=60.0, ge=0)

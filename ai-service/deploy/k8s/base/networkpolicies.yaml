@@ -1,6 +1,6 @@
 # Red del namespace: todo denegado salvo lo que se abre aquí. Si un pod se
 # ve comprometido (p. ej. por una dependencia), no puede hablar con nada que
-# no necesite: ai-mcp solo recibe de ai-service y no sale a ningún sitio.
+# no necesite: ai-mcp solo recibe de ai-service y solo sale a Laravel.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -76,7 +76,9 @@ spec:
         - {protocol: TCP, port: 11434}
         - {protocol: TCP, port: 443}
 ---
-# ai-mcp: solo ai-service puede llamarlo; no sale a ningún sitio (solo DNS).
+# ai-mcp: solo ai-service puede llamarlo. Sale solo a Laravel (qué tiene
+# conectado cada empresa y sus pedidos importados, Fase 14): fuera de este
+# namespace en producción, así que se abre el puerto (80/443), no el destino.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -85,7 +87,7 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/name: ai-mcp
-  policyTypes: [Ingress]
+  policyTypes: [Ingress, Egress]
   ingress:
     - from:
         - podSelector:
@@ -93,3 +95,7 @@ spec:
               app.kubernetes.io/name: ai-service
       ports:
         - {protocol: TCP, port: 8100}
+  egress:
+    - ports:
+        - {protocol: TCP, port: 80}
+        - {protocol: TCP, port: 443}
