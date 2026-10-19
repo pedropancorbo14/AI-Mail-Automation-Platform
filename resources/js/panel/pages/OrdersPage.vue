@@ -27,6 +27,7 @@ import {
     type RowError,
 } from '@/api/orders';
 import StandardApiCard from '@/components/orders/StandardApiCard.vue';
+import WooCommerceCard from '@/components/orders/WooCommerceCard.vue';
 import { formatDateTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
 
@@ -193,6 +194,7 @@ const pagination = computed(() => ({
             />
         </NCard>
 
+        <WooCommerceCard />
         <StandardApiCard />
     </NSpace>
 </template>

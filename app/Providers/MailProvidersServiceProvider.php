@@ -59,11 +59,11 @@ class MailProvidersServiceProvider extends ServiceProvider
             return new MailHostGuard((bool) config('mail_connections.allow_private_hosts') && $this->app->environment('local', 'testing'));
         });
 
-        // API estándar del sistema de una empresa (Fase 14): misma regla de
-        // hosts privados (y HTTP sin TLS) solo en local y en los tests.
-        $this->app->bind(\App\ERP\StandardApi\StandardApiTester::class, fn () => new \App\ERP\StandardApi\StandardApiTester(
+        // Direcciones de los sistemas que conecta una empresa (API estándar,
+        // WooCommerce; Fase 14): misma regla de hosts privados (y HTTP sin TLS)
+        // solo en local y en los tests.
+        $this->app->bind(\App\ERP\Connections\CompanyUrl::class, fn () => new \App\ERP\Connections\CompanyUrl(
             $this->app->make(MailHostGuard::class),
-            $this->app->make(\App\ERP\StandardApi\StandardApiContract::class),
             (bool) config('mail_connections.allow_private_hosts') && $this->app->environment('local', 'testing'),
         ));
     }

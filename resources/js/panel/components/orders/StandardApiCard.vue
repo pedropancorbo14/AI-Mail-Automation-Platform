@@ -21,7 +21,7 @@ import {
     getStandardApi,
     saveStandardApi,
     testStandardApi,
-    type StandardApiConnection,
+    type IntegrationConnection,
     type StandardApiForm,
 } from '@/api/integrations';
 import { formatDateTime } from '@/utils/format';
@@ -31,7 +31,7 @@ const auth = useAuthStore();
 const message = useMessage();
 const canManage = computed(() => auth.can('orders.manage'));
 
-const connection = ref<StandardApiConnection | null>(null);
+const connection = ref<IntegrationConnection | null>(null);
 const editing = ref(false);
 const busy = ref(false);
 const errors = ref<Record<string, string | undefined>>({});

@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * Sistema propio conectado por una empresa (hoy, la API estándar). La clave
  * va cifrada (`credentials`, cast `encrypted`) y nunca sale en JSON. Nada es
- * asignable en masa: lo escribe App\ERP\StandardApi\StandardApiConnectionService.
+ * asignable en masa: lo escribe App\ERP\Connections\IntegrationService.
  */
 #[Hidden(['credentials'])]
 class TenantIntegration extends Model
@@ -18,6 +18,8 @@ class TenantIntegration extends Model
     use BelongsToTenant;
 
     public const string STANDARD_API = 'standard_api';
+
+    public const string WOOCOMMERCE = 'woocommerce';
 
     protected $guarded = ['*'];
 

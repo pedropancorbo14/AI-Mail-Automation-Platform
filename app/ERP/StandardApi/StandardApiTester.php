@@ -2,7 +2,8 @@
 
 namespace App\ERP\StandardApi;
 
-use App\Mail\Security\MailHostGuard;
+use App\ERP\Connections\CompanyUrl;
+use App\ERP\Connections\ConnectionTestResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -12,10 +13,9 @@ use Illuminate\Support\Facades\Log;
  * pedidos (y de facturas, si la implementa) de un cliente que no existe y
  * comprueba que responde 200 con el formato del contrato.
  *
- * La URL la escribe la empresa (anti-SSRF): HTTPS, host comprobado con
- * MailHostGuard y conexión fijada a esas IPs (CURLOPT_RESOLVE: sin DNS
- * rebinding), sin redirecciones, 5 s y 1 MB como máximo. La clave nunca
- * aparece en mensajes ni logs.
+ * La URL la escribe la empresa (anti-SSRF, CompanyUrl): HTTPS, host
+ * comprobado y conexión fijada a esa IP, sin redirecciones, 5 s y 1 MB como
+ * máximo. La clave nunca aparece en mensajes ni logs.
  */
 class StandardApiTester
 {
@@ -25,36 +25,20 @@ class StandardApiTester
     private const int MAX_BYTES = 1024 * 1024;
 
     public function __construct(
-        private readonly MailHostGuard $guard,
+        private readonly CompanyUrl $url,
         private readonly StandardApiContract $contract,
-        private readonly bool $allowPrivateHosts = false,
     ) {
     }
 
-    /** Motivo por el que la URL no se puede usar, o null si vale. */
     public function rejectUrl(string $url): ?string
     {
-        $parts = parse_url($url);
-
-        if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
-            return 'La dirección no es válida.';
-        }
-        if (isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
-            return 'La dirección no puede llevar usuario, contraseña, parámetros ni "#": la clave va aparte.';
-        }
-        $scheme = strtolower($parts['scheme']);
-        // HTTP solo en local (un ERP de pruebas en la red de Docker).
-        if ($scheme !== 'https' && ! ($scheme === 'http' && $this->allowPrivateHosts)) {
-            return 'La dirección tiene que empezar por https://.';
-        }
-
-        return $this->guard->reject($parts['host']);
+        return $this->url->reject($url);
     }
 
-    public function test(string $baseUrl, string $token, bool $orders, bool $invoices): StandardApiTestResult
+    public function test(string $baseUrl, string $token, bool $orders, bool $invoices): ConnectionTestResult
     {
         if ($reason = $this->rejectUrl($baseUrl)) {
-            return StandardApiTestResult::failed($reason);
+            return ConnectionTestResult::failed($reason);
         }
 
         $checks = [];
@@ -65,36 +49,31 @@ class StandardApiTester
         }
 
         if ($checks === []) {
-            return StandardApiTestResult::failed('Indica qué partes de la API tiene tu sistema (pedidos o facturas).');
+            return ConnectionTestResult::failed('Indica qué partes de la API tiene tu sistema (pedidos o facturas).');
         }
 
         $errors = array_values(array_filter($checks));
 
         return $errors === []
-            ? StandardApiTestResult::passed(array_keys($checks))
-            : StandardApiTestResult::failed(implode(' ', $errors), $checks);
+            ? ConnectionTestResult::passed(array_keys($checks))
+            : ConnectionTestResult::failed(implode(' ', $errors), $checks);
     }
 
     /** null = correcto; si no, el motivo. */
     private function check(string $baseUrl, string $token, string $resource, string $system, string $schema): ?string
     {
         $url = rtrim($baseUrl, '/') . "/v1/{$resource}";
-        $host = (string) parse_url($url, PHP_URL_HOST);
-        $scheme = (string) parse_url($url, PHP_URL_SCHEME);
-        $port = parse_url($url, PHP_URL_PORT) ?: ($scheme === 'http' ? 80 : 443);
-        $ips = $this->guard->allowedIps($host);
-        $curl = $ips === [] ? [] : [CURLOPT_RESOLVE => ["{$host}:{$port}:{$ips[0]}"]];
 
         try {
             $response = Http::timeout(5)
                 ->connectTimeout(3)
-                ->withOptions(['allow_redirects' => false, 'curl' => $curl])
+                ->withOptions(['allow_redirects' => false, 'curl' => $this->url->pinned($url)])
                 ->withToken($token)
                 ->accept('application/json')
                 ->withUserAgent('ai-mail-automation/1')
                 ->get($url, ['customer_email' => self::PROBE_EMAIL, 'limit' => 1]);
         } catch (ConnectionException $e) {
-            Log::info('API estándar: sin conexión', ['host' => $host, 'error' => class_basename($e)]);
+            Log::info('API estándar: sin conexión', ['host' => parse_url($url, PHP_URL_HOST), 'error' => class_basename($e)]);
 
             return "El sistema de {$system} no responde (comprueba la dirección y que sea accesible desde internet).";
         }

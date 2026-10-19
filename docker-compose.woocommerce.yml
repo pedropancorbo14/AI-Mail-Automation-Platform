@@ -1,0 +1,69 @@
+# Tienda WooCommerce de pruebas (Fase 14): WordPress + WooCommerce + MariaDB
+# en la red de la plataforma, para probar el conector de punta a punta sin
+# una tienda real. No se arranca con el stack normal:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.woocommerce.yml up -d woocommerce
+#   docker compose -f docker-compose.yml -f docker-compose.woocommerce.yml run --rm woocommerce-cli
+#
+# La tienda queda en http://woocommerce (solo red interna) con pedidos de los
+# clientes de prueba y unas claves de API de solo lectura (las imprime el
+# script). Ver README, "Probar WooCommerce en local".
+
+services:
+  woocommerce-db:
+    image: mariadb:11.4.7
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - woocommerce-db:/var/lib/mysql
+    networks:
+      - app-net
+
+  woocommerce:
+    image: wordpress:6.8.2-php8.3-apache
+    restart: unless-stopped
+    depends_on:
+      - woocommerce-db
+    environment:
+      WORDPRESS_DB_HOST: woocommerce-db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      # Solo para esta tienda de pruebas: WooCommerce acepta las claves de API
+      # como Basic únicamente por HTTPS (por HTTP exige OAuth 1.0a). Como en la
+      # red de Docker no hay TLS, se le hace creer que la petición es HTTPS.
+      # Una tienda real tiene HTTPS de verdad.
+      WORDPRESS_CONFIG_EXTRA: |
+        $$_SERVER['HTTPS'] = 'on';
+        define('WP_HOME', 'http://woocommerce');
+        define('WP_SITEURL', 'http://woocommerce');
+    volumes:
+      - woocommerce-html:/var/www/html
+    networks:
+      - app-net
+
+  woocommerce-cli:
+    image: wordpress:cli-2.12.0-php8.3
+    profiles: [tools]
+    user: "33:33"
+    depends_on:
+      - woocommerce
+    environment:
+      WORDPRESS_DB_HOST: woocommerce-db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - woocommerce-html:/var/www/html
+      - ./docker/woocommerce/setup.sh:/setup.sh:ro
+    command: ["sh", "/setup.sh"]
+    networks:
+      - app-net
+
+volumes:
+  woocommerce-db:
+  woocommerce-html:

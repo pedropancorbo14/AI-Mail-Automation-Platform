@@ -721,6 +721,42 @@ importados**; puede ofrecer solo pedidos, solo facturas o las dos cosas.
 - Si el sistema de la empresa falla, la IA recibe un error legible y el email
   va a revisión humana: nunca responde como si el pedido no existiera.
 
+### Conectar una tienda WooCommerce (Fase 14)
+
+**Pedidos → Tienda WooCommerce**: dirección de la tienda y unas claves de API
+de **solo lectura** (WooCommerce → Ajustes → Avanzado → API REST). La IA
+consulta los pedidos de quien escribe (estado, productos, importes y, con el
+plugin oficial *Shipment Tracking*, transportista y seguimiento). Solo
+pedidos: WooCommerce no trae facturas de serie.
+
+- **De dónde salen los pedidos de una empresa:** su sistema propio (API
+  estándar) si lo tiene, si no su tienda WooCommerce, si no lo importado por
+  CSV.
+- Claves cifradas (JSON `{consumer_key, consumer_secret}`), autenticación
+  Basic por HTTPS, mismas protecciones anti-SSRF que la API estándar; en el
+  panel solo se ve el final de la consumer key.
+- **Cómo se traduce:** estados `pending`/`on-hold`/`failed` → pendiente de
+  pago, `processing` → en preparación, `completed` → enviado (WooCommerce no
+  sabe si se entregó), `cancelled`, `refunded` → devuelto; un pedido se busca
+  por su **número visible** entre los últimos 100 del cliente (los plugins de
+  numeración lo separan del id interno), siempre con su email exacto.
+
+**Probar WooCommerce en local** (WordPress + WooCommerce reales en Docker,
+sin una tienda de verdad; fichero aparte, no arranca con el stack):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.woocommerce.yml up -d woocommerce
+docker compose -f docker-compose.yml -f docker-compose.woocommerce.yml run --rm woocommerce-cli
+```
+
+El script ([`docker/woocommerce/setup.sh`](docker/woocommerce/setup.sh),
+idempotente) instala WordPress y WooCommerce, crea pedidos de Elena, Laura y
+Marcos (el de Elena con seguimiento de MRW) e imprime unas claves de API
+fijas. En el panel: dirección `http://woocommerce` (HTTP y host privado solo
+valen en local) y esas claves. La tienda de pruebas finge HTTPS
+(`$_SERVER['HTTPS']`) porque WooCommerce solo acepta las claves como Basic
+por HTTPS.
+
 ```bash
 docker compose exec app php artisan ai:tools 1                      # estado (y si tienen datos, según ai-service)
 docker compose exec app php artisan ai:tools 1 --enable=get_order --enable=get_customer_orders
@@ -1471,10 +1507,11 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | GET | `/orders/template` | `orders.manage` | Plantilla CSV para rellenar en Excel |
 | POST | `/orders/import` | `orders.manage` | Importa un CSV (`file`): todo o nada; 422 con `rows` (errores por fila) |
 | DELETE | `/orders` | `orders.manage` | Borra todos los pedidos importados de la empresa |
-| GET | `/integrations/standard-api` | `orders.view` | Conexión con el sistema propio de la empresa (sin la clave) o `null` |
+| GET | `/integrations/{standard-api\|woocommerce}` | `orders.view` | Conexión con el sistema propio o la tienda (sin credenciales) o `null` |
 | PUT | `/integrations/standard-api` | `orders.manage` | Crea o cambia la conexión (`base_url`, `token` —vacía = conservar—, `orders`, `invoices`, `enabled`) y la prueba |
-| POST | `/integrations/standard-api/test` | `orders.manage` | Vuelve a probar la conexión |
-| DELETE | `/integrations/standard-api` | `orders.manage` | Desconecta el sistema |
+| PUT | `/integrations/woocommerce` | `orders.manage` | Igual para la tienda (`base_url`, `consumer_key` + `consumer_secret` —vacías = conservar—, `enabled`) |
+| POST | `/integrations/{tipo}/test` | `orders.manage` | Vuelve a probar la conexión |
+| DELETE | `/integrations/{tipo}` | `orders.manage` | Desconecta el sistema |
 
 ```bash
 # Login

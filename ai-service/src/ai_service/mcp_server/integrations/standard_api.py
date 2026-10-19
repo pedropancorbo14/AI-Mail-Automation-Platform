@@ -188,10 +188,13 @@ class StandardApiClient:
         max_bytes: int = 1024**2,
         transport: httpx.AsyncBaseTransport | None = None,
         guard: HostGuard | None = None,
+        authorization: str | None = None,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._host = urlsplit(self._base).hostname or "?"
-        self._token = token
+        # Cabecera Authorization: Bearer con el token, salvo que el sistema use
+        # otra (WooCommerce: Basic con sus claves). Nunca sale en logs.
+        self._authorization = authorization or f"Bearer {token}"
         self._timeout = timeout
         self._max = max_bytes
         self._transport = transport
@@ -217,7 +220,7 @@ class StandardApiClient:
                 f"El sistema de {system} de la empresa no se puede consultar: {reason}."
             )
         headers = {
-            "Authorization": f"Bearer {self._token}",
+            "Authorization": self._authorization,
             "Accept": "application/json",
             "User-Agent": "ai-mail-automation/1",
         }

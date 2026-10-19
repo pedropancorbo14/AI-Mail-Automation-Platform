@@ -2,9 +2,10 @@
 
 `GET {laravel}/internal/integrations/{empresa}` (token de datos) dice, por
 sistema, de dónde salen sus datos: `standard_api` (el sistema propio de la
-empresa: URL y clave) o `csv` (pedidos importados, que Laravel sirve con la
-API estándar en `/internal/standard-api/{empresa}`). Si la empresa no tiene
-nada configurado se usa el resolvedor de respaldo (los datos de demostración).
+empresa: URL y clave), `woocommerce` (su tienda: URL y claves de API) o
+`csv` (pedidos importados, que Laravel sirve con la API estándar en
+`/internal/standard-api/{empresa}`). Si la empresa no tiene nada configurado
+se usa el resolvedor de respaldo (los datos de demostración).
 
 Caché corta por empresa (la consulta se hace en cada herramienta). Si Laravel
 no responde se sigue con la última configuración conocida; sin ninguna, error
@@ -30,20 +31,25 @@ from ai_service.mcp_server.integrations.standard_api import (
     StandardApiInvoices,
     StandardApiOrders,
 )
+from ai_service.mcp_server.integrations.woocommerce import WooCommerceOrders, woocommerce_client
 
 log = logging.getLogger(__name__)
 
 UNAVAILABLE = "No se pudo consultar qué sistemas tiene conectados la empresa. Inténtalo más tarde."
 STANDARD_API = "standard_api"
+WOOCOMMERCE = "woocommerce"
 CSV = "csv"
 
 
 class _Source(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
     type: str
-    # Solo en standard_api: el sistema de la empresa.
+    # standard_api y woocommerce: el sistema de la empresa.
     base_url: str | None = None
     token: SecretStr | None = None
+    # woocommerce: sus claves de API.
+    consumer_key: SecretStr | None = None
+    consumer_secret: SecretStr | None = None
 
 
 class _Config(BaseModel):
@@ -140,7 +146,23 @@ class LaravelIntegrations:
         log.warning("integrations_unknown_source tenant_id=%s type=%s", tenant_id, source.type)
         return None
 
-    def _orders(self, tenant_id: int, source: _Source | None) -> StandardApiOrders | None:
+    def _orders(
+        self, tenant_id: int, source: _Source | None
+    ) -> StandardApiOrders | WooCommerceOrders | None:
+        if source is not None and source.type == WOOCOMMERCE:
+            if not (source.base_url and source.consumer_key and source.consumer_secret):
+                log.warning("integrations_incomplete tenant_id=%s type=%s", tenant_id, source.type)
+                return None
+            return WooCommerceOrders(
+                woocommerce_client(
+                    source.base_url,
+                    source.consumer_key.get_secret_value(),
+                    source.consumer_secret.get_secret_value(),
+                    guard=self._guard,
+                    timeout=self._timeout,
+                    transport=self._transport,
+                )
+            )
         client = self._client(tenant_id, source) if source else None
         return StandardApiOrders(client) if client else None
 

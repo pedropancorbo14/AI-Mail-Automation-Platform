@@ -514,6 +514,9 @@ servidor MCP pregunta a `GET /internal/integrations/{empresa}` (caché de 60 s,
 propio de la empresa con su URL y su clave (pedidos y/o facturas; `HostGuard`
 comprueba el host antes de cada petición: HTTPS y nada de la red interna, salvo
 `AI_SERVICE_MCP_ALLOW_PRIVATE_HOSTS` con `AI_SERVICE_ENVIRONMENT=local`);
+`woocommerce` → su tienda (`integrations/woocommerce.py`: API REST v3 con sus
+claves como Basic, pedidos buscados por número visible entre los del cliente,
+estados traducidos y seguimiento del plugin *Shipment Tracking*);
 `csv` → la API estándar que sirve Laravel en `/internal/standard-api/{empresa}`;
 nada configurado → datos de demostración. La clave llega como `SecretStr` y
 de los errores de configuración solo se registra el tipo. Si Laravel no responde, se sigue con la

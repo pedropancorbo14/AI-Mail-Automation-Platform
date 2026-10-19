@@ -5007,7 +5007,60 @@ para empresas con equipo técnico: que conecten su propio servidor MCP.
   entendía la configuración y el email fue a revisión humana con un error
   legible (el modo degradado funciona). Datos de prueba borrados.
   **Lección:** `ai-mcp` no tiene `build` propio (usa la imagen de
-  `ai-service`): reconstruir con `docker compose up -d --build ai-service ai-mcp`
+  `ai-service`): reconstruir con `docker compose up -d --build ai-service ai-mcp` (`70f812a`)
+- [x] 5. **Conector de WooCommerce** (el primero de tiendas; PrestaShop y
+  Shopify, mismo patrón, cuando haya demanda). **Servidor MCP:**
+  `integrations/woocommerce.py` (`WooCommerceOrders`: `GET
+  /wp-json/wc/v3/orders?search=<email>&per_page=…&orderby=date` con las
+  claves como **Basic** —por HTTP WooCommerce exige OAuth 1.0a: no se usa—,
+  pedido buscado por **número visible** entre los últimos 100 del cliente
+  —los plugins de numeración lo separan del id— y **email exacto** (el
+  `search` busca en más campos); estados `pending`/`on-hold`/`failed`/
+  `checkout-draft` → pending_payment, `processing`, `completed` → **shipped**
+  (WooCommerce no sabe si se entregó), `cancelled`, `refunded` → returned,
+  estados de plugins → processing con aviso; fecha GMT marcada como UTC;
+  seguimiento del plugin *Shipment Tracking* (`_wc_shipment_tracking_items`,
+  solo enlaces http/https); formato tolerante, pero una respuesta que no es
+  una lista de pedidos es `IntegrationError`). `StandardApiClient` acepta otra
+  cabecera `authorization`; `LaravelIntegrations` entiende `type:
+  woocommerce` (`consumer_key`/`consumer_secret` como `SecretStr`) con el
+  mismo `HostGuard`. **Laravel:** refactor común en `app/ERP/Connections/`:
+  `CompanyUrl` (anti-SSRF de las direcciones que escribe una empresa + IP
+  fijada; registrado con el permiso de hosts privados), `ConnectionTestResult`
+  y **`IntegrationService`** (sustituye a `StandardApiConnectionService`:
+  guardar y probar por tipo; credenciales de WooCommerce cifradas como JSON
+  `{consumer_key, consumer_secret}`; vacías = conservar; auditoría con
+  `credentials` como `[oculto]`). `WooCommerceTester` (`GET
+  /wp-json/wc/v3/orders?per_page=1` con Basic; 401/403 "rechazó las claves",
+  404 "¿enlaces permanentes?", respuesta que no es lista de pedidos). Rutas
+  `/integrations/{type}` (`standard-api` | `woocommerce`, `whereIn`); el
+  recurso da `consumer_key_hint` ("…cdef"), nunca el secreto.
+  `/internal/integrations`: **pedidos = ERP propio > WooCommerce > CSV**.
+  Panel: tarjeta **Tienda WooCommerce** en Pedidos (`WooCommerceCard.vue`) y
+  cliente `api/integrations.ts` por tipo. **Tienda real de pruebas:**
+  `docker-compose.woocommerce.yml` (MariaDB 11.4.7, WordPress
+  6.8.2-php8.3-apache, wp-cli 2.12.0; red `app-net`, sin puertos) +
+  `docker/woocommerce/setup.sh` (idempotente: instala WordPress y WooCommerce
+  9.9.5, permalinks, moneda EUR, 3 pedidos de Elena/Laura/Marcos —el de Elena
+  con MRW— y claves de API **fijas de solo lectura**; falla si no puede
+  crearlas). WordPress finge HTTPS (`$_SERVER['HTTPS']`) para aceptar Basic
+  sin TLS en la red de Docker. **Encontrado al probarlo:** la clave inventada
+  tenía 44 caracteres y WooCommerce guarda 43 (`cs_` + 40): el INSERT fallaba
+  en silencio → claves con el formato real y el script se para si no se
+  guardan. Tests: Python `test_woocommerce.py` (15: traducción completa,
+  número visible frente a id, 8 estados, email exacto, sin seguimiento,
+  claves malas y respuestas raras como error, claves fuera de los logs, de
+  Laravel a `BusinessTools`), Pest `WooCommerceConnectionTest` (9) y Vitest
+  `WooCommerceCard.test.ts` (3). **Prueba con la tienda real** (IA
+  simulada): claves malas → "Falla" con el motivo; buenas → "Conectada";
+  Laura "¿cuándo me llega lo que pedí?" → `get_customer_orders` + `get_order`
+  contra WooCommerce → **enviada sola**; el pedido 13 de Elena se preparó con
+  MRW y el seguimiento reales, y fue a revisión **por el límite contra bucles**
+  (ya tenía 3 respuestas automáticas de las pruebas: correcto); pedido 15 de
+  Marcos pedido por Elena (`ai-service-tool`) → "no hay ningún pedido".
+  **Limitación de la IA simulada:** solo reconoce números de pedido de 5–6
+  cifras (los de WooCommerce de pruebas son 13–15). Tras la prueba, tienda
+  desconectada de "Empresa Demo" y contenedores parados (volúmenes intactos)
 
 **Lecciones del entorno (2026-10-19):** tras traer cambios con migraciones,
 el entorno local del usuario no estaba migrado desde la Fase 13 y ai-service

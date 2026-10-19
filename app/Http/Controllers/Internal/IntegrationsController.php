@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Internal;
 
+use App\ERP\Connections\IntegrationService;
 use App\Http\Controllers\Controller;
 use App\Models\CustomerOrder;
 use App\Models\Tenant;
@@ -16,7 +17,8 @@ use Illuminate\Http\JsonResponse;
  * demostración si la empresa los tiene, o nada).
  *
  * - `standard_api`: su propio sistema (URL y clave, descifrada: esta ruta solo
- *   la lee el servidor MCP con el token de datos). Manda sobre el CSV.
+ *   la lee el servidor MCP con el token de datos). Manda sobre lo demás.
+ * - `woocommerce`: su tienda (URL y claves de API, descifradas). Solo pedidos.
  * - `csv`: pedidos importados, servidos por /internal/standard-api/{tenant}.
  *
  * Una empresa desactivada no tiene nada. Nunca se guarda en cachés.
@@ -30,17 +32,24 @@ class IntegrationsController extends Controller
 
         if ($model !== null && $model->is_active) {
             $config = $tenants->runAs($model, function () {
-                $api = TenantIntegration::where('type', TenantIntegration::STANDARD_API)->where('enabled', true)->first();
+                $enabled = TenantIntegration::where('enabled', true)->get()->keyBy('type');
+                $api = $enabled->get(TenantIntegration::STANDARD_API);
+                $shop = $enabled->get(TenantIntegration::WOOCOMMERCE);
                 $own = $api === null ? null : [
                     'type' => TenantIntegration::STANDARD_API,
                     'base_url' => $api->base_url,
                     'token' => $api->credentials,
                 ];
 
-                return [
-                    'orders' => $api?->orders ? $own : (CustomerOrder::query()->exists() ? ['type' => 'csv'] : null),
-                    'invoices' => $api?->invoices ? $own : null,
-                ];
+                // Pedidos: su ERP, si no su tienda, si no lo importado por CSV.
+                $orders = match (true) {
+                    (bool) $api?->orders => $own,
+                    $shop !== null => ['type' => TenantIntegration::WOOCOMMERCE, 'base_url' => $shop->base_url, ...IntegrationService::wooKeys($shop)],
+                    CustomerOrder::query()->exists() => ['type' => 'csv'],
+                    default => null,
+                };
+
+                return ['orders' => $orders, 'invoices' => $api?->invoices ? $own : null];
             });
         }
 

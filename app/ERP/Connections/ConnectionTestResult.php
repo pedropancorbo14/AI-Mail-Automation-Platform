@@ -1,8 +1,8 @@
 <?php
 
-namespace App\ERP\StandardApi;
+namespace App\ERP\Connections;
 
-final readonly class StandardApiTestResult
+final readonly class ConnectionTestResult
 {
     /** @param array<string, ?string> $checks recurso => null (correcto) o motivo */
     private function __construct(

@@ -4,18 +4,18 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { NMessageProvider } from 'naive-ui';
 import StandardApiCard from '@/components/orders/StandardApiCard.vue';
-import { saveStandardApi, type StandardApiConnection } from '@/api/integrations';
+import { saveStandardApi, type IntegrationConnection } from '@/api/integrations';
 import { useAuthStore } from '@/stores/auth';
 
-const connection = (overrides: Partial<StandardApiConnection> = {}): StandardApiConnection => ({
-    type: 'standard_api', base_url: 'https://erp.acme.test/aimail', has_token: true, orders: true, invoices: true, enabled: true,
+const connection = (overrides: Partial<IntegrationConnection> = {}): IntegrationConnection => ({
+    type: 'standard_api', base_url: 'https://erp.acme.test/aimail', has_token: true, consumer_key_hint: null, orders: true, invoices: true, enabled: true,
     status: 'failing', last_tested_at: '2026-10-19T08:00:00Z', last_error: 'El sistema de pedidos rechazó la clave.', updated_at: null,
     ...overrides,
 });
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
-function stubApi(current: StandardApiConnection | null): ReturnType<typeof vi.fn> {
+function stubApi(current: IntegrationConnection | null): ReturnType<typeof vi.fn> {
     const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(
         url === '/sanctum/csrf-cookie' ? new Response(null, { status: 204 }) : json({ data: current, result: { ok: true, error: null, checks: {} } }),
     ));

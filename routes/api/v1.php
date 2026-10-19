@@ -100,9 +100,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/orders/import', [OrderController::class, 'import'])->middleware('throttle:10,1');
     Route::delete('/orders', [OrderController::class, 'destroyAll']);
 
-    // Conexión con el sistema propio de la empresa (API estándar, Fase 14).
-    Route::get('/integrations/standard-api', [IntegrationController::class, 'show']);
-    Route::put('/integrations/standard-api', [IntegrationController::class, 'update'])->middleware('throttle:10,1');
-    Route::post('/integrations/standard-api/test', [IntegrationController::class, 'test'])->middleware('throttle:10,1');
-    Route::delete('/integrations/standard-api', [IntegrationController::class, 'destroy']);
+    // Sistemas que conecta la empresa (Fase 14): su ERP (API estándar) o su tienda.
+    Route::prefix('/integrations/{type}')->whereIn('type', array_keys(IntegrationController::TYPES))->group(function () {
+        Route::get('/', [IntegrationController::class, 'show']);
+        Route::put('/', [IntegrationController::class, 'update'])->middleware('throttle:10,1');
+        Route::post('/test', [IntegrationController::class, 'test'])->middleware('throttle:10,1');
+        Route::delete('/', [IntegrationController::class, 'destroy']);
+    });
 });

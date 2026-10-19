@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\ERP\Connections\IntegrationService;
 use App\Models\TenantIntegration;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -15,6 +16,10 @@ class TenantIntegrationResource extends JsonResource
             'type' => $this->type,
             'base_url' => $this->base_url,
             'has_token' => filled($this->credentials),
+            // WooCommerce: final de la consumer key para reconocerla, nunca el secreto.
+            'consumer_key_hint' => $this->type === TenantIntegration::WOOCOMMERCE
+                ? '…' . substr(IntegrationService::wooKeys($this->resource)['consumer_key'], -4)
+                : null,
             'orders' => $this->orders,
             'invoices' => $this->invoices,
             'enabled' => $this->enabled,
