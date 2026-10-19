@@ -11,15 +11,18 @@ import pytest
 import uvicorn
 from mcp.client.client import Client
 
+from ai_service.mcp_server.integrations.contracts import IntegrationError, TenantIntegrations
+from ai_service.mcp_server.integrations.models import Order
 from ai_service.mcp_server.server import build_app, build_server
-from tests.support.mcp import demo_data
+from ai_service.mcp_server.tools import BusinessTools
+from tests.support.mcp import demo_tools
 
 TOKEN = "mcp-test-token"
 CONTEXT = {"tenant_id": 1, "customer_email": "cliente@cliente.test"}
 
 
 async def test_lists_the_business_tools_with_read_only_annotations() -> None:
-    async with Client(build_server(demo_data())) as client:
+    async with Client(build_server(demo_tools())) as client:
         tools = {t.name: t for t in (await client.list_tools()).tools}
 
     assert set(tools) == {
@@ -38,7 +41,7 @@ async def test_lists_the_business_tools_with_read_only_annotations() -> None:
 
 
 async def test_calls_a_tool_with_the_injected_context() -> None:
-    async with Client(build_server(demo_data())) as client:
+    async with Client(build_server(demo_tools())) as client:
         result = await client.call_tool("get_order", {**CONTEXT, "order_number": "#45821"})
 
     assert not result.is_error
@@ -47,7 +50,7 @@ async def test_calls_a_tool_with_the_injected_context() -> None:
 
 
 async def test_another_customers_order_is_an_error_without_data() -> None:
-    async with Client(build_server(demo_data())) as client:
+    async with Client(build_server(demo_tools())) as client:
         result = await client.call_tool("get_order", {**CONTEXT, "order_number": "76540"})
 
     assert result.is_error
@@ -56,10 +59,33 @@ async def test_another_customers_order_is_an_error_without_data() -> None:
     assert "marcos" not in text
 
 
+class DownOrders:
+    async def find_order(self, number: str, customer_email: str) -> Order | None:
+        raise IntegrationError("El sistema de pedidos de la empresa no responde.")
+
+    async def customer_orders(self, customer_email: str, limit: int) -> list[Order]:
+        return []
+
+
+class DownResolver:
+    async def for_tenant(self, tenant_id: int) -> TenantIntegrations:
+        return TenantIntegrations(orders=DownOrders())
+
+
+async def test_a_failing_company_system_reaches_the_ai_as_a_readable_error() -> None:
+    async with Client(build_server(BusinessTools(DownResolver()))) as client:
+        result = await client.call_tool("get_order", {**CONTEXT, "order_number": "45821"})
+
+    assert result.is_error
+    text = result.content[0].text  # type: ignore[union-attr]
+    # El SDK antepone "Error executing tool get_order:" (el cliente MCP lo quita).
+    assert text.endswith(": El sistema de pedidos de la empresa no responde.")
+
+
 @contextlib.asynccontextmanager
 async def running(port: int) -> AsyncIterator[str]:
     config = uvicorn.Config(
-        build_app(demo_data(), TOKEN), host="127.0.0.1", port=port, log_config=None
+        build_app(demo_tools(), TOKEN), host="127.0.0.1", port=port, log_config=None
     )
     server = uvicorn.Server(config)
     task = asyncio.create_task(server.serve())
@@ -84,4 +110,4 @@ async def test_http_requires_the_token_except_for_health() -> None:
 
 def test_the_server_refuses_to_start_without_a_token() -> None:
     with pytest.raises(ValueError, match="AI_SERVICE_MCP_TOKEN"):
-        build_app(demo_data(), "")
+        build_app(demo_tools(), "")

@@ -1,5 +1,8 @@
 """Servidor MCP con las herramientas de CRM, ERP y tickets (SDK oficial, 2.x).
 
+Las herramientas son finas: delegan en `BusinessTools` (reglas comunes) y
+este en el proveedor de datos de cada empresa (`integrations/`).
+
 Transporte **streamable HTTP** (un contenedor propio, escalable y con su
 propia sonda), protegido con un token (`Authorization: Bearer`): solo
 ai-service puede llamarlo.
@@ -23,7 +26,8 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from ai_service.mcp_server.backends import DemoData, ToolInputError
+from ai_service.mcp_server.integrations.contracts import IntegrationError
+from ai_service.mcp_server.tools import BusinessTools, ToolInputError
 
 Scope = MutableMapping[str, Any]
 Message = MutableMapping[str, Any]
@@ -32,9 +36,13 @@ Send = Callable[[Message], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
+# Fallos previstos (pedido no encontrado, sistema de la empresa caído): con
+# ToolError el cliente recibe el mensaje tal cual; cualquier otra excepción
+# llega como "Error executing tool", sin detalle.
+EXPECTED = (ToolInputError, IntegrationError)
 
 
-def build_server(data: DemoData) -> MCPServer:
+def build_server(tools: BusinessTools) -> MCPServer:
     server = MCPServer(
         "ai-mail-business-tools",
         instructions=(
@@ -46,8 +54,11 @@ def build_server(data: DemoData) -> MCPServer:
         description="Datos del cliente que escribe: nombre, número de pedidos y fechas.",
         annotations=READ_ONLY,
     )
-    def get_customer(tenant_id: int, customer_email: str) -> dict[str, Any]:
-        return data.get_customer(tenant_id, customer_email)
+    async def get_customer(tenant_id: int, customer_email: str) -> dict[str, Any]:
+        try:
+            return await tools.get_customer(tenant_id, customer_email)
+        except EXPECTED as error:
+            raise ToolError(str(error)) from error
 
     @server.tool(
         description=(
@@ -56,19 +67,23 @@ def build_server(data: DemoData) -> MCPServer:
         ),
         annotations=READ_ONLY,
     )
-    def get_order(tenant_id: int, customer_email: str, order_number: str) -> dict[str, Any]:
+    async def get_order(tenant_id: int, customer_email: str, order_number: str) -> dict[str, Any]:
         try:
-            return data.get_order(tenant_id, customer_email, order_number)
-        except ToolInputError as error:
-            # ToolError = fallo previsto: el cliente recibe el mensaje tal cual.
+            return await tools.get_order(tenant_id, customer_email, order_number)
+        except EXPECTED as error:
             raise ToolError(str(error)) from error
 
     @server.tool(
         description="Pedidos del cliente que escribe, del más reciente al más antiguo.",
         annotations=READ_ONLY,
     )
-    def get_customer_orders(tenant_id: int, customer_email: str, limit: int = 5) -> dict[str, Any]:
-        return data.get_customer_orders(tenant_id, customer_email, limit)
+    async def get_customer_orders(
+        tenant_id: int, customer_email: str, limit: int = 5
+    ) -> dict[str, Any]:
+        try:
+            return await tools.get_customer_orders(tenant_id, customer_email, limit)
+        except EXPECTED as error:
+            raise ToolError(str(error)) from error
 
     @server.tool(
         description=(
@@ -77,33 +92,43 @@ def build_server(data: DemoData) -> MCPServer:
         ),
         annotations=READ_ONLY,
     )
-    def get_invoice(tenant_id: int, customer_email: str, invoice_number: str) -> dict[str, Any]:
+    async def get_invoice(
+        tenant_id: int, customer_email: str, invoice_number: str
+    ) -> dict[str, Any]:
         try:
-            return data.get_invoice(tenant_id, customer_email, invoice_number)
-        except ToolInputError as error:
+            return await tools.get_invoice(tenant_id, customer_email, invoice_number)
+        except EXPECTED as error:
             raise ToolError(str(error)) from error
 
     @server.tool(
         description="Facturas del cliente que escribe, de la más reciente a la más antigua.",
         annotations=READ_ONLY,
     )
-    def get_customer_invoices(
+    async def get_customer_invoices(
         tenant_id: int, customer_email: str, limit: int = 5
     ) -> dict[str, Any]:
-        return data.get_customer_invoices(tenant_id, customer_email, limit)
+        try:
+            return await tools.get_customer_invoices(tenant_id, customer_email, limit)
+        except EXPECTED as error:
+            raise ToolError(str(error)) from error
 
     @server.tool(
         description="Tickets de soporte del cliente que escribe, con su estado.",
         annotations=READ_ONLY,
     )
-    def get_customer_tickets(tenant_id: int, customer_email: str, limit: int = 5) -> dict[str, Any]:
-        return data.get_customer_tickets(tenant_id, customer_email, limit)
+    async def get_customer_tickets(
+        tenant_id: int, customer_email: str, limit: int = 5
+    ) -> dict[str, Any]:
+        try:
+            return await tools.get_customer_tickets(tenant_id, customer_email, limit)
+        except EXPECTED as error:
+            raise ToolError(str(error)) from error
 
     @server.tool(
         description="Abre un ticket de soporte para el cliente (MODIFICA datos).",
         annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
     )
-    def create_support_ticket(
+    async def create_support_ticket(
         tenant_id: int,
         customer_email: str,
         subject: str,
@@ -111,12 +136,11 @@ def build_server(data: DemoData) -> MCPServer:
         idempotency_key: str,
         priority: str = "normal",
     ) -> dict[str, Any]:
-        # Demostración: en memoria (se pierde al reiniciar el contenedor).
         try:
-            return data.create_ticket(
+            return await tools.create_ticket(
                 tenant_id, customer_email, subject, description, priority, idempotency_key
             )
-        except ToolInputError as error:
+        except EXPECTED as error:
             raise ToolError(str(error)) from error
 
     return server
@@ -141,10 +165,10 @@ class BearerAuth:
         await self._app(scope, receive, send)
 
 
-def build_app(data: DemoData, token: str) -> ASGIApp:
+def build_app(tools: BusinessTools, token: str) -> ASGIApp:
     if not token:
         raise ValueError("Falta AI_SERVICE_MCP_TOKEN: el servidor MCP no arranca sin token.")
-    server = build_server(data)
+    server = build_server(tools)
     app: Starlette = server.streamable_http_app(stateless_http=True, host="0.0.0.0")  # noqa: S104
 
     async def health(_: Request) -> JSONResponse:
@@ -156,7 +180,7 @@ def build_app(data: DemoData, token: str) -> ASGIApp:
             tenant_id = int(request.query_params.get("tenant_id", ""))
         except ValueError:
             return JSONResponse({"error": "tenant_id no válido"}, status_code=422)
-        return JSONResponse({"tenant_id": tenant_id, "tools": data.availability(tenant_id)})
+        return JSONResponse({"tenant_id": tenant_id, "tools": await tools.availability(tenant_id)})
 
     app.add_route("/health", health, methods=["GET"])
     app.add_route("/capabilities", capabilities, methods=["GET"])

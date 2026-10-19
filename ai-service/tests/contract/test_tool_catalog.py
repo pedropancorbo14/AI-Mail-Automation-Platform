@@ -11,7 +11,7 @@ from ai_service.application.services.tool_catalog import DEFAULT_ENABLED_TOOLS, 
 from ai_service.infrastructure.tools.mcp_client import READ_ONLY_TOOLS, WRITE_TOOLS
 from ai_service.mcp_server.server import build_server
 from tests.support.contracts import CONTRACTS, load, registry
-from tests.support.mcp import demo_data
+from tests.support.mcp import demo_tools
 
 TOOLS = Path(CONTRACTS).parent / "tools"
 
@@ -45,6 +45,6 @@ def test_defaults_are_the_same_in_both_sides() -> None:
 
 
 async def test_the_mcp_server_offers_every_data_tool_of_the_catalog() -> None:
-    async with Client(build_server(demo_data())) as client:
+    async with Client(build_server(demo_tools())) as client:
         served = {t.name for t in (await client.list_tools()).tools}
     assert served == {t["name"] for t in catalog()} - {"search_company_documents"}

@@ -219,7 +219,7 @@ flowchart TB
 | `application/` | Casos de uso y **puertos** (`LLMPort`, `VectorStorePort`, `ToolPort`, `EventBusPort`) | `domain` |
 | `agents/` | Grafo de LangGraph; usa los puertos, nunca un adaptador concreto | `application`, `domain` |
 | `infrastructure/` | **Adaptadores**: Anthropic, Redis Streams, pgvector, cliente MCP, logs, métricas | `application`, `domain` |
-| `mcp_server/` | Servidor MCP con las tools de CRM, ERP y tickets (Fase 3) | `application`, `domain` |
+| `mcp_server/` | Servidor MCP con las tools de CRM, ERP y tickets (Fase 3); proveedores de datos por empresa en `integrations/` (Fase 14) | `application`, `domain` |
 | `entrypoints/` | Consumidor de eventos y app HTTP: aquí se conectan las piezas | Todo |
 
 Las reglas de la tabla no son una convención: **`lint-imports`** las
@@ -464,13 +464,41 @@ responde igual que uno que no existe ("No hay ningún pedido con ese número
 asociado a este cliente"): ni siquiera se puede averiguar si un número
 existe. Mismo criterio que las herramientas de Laravel (Fase 7).
 
-**Datos de demostración:** pedidos en `mcp_server/data/orders.json` (hasta la
-retirada del motor de Laravel lo compartía con su `DemoOrderProvider`); el
-CRM se deriva de los pedidos y los tickets están en
-`mcp_server/data/tickets.json`. `AI_SERVICE_MCP_DEMO_TENANTS` asocia el
-`tenant_id` con la clave del fichero (`{"1": "empresa-demo"}`). En la Fase
-14 de la plataforma, los backends se sustituyen por los sistemas reales sin
-tocar las herramientas.
+### Proveedores de datos de cada empresa (Fase 14)
+
+Tres capas, para que conectar un sistema nuevo no toque ni las herramientas
+ni sus reglas de seguridad:
+
+```
+server.py (herramientas MCP, finas)
+  → tools.py: BusinessTools  ← reglas comunes a todos los proveedores
+      → integrations/contracts.py: IntegrationResolver.for_tenant(empresa)
+          → TenantIntegrations(orders, invoices, tickets)  ← lo que tiene conectado
+              → proveedor (demo.py hoy; CSV, API estándar, WooCommerce… después)
+```
+
+- **Un proveedor solo trae datos** en el formato común de
+  `integrations/models.py` (`Order`, `Invoice`, `Ticket`…), con el email del
+  cliente. Interfaces asíncronas (`OrderSource`, `InvoiceSource`,
+  `TicketSource`) porque los reales llaman a APIs.
+- **`BusinessTools` aplica las reglas** igual para todos: normaliza números,
+  **vuelve a comprobar que cada dato es del cliente que escribe** (un
+  proveedor con un fallo de filtrado no puede enseñar datos de otro: hay un
+  test que lo comprueba), mismo mensaje para un pedido ajeno que para uno
+  inexistente, límites, validación de tickets y lo que ve la IA (sin email ni
+  dirección completa).
+- **Una empresa sin un sistema** (`None` en `TenantIntegrations`) no tiene
+  esas herramientas: `/capabilities` las marca no disponibles y la IA no las
+  ve (responde con la documentación y pasa a una persona lo demás).
+- **Un sistema caído** (`IntegrationError`) llega a la IA como un error
+  legible ("El sistema de pedidos de la empresa no responde"), nunca como
+  "no encontrado": así la respuesta no afirma algo falso y va a una persona.
+
+**Datos de demostración** (`integrations/demo.py`, `DemoIntegrations`):
+pedidos en `mcp_server/data/orders.json`, facturas derivadas de ellos (una
+`FAC-<pedido>` por pedido facturado) y tickets en `mcp_server/data/tickets.json`
+(los creados, en memoria). `AI_SERVICE_MCP_DEMO_TENANTS` asocia el
+`tenant_id` con la clave del fichero (`{"1": "empresa-demo"}`).
 
 ### Cliente MCP (`ToolPort`)
 

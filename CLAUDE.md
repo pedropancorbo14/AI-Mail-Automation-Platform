@@ -277,7 +277,7 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-10-18)
+## ESTADO ACTUAL (actualizado 2026-10-19)
 
 **Decisión ya tomada, distinta al plan original:** empezar la Fase 5 (AI
 Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
@@ -4795,6 +4795,80 @@ push de la rama a **`main`** (fast-forward; `main` es ancestro).
    se ha medido ai-service con Claude).
 4. Rama nueva `fase-retirada-motor-laravel` desde `fase-ai-service`
    (recomendado) o seguir en `fase-ai-service`.
+
+### Fase 14 (integraciones): EN CURSO (desde 2026-10-19), rama `fase-14-integraciones`
+
+Misma forma de trabajo: un commit por tarea, tests en verde antes de cada
+commit, este archivo actualizado en cada commit, **sin push** (lo hace el
+usuario). **Sin IA real** (el usuario no tiene saldo por ahora): todo se
+prueba con la IA simulada (`AI_SERVICE_LLM_PROVIDER=simulated`), que llama
+a las mismas herramientas que Claude. La evaluación con Claude (Fase 15 y
+los 19 correos de la puerta de la retirada) queda para cuando haya saldo.
+
+**Objetivo:** que el servidor MCP deje de responder solo con datos de
+demostración y se conecte a los sistemas de cada empresa, **también de las
+que no usan WooCommerce/PrestaShop/Shopify**. Sin integración la plataforma
+ya funciona (documentación + revisión humana de lo que dependa de datos);
+cada integración permite automatizar más.
+
+**Plan acordado con el usuario (en este orden: primero lo que sirve a
+todos):**
+1. Interfaces de proveedor en el servidor MCP (la demo, una implementación más)
+2. Importación de pedidos por **CSV** (empresas sin sistema: Excel, a mano)
+3. **API estándar de la plataforma** (especificación propia que implementa
+   el ERP o programa de la empresa; credenciales cifradas, anti-SSRF)
+4. Conectores de tiendas (WooCommerce, PrestaShop, Shopify): traductores al
+   mismo formato
+5. Herramientas para negocios sin pedidos (citas, contratos, tickets)
+
+Descartado: acceso directo a la BD de la empresa (sección 13) y conector
+genérico configurable (URL y campos a mano) salvo demanda real. Valorado
+para empresas con equipo técnico: que conecten su propio servidor MCP.
+
+**Tareas:**
+- [x] 1. **Interfaces de proveedor.** `mcp_server/` en tres capas:
+  `server.py` (herramientas MCP, ahora `async`) → **`tools.py`
+  (`BusinessTools`)**: reglas comunes a todos los proveedores (normalizar
+  números, **volver a comprobar que cada dato es del cliente que escribe**,
+  mismo mensaje para ajeno e inexistente, límites 1–10, validación de
+  tickets, lo que ve la IA: sin email ni dirección; ficha del cliente
+  derivada de sus pedidos; `availability()` según lo conectado) →
+  **`integrations/contracts.py`**: `IntegrationResolver.for_tenant(empresa)`
+  → `TenantIntegrations(orders, invoices, tickets)` (`None` = la empresa no
+  tiene ese sistema → herramienta no disponible) con interfaces asíncronas
+  `OrderSource` (`find_order(número, cliente)`, `customer_orders`),
+  `InvoiceSource`, `TicketSource` (`create_ticket` idempotente por clave) e
+  `IntegrationError` (sistema caído o credenciales: mensaje apto para la IA;
+  **nunca se disfraza de "no encontrado"**, la IA no afirmaría algo falso).
+  Formato común en `integrations/models.py` (`Order`, `OrderItem`,
+  `Shipment`, `Invoice`, `Ticket` con `priority`, `NewTicket`,
+  `CreatedTicket`). `integrations/demo.py` (`DemoIntegrations`) = los
+  datos de demostración de siempre (facturas `FAC-<pedido>` derivadas,
+  tickets creados en memoria). Fuera `backends.py`/`DemoData`. El servidor
+  traduce `ToolInputError` e `IntegrationError` a `ToolError` (mensaje
+  legible). Tests: `tests/unit/mcp_server/test_tools.py` (los de antes,
+  asíncronos, + **un proveedor que devuelve datos de otro cliente no llega a
+  la IA**, un sistema caído no es "no encontrado", empresa sin nada,
+  disponibilidad por empresa) y en `test_mcp_server.py` el error legible por
+  MCP. 444 tests de Python en verde con Redis y PostgreSQL reales. **Prueba
+  en el stack** (IA simulada): pedido propio 45821 → `get_order` → enviado
+  solo; pedido ajeno 76540 → error → revisión humana; `ai:tools 1` muestra la
+  disponibilidad desde la capa nueva
+
+**Lecciones del entorno (2026-10-19):** tras traer cambios con migraciones,
+el entorno local del usuario no estaba migrado desde la Fase 13 y ai-service
+no arrancaba (faltaba el rol `ai_service_checkpoints`): `composer install`,
+`migrate`, `RolesAndPermissionsSeeder`, reconstruir `ai-service`/`ai-mcp`/
+`ai-results` y `kb:reindex --tenant=1`. Si el scheduler falla a mitad (p. ej.
+durante `composer install`), **`mail:sync` se queda con el mutex de
+`withoutOverlapping`** ("Has Mutex" en `schedule:list`) y el buzón deja de
+sincronizar sin error: `php artisan schedule:clear-cache`. Al reiniciar
+GreenMail cambia el UIDVALIDITY: el buzón se resincroniza sin histórico (los
+correos enviados justo antes no se importan; es lo previsto). Los tests de
+Python se ejecutan en un contenedor `python:3.12-slim` con uv en la red
+`ai-mail-automation-platform_app-net` (en el equipo del usuario no hay uv),
+con `AI_SERVICE_TEST_REDIS_URL`/`AI_SERVICE_TEST_DATABASE_URL` apuntando a
+`redis`/`postgres` (BD `app_testing`).
 
 ### Pendientes anotados para más adelante
 
