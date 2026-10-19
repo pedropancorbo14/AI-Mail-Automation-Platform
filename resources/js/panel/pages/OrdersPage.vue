@@ -26,6 +26,7 @@ import {
     type CustomerOrder,
     type RowError,
 } from '@/api/orders';
+import StandardApiCard from '@/components/orders/StandardApiCard.vue';
 import { formatDateTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
 
@@ -191,6 +192,8 @@ const pagination = computed(() => ({
                 :row-key="(row: CustomerOrder) => row.id"
             />
         </NCard>
+
+        <StandardApiCard />
     </NSpace>
 </template>
 

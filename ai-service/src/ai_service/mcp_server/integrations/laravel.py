@@ -1,14 +1,15 @@
 """`IntegrationResolver` que pregunta a Laravel qué tiene conectado cada empresa.
 
 `GET {laravel}/internal/integrations/{empresa}` (token de datos) dice, por
-sistema, de dónde salen sus datos. Hoy: pedidos importados por CSV, que
-Laravel sirve con la API estándar en `/internal/standard-api/{empresa}`. Si
-la empresa no tiene nada configurado se usa el resolvedor de respaldo (los
-datos de demostración).
+sistema, de dónde salen sus datos: `standard_api` (el sistema propio de la
+empresa: URL y clave) o `csv` (pedidos importados, que Laravel sirve con la
+API estándar en `/internal/standard-api/{empresa}`). Si la empresa no tiene
+nada configurado se usa el resolvedor de respaldo (los datos de demostración).
 
 Caché corta por empresa (la consulta se hace en cada herramienta). Si Laravel
 no responde se sigue con la última configuración conocida; sin ninguna, error
-legible: nunca se responde como si la empresa no tuviera datos.
+legible: nunca se responde como si la empresa no tuviera datos. La clave de
+la empresa nunca aparece en logs (SecretStr; de los errores, solo el tipo).
 """
 
 import logging
@@ -16,23 +17,33 @@ import time
 from collections.abc import Callable
 
 import httpx
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
 from ai_service.mcp_server.integrations.contracts import (
     IntegrationError,
     IntegrationResolver,
     TenantIntegrations,
 )
-from ai_service.mcp_server.integrations.standard_api import StandardApiClient, StandardApiOrders
+from ai_service.mcp_server.integrations.standard_api import (
+    HostGuard,
+    StandardApiClient,
+    StandardApiInvoices,
+    StandardApiOrders,
+)
 
 log = logging.getLogger(__name__)
 
 UNAVAILABLE = "No se pudo consultar qué sistemas tiene conectados la empresa. Inténtalo más tarde."
+STANDARD_API = "standard_api"
+CSV = "csv"
 
 
 class _Source(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
     type: str
+    # Solo en standard_api: el sistema de la empresa.
+    base_url: str | None = None
+    token: SecretStr | None = None
 
 
 class _Config(BaseModel):
@@ -53,6 +64,7 @@ class LaravelIntegrations:
         timeout: float = 5.0,
         transport: httpx.AsyncBaseTransport | None = None,
         clock: Callable[[], float] = time.monotonic,
+        guard: HostGuard | None = None,
     ) -> None:
         if not token:
             raise ValueError("Falta el token de datos de Laravel (AI_SERVICE_MCP_LARAVEL_TOKEN).")
@@ -63,11 +75,16 @@ class LaravelIntegrations:
         self._timeout = timeout
         self._transport = transport
         self._clock = clock
+        # Para las URL que escribe una empresa (no para Laravel, que es interno).
+        self._guard = guard or HostGuard()
         self._cache: dict[int, tuple[float, _Config]] = {}
 
     async def for_tenant(self, tenant_id: int) -> TenantIntegrations:
         config = await self._config(tenant_id)
-        integrations = self._build(tenant_id, config)
+        integrations = TenantIntegrations(
+            orders=self._orders(tenant_id, config.orders),
+            invoices=self._invoices(tenant_id, config.invoices),
+        )
         if integrations == TenantIntegrations() and self._fallback is not None:
             return await self._fallback.for_tenant(tenant_id)
         return integrations
@@ -91,26 +108,45 @@ class LaravelIntegrations:
                 raise IntegrationError(f"Laravel respondió {response.status_code}")
             config = _Config.model_validate_json(response.content)
         except (httpx.HTTPError, ValidationError, IntegrationError) as error:
-            log.warning("integrations_config_unavailable tenant_id=%s error=%s", tenant_id, error)
+            # Solo el tipo: un error de validación incluiría los valores (la clave).
+            log.warning(
+                "integrations_config_unavailable tenant_id=%s error=%s",
+                tenant_id,
+                type(error).__name__,
+            )
             if cached:
                 return cached[1]  # mejor la última conocida que dejar a la IA sin datos
             raise IntegrationError(UNAVAILABLE) from error
         self._cache[tenant_id] = (self._clock(), config)
         return config
 
-    def _build(self, tenant_id: int, config: _Config) -> TenantIntegrations:
-        orders = None
-        if config.orders is not None:
-            if config.orders.type == "csv":
-                client = StandardApiClient(
-                    f"{self._base}/internal/standard-api/{tenant_id}",
-                    self._token,
-                    timeout=self._timeout,
-                    transport=self._transport,
-                )
-                orders = StandardApiOrders(client)
-            else:  # tipo de una versión más nueva de Laravel
-                log.warning(
-                    "integrations_unknown_type tenant_id=%s type=%s", tenant_id, config.orders.type
-                )
-        return TenantIntegrations(orders=orders)
+    def _client(self, tenant_id: int, source: _Source) -> StandardApiClient | None:
+        if source.type == CSV:
+            return StandardApiClient(
+                f"{self._base}/internal/standard-api/{tenant_id}",
+                self._token,
+                timeout=self._timeout,
+                transport=self._transport,
+            )
+        if source.type == STANDARD_API and source.base_url and source.token:
+            return StandardApiClient(
+                source.base_url,
+                source.token.get_secret_value(),
+                timeout=self._timeout,
+                transport=self._transport,
+                guard=self._guard,
+            )
+        # Tipo de una versión más nueva de Laravel, o configuración incompleta.
+        log.warning("integrations_unknown_source tenant_id=%s type=%s", tenant_id, source.type)
+        return None
+
+    def _orders(self, tenant_id: int, source: _Source | None) -> StandardApiOrders | None:
+        client = self._client(tenant_id, source) if source else None
+        return StandardApiOrders(client) if client else None
+
+    def _invoices(self, tenant_id: int, source: _Source | None) -> StandardApiInvoices | None:
+        # Las facturas solo vienen del sistema propio (el CSV es de pedidos).
+        if source is None or source.type != STANDARD_API:
+            return None
+        client = self._client(tenant_id, source)
+        return StandardApiInvoices(client) if client else None

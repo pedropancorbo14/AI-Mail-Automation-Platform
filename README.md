@@ -696,6 +696,31 @@ los ven con `orders.view`), con plantilla descargable.
 - Importar y borrar quedan en la auditoría (sin datos de clientes), y
   `data:forget-address` borra también los pedidos de esa persona.
 
+### Conectar el sistema propio de la empresa (Fase 14)
+
+Si la empresa tiene un ERP o programa a medida, su informático publica la
+**API estándar** ([`contracts/integrations/`](contracts/integrations/README.md):
+cuatro consultas de solo lectura) y en **Pedidos → Tu propio sistema** se
+guarda la dirección y la clave. Si está activada, **manda sobre los pedidos
+importados**; puede ofrecer solo pedidos, solo facturas o las dos cosas.
+
+- **Se prueba al guardar** (y con "Probar conexión"): pide la lista de un
+  cliente que no existe y comprueba que responde con el formato del
+  contrato; el motivo de un fallo se ve en el panel ("rechazó la clave", "no
+  tiene la ruta /v1/orders"…).
+- **Clave cifrada** (`tenant_integrations.credentials`, APP_KEY), nunca en
+  respuestas, auditoría ni logs. Solo la recibe el servidor MCP por la ruta
+  interna con el token de datos (`Cache-Control: no-store`).
+- **Anti-SSRF en los dos lados:** HTTPS obligatorio, sin usuario, parámetros
+  ni `#` en la URL, y el host no puede apuntar a la red interna
+  (`MailHostGuard` en Laravel, con la conexión fijada a la IP comprobada;
+  `HostGuard` en el servidor MCP, antes de cada petición, por si el DNS
+  cambia). Las direcciones de enlace local (metadatos de la nube) se rechazan
+  siempre; HTTP y hosts privados solo en local
+  (`MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS`, ignorado fuera de local/testing).
+- Si el sistema de la empresa falla, la IA recibe un error legible y el email
+  va a revisión humana: nunca responde como si el pedido no existiera.
+
 ```bash
 docker compose exec app php artisan ai:tools 1                      # estado (y si tienen datos, según ai-service)
 docker compose exec app php artisan ai:tools 1 --enable=get_order --enable=get_customer_orders
@@ -1446,6 +1471,10 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | GET | `/orders/template` | `orders.manage` | Plantilla CSV para rellenar en Excel |
 | POST | `/orders/import` | `orders.manage` | Importa un CSV (`file`): todo o nada; 422 con `rows` (errores por fila) |
 | DELETE | `/orders` | `orders.manage` | Borra todos los pedidos importados de la empresa |
+| GET | `/integrations/standard-api` | `orders.view` | Conexión con el sistema propio de la empresa (sin la clave) o `null` |
+| PUT | `/integrations/standard-api` | `orders.manage` | Crea o cambia la conexión (`base_url`, `token` —vacía = conservar—, `orders`, `invoices`, `enabled`) y la prueba |
+| POST | `/integrations/standard-api/test` | `orders.manage` | Vuelve a probar la conexión |
+| DELETE | `/integrations/standard-api` | `orders.manage` | Desconecta el sistema |
 
 ```bash
 # Login

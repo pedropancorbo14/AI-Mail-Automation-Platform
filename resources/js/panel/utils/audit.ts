@@ -15,6 +15,7 @@ export const categoryLabels: Record<AuditCategory, string> = {
     email: 'Emails',
     retention: 'Retención de datos',
     orders: 'Pedidos',
+    integration: 'Sistema conectado',
 };
 
 const actionLabels: Record<string, string> = {
@@ -51,6 +52,10 @@ const actionLabels: Record<string, string> = {
     'retention.address_forgotten': 'Borró todos los emails de una persona (derecho de supresión)',
     'orders.imported': 'Importó pedidos desde un CSV',
     'orders.deleted': 'Borró todos los pedidos importados',
+    'integration.created': 'Conectó el sistema de la empresa (API estándar)',
+    'integration.updated': 'Cambió la conexión con el sistema de la empresa',
+    'integration.tested': 'Probó la conexión con el sistema de la empresa',
+    'integration.deleted': 'Desconectó el sistema de la empresa',
 };
 
 /** Acciones desconocidas (de una versión más nueva) se muestran tal cual. */
@@ -75,6 +80,11 @@ const fieldLabels: Record<string, string> = {
     automation_mode: 'Modo',
     auto_send_intents: 'Se envían solas',
     email_retention_days: 'Conservar los emails (días)',
+    base_url: 'Dirección',
+    token: 'Clave',
+    orders: 'Pedidos',
+    invoices: 'Facturas',
+    enabled: 'Activada',
 };
 
 const valueLabels: Record<string, Record<string, string>> = {
@@ -90,6 +100,10 @@ function value(field: string, raw: unknown): string {
 
     if (Array.isArray(raw)) {
         return raw.map((item) => (field === 'auto_send_intents' ? intentLabels[item as EmailIntent] ?? String(item) : String(item))).join(', ') || '—';
+    }
+
+    if (typeof raw === 'boolean') {
+        return raw ? 'sí' : 'no';
     }
 
     return valueLabels[field]?.[String(raw)] ?? String(raw);
@@ -136,6 +150,8 @@ export function describeMetadata(entry: AuditLogEntry): string[] {
         }
     } else if (entry.action === 'orders.imported') {
         lines.push(`${meta.filename ?? 'CSV'}: ${meta.created} nuevos, ${meta.updated} actualizados`);
+    } else if (entry.action === 'integration.tested') {
+        lines.push(meta.ok ? 'Conexión correcta' : 'La conexión falló');
     } else if (entry.action === 'orders.deleted') {
         lines.push(`Pedidos borrados: ${meta.orders}`);
     } else if (entry.action === 'email.reply_approved') {

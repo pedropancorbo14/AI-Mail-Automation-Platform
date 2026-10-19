@@ -7,6 +7,7 @@ from ai_service.mcp_server.config import McpSettings
 from ai_service.mcp_server.integrations.contracts import IntegrationResolver
 from ai_service.mcp_server.integrations.demo import DemoIntegrations
 from ai_service.mcp_server.integrations.laravel import LaravelIntegrations
+from ai_service.mcp_server.integrations.standard_api import HostGuard
 from ai_service.mcp_server.server import build_app
 from ai_service.mcp_server.tools import BusinessTools
 
@@ -23,6 +24,7 @@ def build_resolver(settings: McpSettings) -> IntegrationResolver:
         token,
         fallback=demo,
         ttl_seconds=settings.integrations_cache_seconds,
+        guard=HostGuard(allow_private=settings.private_hosts_allowed),
     )
 
 

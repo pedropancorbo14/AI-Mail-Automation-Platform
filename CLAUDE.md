@@ -4951,7 +4951,63 @@ para empresas con equipo técnico: que conecten su propio servidor MCP.
   con MRW y el seguimiento; otro cliente pide el 90001 → "no hay ningún
   pedido" → revisión humana; auditoría con la importación y el borrado.
   Panel revisado con Chromium (escritorio y móvil). Los pedidos de prueba se
-  borraron: "Empresa Demo" vuelve a los datos de demostración
+  borraron: "Empresa Demo" vuelve a los datos de demostración (`9570d17`)
+- [x] 4. **El sistema propio de la empresa por la API estándar.** Tabla
+  **`tenant_integrations`** (tenant restrict, `type` único por empresa —hoy
+  `standard_api`—, `base_url`, `credentials` **cifrada** (cast `encrypted`,
+  oculta en JSON), `orders`/`invoices` (qué implementa), `enabled`, `status`
+  pending/active/failing, `last_tested_at`, `last_error`, `created_by`) y
+  modelo `TenantIntegration`. `App\ERP\StandardApi\`: `StandardApiContract`
+  (opis contra `contracts/integrations/schemas`, reutilizable),
+  **`StandardApiTester`** (`rejectUrl`: HTTPS —HTTP solo con hosts privados
+  permitidos—, sin usuario/contraseña/parámetros/`#`, host con
+  `MailHostGuard`; `test`: `GET /v1/orders` (y `/v1/invoices`) con
+  `customer_email=prueba-de-conexion@example.invalid&limit=1`, IP fijada con
+  `CURLOPT_RESOLVE`, sin redirecciones, 5 s, máx. 1 MB, respuesta validada
+  contra el contrato; mensajes "rechazó la clave", "no tiene la ruta…",
+  "respondió 503", "no responde con el formato…") registrado en
+  `MailProvidersServiceProvider` con el mismo permiso de hosts privados
+  (solo local/testing) y `StandardApiConnectionService` (guardar —clave
+  vacía = conservar— **y probar al momento**, probar, borrar; auditoría
+  `integration.created/updated/tested/deleted`, la clave como `[oculto]`).
+  API del panel (sin id en la URL): `GET|PUT|DELETE
+  /integrations/standard-api` y `POST /integrations/standard-api/test`
+  (`orders.view` para ver, `orders.manage` para cambiar; throttle 10/min).
+  `/internal/integrations/{tenant}`: si hay conexión **activada** manda la
+  configuración `{type: standard_api, base_url, token}` (clave descifrada,
+  `Cache-Control: no-store`) para pedidos y/o facturas, **con prioridad sobre
+  el CSV**; desactivada → vuelven los pedidos importados. **Servidor MCP:**
+  `HostGuard` en `standard_api.py` (mismas reglas que `MailHostGuard`:
+  enlace local y `0.0.0.0/8` siempre bloqueados, también como IPv4 en IPv6;
+  privadas y HTTP solo con `allow_private`), comprobado **antes de cada
+  petición** (el DNS puede cambiar tras la validación de Laravel);
+  `LaravelIntegrations` construye `StandardApiOrders`/`StandardApiInvoices`
+  con la URL y la clave de la empresa (`SecretStr`) y el guard; los errores
+  de configuración se registran **solo por tipo** (un `ValidationError`
+  incluiría la clave). `McpSettings.allow_private_hosts` solo cuenta con
+  `AI_SERVICE_ENVIRONMENT` local/testing; compose: `ai-mcp` recibe
+  `AI_SERVICE_MCP_ALLOW_PRIVATE_HOSTS` (= `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS`)
+  y `AI_SERVICE_ENVIRONMENT`. Panel: tarjeta **"Tu propio sistema"** en
+  Pedidos (`components/orders/StandardApiCard.vue`: estado, qué tiene, último
+  error, editar con la clave vacía para conservarla, probar, desconectar);
+  auditoría en español con `base_url`/`token`/`orders`/`invoices`/`enabled` y
+  booleanos como sí/no. Tests: Pest `StandardApiConnectionTest` (13: conectar
+  y probar sin devolver la clave —cifrada en la BD y fuera de la auditoría—,
+  facturas, 5 motivos de fallo, sin conexión, **7 URL rechazadas** —metadatos
+  siempre, loopback, red privada, HTTP, usuario, parámetros, no URL— sin
+  enviar nada, clave conservada al editar, obligatoria al crear, probar y
+  borrar, permisos, aislamiento, lo que recibe el servidor MCP y prioridad
+  sobre el CSV), Python `test_company_standard_api.py` (11) y Vitest
+  `StandardApiCard.test.ts` (4). **Prueba en el stack** (IA simulada; como
+  "ERP" la API estándar interna de Laravel sirviendo los pedidos CSV de una
+  empresa temporal): metadatos de la nube → 422; clave mala → "Falla"; clave
+  buena → "Conectado"; email de Elena sobre su pedido 70707 → `get_order`
+  contra el "ERP" con la clave de la empresa → **enviada sola** con GLS y el
+  seguimiento. Antes de reconstruir bien la imagen, el servidor MCP viejo no
+  entendía la configuración y el email fue a revisión humana con un error
+  legible (el modo degradado funciona). Datos de prueba borrados.
+  **Lección:** `ai-mcp` no tiene `build` propio (usa la imagen de
+  `ai-service`): reconstruir con `docker compose up -d --build ai-service ai-mcp`
 
 **Lecciones del entorno (2026-10-19):** tras traer cambios con migraciones,
 el entorno local del usuario no estaba migrado desde la Fase 13 y ai-service
@@ -4969,6 +5025,12 @@ con `AI_SERVICE_TEST_REDIS_URL`/`AI_SERVICE_TEST_DATABASE_URL` apuntando a
 `redis`/`postgres` (BD `app_testing`).
 
 ### Pendientes anotados para más adelante
+
+- **Rutas `/internal` en producción (Fase 16):** hoy nginx las sirve a
+  cualquiera y solo las protege su token o su firma (en local no se puede
+  distinguir: el tráfico del host también llega desde la red de Docker). En
+  producción, que el ingress/nginx público las bloquee y solo se alcancen
+  desde la red interna (ai-service, ai-mcp).
 
 - **Herramientas por tipo de negocio (Fase 14, integraciones)** — pedido
   por el usuario (2026-10-14): empresas sin pedidos (atención al cliente,

@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Gate;
 class AuditLogController extends Controller
 {
     /** Categorías de acción (lo que va antes del punto). */
-    public const array CATEGORIES = ['auth', 'user', 'tenant', 'mail_connection', 'automation', 'document', 'email', 'retention', 'orders'];
+    public const array CATEGORIES = ['auth', 'user', 'tenant', 'mail_connection', 'automation', 'document', 'email', 'retention', 'orders', 'integration'];
 
     public function index(ListAuditLogsRequest $request): AnonymousResourceCollection
     {

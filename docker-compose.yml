@@ -203,6 +203,10 @@ services:
       # (Fase 14): los lee de Laravel a través de nginx, con el token de datos.
       AI_SERVICE_MCP_LARAVEL_URL: http://nginx
       AI_SERVICE_MCP_LARAVEL_TOKEN: ${AI_SERVICE_DATA_TOKEN:-local-data-token}
+      # El sistema propio de una empresa en un host privado (un ERP de pruebas en
+      # Docker): mismo permiso que los buzones, y solo en local.
+      AI_SERVICE_MCP_ALLOW_PRIVATE_HOSTS: ${MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS:-false}
+      AI_SERVICE_ENVIRONMENT: ${AI_SERVICE_ENVIRONMENT:-production}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=3).status == 200 else 1)"]
       interval: 15s

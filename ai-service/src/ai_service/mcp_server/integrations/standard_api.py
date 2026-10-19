@@ -12,12 +12,16 @@ plataforma para los pedidos importados por CSV. Reglas de este lado:
   **nunca** "no encontrado" (solo un 404 de un pedido o factura concretos lo
   es). El token nunca aparece en mensajes ni logs.
 
-La URL base sale de la configuración de la plataforma, no de un email ni del
-modelo. Cuando la configure cada empresa (credenciales por empresa), se
-comprobará antes que no apunta a la red interna (anti-SSRF).
+La URL base sale de la configuración (Laravel), nunca de un email ni del
+modelo. La que escribe una empresa se comprueba antes de cada petición
+(`HostGuard`, anti-SSRF): Laravel ya la validó al guardarla, pero el DNS
+puede cambiar después.
 """
 
+import asyncio
+import ipaddress
 import logging
+import socket
 from datetime import datetime
 from typing import Annotated, Literal
 from urllib.parse import quote, urlsplit
@@ -136,6 +140,42 @@ def to_invoice(p: InvoicePayload) -> Invoice:
     )
 
 
+_LINK_LOCAL = (ipaddress.ip_network("169.254.0.0/16"), ipaddress.ip_network("fe80::/10"))
+_ZERO = ipaddress.ip_network("0.0.0.0/8")
+
+
+class HostGuard:
+    """Anti-SSRF para la URL que escribe una empresa (mismas reglas que
+    `MailHostGuard` de Laravel): HTTPS, y el host no puede resolver a la red
+    interna. Enlace local (metadatos de la nube) y 0.0.0.0/8, nunca; el resto
+    de direcciones privadas y HTTP sin TLS, solo con `allow_private` (local)."""
+
+    def __init__(self, *, allow_private: bool = False) -> None:
+        self._allow_private = allow_private
+
+    async def reject(self, url: str) -> str | None:
+        parts = urlsplit(url)
+        if parts.scheme != "https" and not (parts.scheme == "http" and self._allow_private):
+            return "la dirección tiene que empezar por https://"
+        if not parts.hostname:
+            return "la dirección no es válida"
+        try:
+            infos = await asyncio.get_running_loop().getaddrinfo(
+                parts.hostname, parts.port or 443, type=socket.SOCK_STREAM
+            )
+        except OSError:
+            return None if self._allow_private else f"no se puede resolver {parts.hostname}"
+        for info in infos:
+            ip = ipaddress.ip_address(info[4][0])
+            if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+                ip = ip.ipv4_mapped
+            if any(ip in net for net in _LINK_LOCAL) or ip in _ZERO:
+                return f"{parts.hostname} apunta a una dirección interna no permitida"
+            if not self._allow_private and not ip.is_global:
+                return f"{parts.hostname} apunta a una dirección interna no permitida"
+        return None
+
+
 class StandardApiClient:
     """GET a la API de una empresa. `system` = "pedidos" / "facturación" (mensajes)."""
 
@@ -147,6 +187,7 @@ class StandardApiClient:
         timeout: float = 5.0,
         max_bytes: int = 1024**2,
         transport: httpx.AsyncBaseTransport | None = None,
+        guard: HostGuard | None = None,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._host = urlsplit(self._base).hostname or "?"
@@ -154,6 +195,7 @@ class StandardApiClient:
         self._timeout = timeout
         self._max = max_bytes
         self._transport = transport
+        self._guard = guard
 
     async def get_one(self, path: str, params: dict[str, str | int], system: str) -> bytes | None:
         """Un pedido o factura concretos: None si es un 404 (no existe o es de otro)."""
@@ -169,6 +211,11 @@ class StandardApiClient:
     async def _get(
         self, path: str, params: dict[str, str | int], system: str, *, single: bool
     ) -> bytes | None:
+        if self._guard is not None and (reason := await self._guard.reject(self._base)):
+            self._warn(path, None, reason)
+            raise IntegrationError(
+                f"El sistema de {system} de la empresa no se puede consultar: {reason}."
+            )
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Accept": "application/json",

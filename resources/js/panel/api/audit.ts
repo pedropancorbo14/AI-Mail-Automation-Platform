@@ -1,7 +1,7 @@
 import { api } from '@/api/http';
 import type { Paginated } from '@/api/types';
 
-export type AuditCategory = 'auth' | 'user' | 'tenant' | 'mail_connection' | 'automation' | 'document' | 'email' | 'retention' | 'orders';
+export type AuditCategory = 'auth' | 'user' | 'tenant' | 'mail_connection' | 'automation' | 'document' | 'email' | 'retention' | 'orders' | 'integration';
 
 export interface AuditLogEntry {
     id: number;

@@ -29,3 +29,12 @@ class McpSettings(BaseSettings):
     laravel_url: str | None = None
     laravel_token: SecretStr | None = None
     integrations_cache_seconds: float = Field(default=60.0, ge=0)
+    # La API estándar del sistema de una empresa puede apuntar a hosts privados
+    # (y por HTTP) solo en local: un ERP de pruebas en la red de Docker. En
+    # cualquier otro entorno se ignora aunque se active (como en Laravel).
+    allow_private_hosts: bool = False
+    environment: str = Field(default="production", validation_alias="AI_SERVICE_ENVIRONMENT")
+
+    @property
+    def private_hosts_allowed(self) -> bool:
+        return self.allow_private_hosts and self.environment in ("local", "testing")

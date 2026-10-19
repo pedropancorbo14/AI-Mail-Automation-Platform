@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\EmailController;
 use App\Http\Controllers\Api\V1\EmailReviewController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\KnowledgeSearchController;
 use App\Http\Controllers\Api\V1\MailConnectionController;
 use App\Http\Controllers\Api\V1\MailOAuthController;
@@ -98,4 +99,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/orders/template', [OrderController::class, 'template']);
     Route::post('/orders/import', [OrderController::class, 'import'])->middleware('throttle:10,1');
     Route::delete('/orders', [OrderController::class, 'destroyAll']);
+
+    // Conexión con el sistema propio de la empresa (API estándar, Fase 14).
+    Route::get('/integrations/standard-api', [IntegrationController::class, 'show']);
+    Route::put('/integrations/standard-api', [IntegrationController::class, 'update'])->middleware('throttle:10,1');
+    Route::post('/integrations/standard-api/test', [IntegrationController::class, 'test'])->middleware('throttle:10,1');
+    Route::delete('/integrations/standard-api', [IntegrationController::class, 'destroy']);
 });

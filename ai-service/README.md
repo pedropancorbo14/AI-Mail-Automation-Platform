@@ -510,9 +510,13 @@ mensajes ni logs.
 `LaravelIntegrations`): con `AI_SERVICE_MCP_LARAVEL_URL` y
 `AI_SERVICE_MCP_LARAVEL_TOKEN` (= `AI_SERVICE_DATA_TOKEN` de Laravel), el
 servidor MCP pregunta a `GET /internal/integrations/{empresa}` (caché de 60 s,
-`AI_SERVICE_MCP_INTEGRATIONS_CACHE_SECONDS`). Pedidos importados por CSV →
-la API estándar que sirve Laravel en `/internal/standard-api/{empresa}`; nada
-configurado → datos de demostración. Si Laravel no responde, se sigue con la
+`AI_SERVICE_MCP_INTEGRATIONS_CACHE_SECONDS`). `standard_api` → el sistema
+propio de la empresa con su URL y su clave (pedidos y/o facturas; `HostGuard`
+comprueba el host antes de cada petición: HTTPS y nada de la red interna, salvo
+`AI_SERVICE_MCP_ALLOW_PRIVATE_HOSTS` con `AI_SERVICE_ENVIRONMENT=local`);
+`csv` → la API estándar que sirve Laravel en `/internal/standard-api/{empresa}`;
+nada configurado → datos de demostración. La clave llega como `SecretStr` y
+de los errores de configuración solo se registra el tipo. Si Laravel no responde, se sigue con la
 última configuración conocida; sin ninguna, error legible (nunca "la empresa
 no tiene datos"), y `/capabilities` responde 503.
 

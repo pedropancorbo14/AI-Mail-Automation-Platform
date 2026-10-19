@@ -20,6 +20,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 function stubApi(): ReturnType<typeof vi.fn> {
     const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(
         url === '/sanctum/csrf-cookie' ? new Response(null, { status: 204 })
+            : url.startsWith('/api/v1/integrations') ? json({ data: null })
             : json({
                 data: [order()],
                 meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, total_orders: 1, last_imported_at: '2026-10-19T08:00:00Z' },
