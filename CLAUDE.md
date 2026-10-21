@@ -5062,6 +5062,90 @@ para empresas con equipo técnico: que conecten su propio servidor MCP.
   cifras (los de WooCommerce de pruebas son 13–15). Tras la prueba, tienda
   desconectada de "Empresa Demo" y contenedores parados (volúmenes intactos)
 
+**Estado (2026-10-21): tareas 1–5 hechas, sin push.** El usuario **aparca la
+tarea 6** (las dos opciones de abajo) hasta que decida retomarla; pidió
+dejarlas planificadas. Antes de empezar cualquiera de las dos: que haga push
+de `fase-14-integraciones` y el CI esté en verde (cinco commits sin pasar por
+GitHub Actions).
+
+#### Tarea 6 — APARCADA: dos opciones planificadas (elegir una con el usuario)
+
+**Opción A (recomendada): herramientas para negocios sin pedidos** (citas,
+contratos/suscripciones, tickets). Abre la plataforma a empresas de
+servicios (clínicas, academias, asesorías, SaaS), que hoy solo tienen
+documentación + revisión humana. Mismo patrón que pedidos y facturas:
+1. **Contrato**: ampliar la API estándar **v1** con recursos opcionales
+   (añadir endpoints opcionales no rompe la v1): `GET /v1/appointments?
+   customer_email=&limit=` y `/v1/appointments/{id}` (fecha y hora con zona,
+   servicio, profesional, lugar, estado `scheduled`/`cancelled`/`completed`/
+   `no_show`; nunca notas clínicas), `GET /v1/contracts?…` y
+   `/v1/contracts/{id}` (plan, estado `active`/`paused`/`cancelled`,
+   renovación, importe periódico), `GET /v1/tickets?…` y **`POST /v1/tickets`**
+   (escritura con cabecera `Idempotency-Key` = `action_id`). Esquemas
+   `schemas/{appointment,contract,ticket}(-list).v1`, ejemplos válidos e
+   inválidos, OpenAPI y README de `contracts/integrations/` ampliados.
+2. **Servidor MCP**: modelos `Appointment`, `Contract` (y `Ticket` ya
+   existe), interfaces `AppointmentSource`, `ContractSource`
+   (`TicketSource` ya existe) en `TenantIntegrations`; `StandardApi*`
+   para cada una (modelos Pydantic estrictos + test de contrato que acepta y
+   rechaza lo mismo que el esquema); `BusinessTools`: `get_appointment`,
+   `get_customer_appointments`, `get_contract`, `get_customer_contracts`
+   (mismas reglas: solo el cliente que escribe, ajeno = inexistente,
+   límites) y `availability()` con las nuevas; herramientas en `server.py`.
+3. **Catálogo** `contracts/tools/catalog.json`: las herramientas nuevas (por
+   defecto desactivadas; el test catálogo = servidor MCP las exige).
+   **Ojo:** "pedir/cambiar una cita" no existe como intención →
+   `EmailIntent` (Laravel), `category` del contrato de eventos y el prompt
+   de clasificación (`email_classification@2`, sube versión) cambian a la
+   vez en los dos lados (p. ej. intención `appointment`). Especialista:
+   añadir `appointments` o colgarlo de `support`/`general` (decidirlo; el
+   supervisor es determinista por intención); planes en `tool_planner`
+   (cita → `get_customer_appointments`; `account_change` →
+   `get_customer_contracts`).
+4. **Laravel**: `tenant_integrations` pasa de `orders`/`invoices` a una
+   columna `resources` jsonb (migración que conserve lo actual) o añadir
+   booleanos `appointments`/`contracts`/`tickets` (más simple; decidir);
+   `StandardApiTester` prueba cada recurso marcado; `/internal/integrations`
+   manda `appointments`/`contracts`/`tickets`; tarjeta "Tu propio sistema"
+   con las casillas nuevas; `toolLabels` en el panel.
+5. **Helpdesk real** (tickets): conector como el de WooCommerce. Para
+   probar gratis en Docker: **Zammad** (open source, API REST con token);
+   Freshdesk (plan gratuito, solo en la nube, API key como Basic) y Zendesk
+   (prueba de 14 días) después. Crear ticket sigue pasando por la
+   aprobación humana que ya existe (`pending_action` → `interrupt`).
+6. Opcional: importar citas por CSV como los pedidos (`OrderCsvImporter`
+   como modelo). Prueba de punta a punta con la IA simulada (ojo: sus
+   reglas por palabras clave tendrán que reconocer citas).
+
+**Opción B: más tiendas** (mismo patrón que WooCommerce: traductor en
+`ai-service/src/ai_service/mcp_server/integrations/<tienda>.py`, tester en
+`app/ERP/<Tienda>/`, tipo nuevo en `IntegrationController::TYPES`,
+`TenantIntegration`, `/internal/integrations`, tarjeta en Pedidos y tests
+con respuestas reales grabadas). Decidir antes si una empresa puede tener
+**varias tiendas** a la vez (hoy la prioridad es ERP > WooCommerce > CSV y
+gana una sola).
+- **PrestaShop** (probable primero: se prueba gratis en Docker como
+  WooCommerce): imagen oficial `prestashop/prestashop` 8.x + MariaDB con un
+  `docker-compose.prestashop.yml` y script de preparación (activar el
+  Webservice y crear una clave de solo lectura). API: la clave como usuario
+  de Basic, `output_format=JSON`; buscar el cliente por email
+  (`/api/customers?filter[email]=[x]`) y sus pedidos
+  (`/api/orders?filter[id_customer]=[id]&display=full`); el número visible
+  es la **`reference`** (p. ej. "XKBKNABJK"), no el id; el estado es un id
+  de `current_state` → traducirlo con `/api/order_states` (son
+  configurables por tienda: mapear por los estados de serie y lo demás a
+  "en preparación" con aviso); seguimiento en `order_carriers`
+  (`tracking_number`).
+- **Shopify** (no se puede en Docker): tienda de desarrollo gratuita con una
+  cuenta de Partner + app personalizada con token de Admin API de solo
+  lectura (`read_orders`, `read_customers`). **GraphQL Admin API** con
+  versión fijada (una con al menos dos semanas); `orders(query:
+  "email:<x>")`; número visible = `name` ("#1001"); estados a partir de
+  `displayFinancialStatus` + `displayFulfillmentStatus`; seguimiento en
+  `fulfillments.trackingInfo`; límites por coste de consulta (429 →
+  `IntegrationError` "no responde"). Tests con respuestas grabadas y prueba
+  real en la tienda de desarrollo con el token del usuario.
+
 **Lecciones del entorno (2026-10-19):** tras traer cambios con migraciones,
 el entorno local del usuario no estaba migrado desde la Fase 13 y ai-service
 no arrancaba (faltaba el rol `ai_service_checkpoints`): `composer install`,
