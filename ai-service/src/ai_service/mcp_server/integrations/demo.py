@@ -180,8 +180,9 @@ class DemoTickets:
 
 @dataclass(slots=True)
 class DemoIntegrations:
-    """`IntegrationResolver` de demostración. `tenants` = empresa → clave en
-    los ficheros. Una empresa conocida tiene helpdesk; pedidos y facturas,
+    """`IntegrationResolver` de demostración. La empresa se busca en los
+    ficheros por su slug (el que da Laravel) o, sin Laravel, por `tenants`
+    (empresa → slug). Una empresa conocida tiene helpdesk; pedidos y facturas,
     solo si tiene pedidos en el fichero; citas, solo si tiene citas."""
 
     tenants: dict[int, str]
@@ -208,8 +209,14 @@ class DemoIntegrations:
             },
         )
 
-    async def for_tenant(self, tenant_id: int) -> TenantIntegrations:
-        slug = self.tenants.get(tenant_id)
+    async def for_tenant(self, tenant_id: int, slug: str | None = None) -> TenantIntegrations:
+        """Con `slug` (Laravel lo conoce) no hace falta configurar ids: una empresa
+        con slug "clinica-demo" tiene las citas de demostración. Un slug que no
+        está en los ficheros ni en `tenants` = sin datos de demostración."""
+        if slug is None:
+            slug = self.tenants.get(tenant_id)
+        elif slug not in self._known():
+            slug = None
         if slug is None:
             return NO_INTEGRATIONS
         tickets = DemoTickets(self.tickets.setdefault(slug, []), self.created, tenant_id)
@@ -222,6 +229,9 @@ class DemoIntegrations:
                 DemoAppointments(self.appointments[slug]) if self.appointments.get(slug) else None
             ),
         )
+
+    def _known(self) -> set[str]:
+        return {*self.tenants.values(), *self.orders, *self.tickets, *self.appointments}
 
 
 def _read(path: Path | None) -> list[tuple[str, list[dict[str, Any]]]]:

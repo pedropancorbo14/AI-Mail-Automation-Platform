@@ -22,6 +22,7 @@ class TenantIntegrationResource extends JsonResource
                 : null,
             'orders' => $this->orders,
             'invoices' => $this->invoices,
+            'appointments' => $this->appointments,
             'enabled' => $this->enabled,
             'status' => $this->status,
             'last_tested_at' => $this->last_tested_at,

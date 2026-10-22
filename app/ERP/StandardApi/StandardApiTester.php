@@ -10,8 +10,8 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * "Probar conexión" de la API estándar de una empresa: pide la lista de
- * pedidos (y de facturas, si la implementa) de un cliente que no existe y
- * comprueba que responde 200 con el formato del contrato.
+ * pedidos, facturas y citas (las partes que implementa) de un cliente que no
+ * existe y comprueba que responde 200 con el formato del contrato.
  *
  * La URL la escribe la empresa (anti-SSRF, CompanyUrl): HTTPS, host
  * comprobado y conexión fijada a esa IP, sin redirecciones, 5 s y 1 MB como
@@ -35,21 +35,26 @@ class StandardApiTester
         return $this->url->reject($url);
     }
 
-    public function test(string $baseUrl, string $token, bool $orders, bool $invoices): ConnectionTestResult
+    public function test(string $baseUrl, string $token, bool $orders, bool $invoices, bool $appointments = false): ConnectionTestResult
     {
         if ($reason = $this->rejectUrl($baseUrl)) {
             return ConnectionTestResult::failed($reason);
         }
 
         $checks = [];
-        foreach (['orders' => [$orders, 'pedidos', 'order-list'], 'invoices' => [$invoices, 'facturación', 'invoice-list']] as $resource => [$enabled, $system, $schema]) {
+        $resources = [
+            'orders' => [$orders, 'pedidos', 'order-list'],
+            'invoices' => [$invoices, 'facturación', 'invoice-list'],
+            'appointments' => [$appointments, 'citas', 'appointment-list'],
+        ];
+        foreach ($resources as $resource => [$enabled, $system, $schema]) {
             if ($enabled) {
                 $checks[$resource] = $this->check($baseUrl, $token, $resource, $system, $schema);
             }
         }
 
         if ($checks === []) {
-            return ConnectionTestResult::failed('Indica qué partes de la API tiene tu sistema (pedidos o facturas).');
+            return ConnectionTestResult::failed('Indica qué partes de la API tiene tu sistema (pedidos, facturas o citas).');
         }
 
         $errors = array_values(array_filter($checks));

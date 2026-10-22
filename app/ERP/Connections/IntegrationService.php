@@ -48,7 +48,8 @@ class IntegrationService
 
     /**
      * @param  array<string, mixed>  $data  base_url, enabled y, según el tipo, token
-     *                                      (+ orders/invoices) o consumer_key + consumer_secret.
+     *                                      (+ orders/invoices/appointments) o consumer_key +
+     *                                      consumer_secret. Sin `appointments`, se conserva.
      *                                      Credenciales vacías = conservar las guardadas.
      * @return array{connection: TenantIntegration, result: ConnectionTestResult}
      */
@@ -63,6 +64,8 @@ class IntegrationService
             // WooCommerce: solo pedidos (no tiene facturas de serie).
             'orders' => $type === TenantIntegration::WOOCOMMERCE ? true : (bool) $data['orders'],
             'invoices' => $type === TenantIntegration::WOOCOMMERCE ? false : (bool) $data['invoices'],
+            'appointments' => $type !== TenantIntegration::WOOCOMMERCE
+                && (bool) ($data['appointments'] ?? $connection->appointments),
             'enabled' => (bool) $data['enabled'],
         ]);
         if ($created) {
@@ -75,7 +78,7 @@ class IntegrationService
         }
         $connection->save();
 
-        $changes = AuditLogger::changesOf($connection, ['base_url', 'orders', 'invoices', 'enabled']);
+        $changes = AuditLogger::changesOf($connection, ['base_url', 'orders', 'invoices', 'appointments', 'enabled']);
         if ($credentials !== null) {
             $changes['credentials'] = ['from' => $created ? null : '[oculto]', 'to' => '[oculto]'];
         }
@@ -91,6 +94,7 @@ class IntegrationService
         $result = match ($connection->type) {
             TenantIntegration::STANDARD_API => $this->standardApi->test(
                 $connection->base_url, (string) $connection->credentials, $connection->orders, $connection->invoices,
+                $connection->appointments,
             ),
             TenantIntegration::WOOCOMMERCE => $this->woocommerce->test(
                 $connection->base_url, ...array_values(self::wooKeys($connection)),

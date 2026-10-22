@@ -105,7 +105,7 @@ it('tells the MCP server which companies have imported orders', function () {
 
     dataApi("/internal/integrations/{$this->tenant->id}")
         ->assertOk()
-        ->assertExactJson(['tenant_id' => $this->tenant->id, 'orders' => ['type' => 'csv'], 'invoices' => null, 'tickets' => null]);
+        ->assertExactJson(['tenant_id' => $this->tenant->id, 'tenant_slug' => $this->tenant->slug, 'orders' => ['type' => 'csv'], 'invoices' => null, 'appointments' => null, 'tickets' => null]);
     dataApi("/internal/integrations/{$other->id}")->assertJsonPath('orders', null);
 });
 

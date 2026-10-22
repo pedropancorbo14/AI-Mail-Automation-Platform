@@ -35,7 +35,13 @@ const connection = ref<IntegrationConnection | null>(null);
 const editing = ref(false);
 const busy = ref(false);
 const errors = ref<Record<string, string | undefined>>({});
-const form = reactive<StandardApiForm>({ base_url: '', token: '', orders: true, invoices: false, enabled: true });
+
+/** "Pedidos, Facturas y Citas": las partes de la API que tiene su sistema. */
+function parts(c: IntegrationConnection): string {
+    const names = [c.orders && 'Pedidos', c.invoices && 'Facturas', c.appointments && 'Citas'].filter((n): n is string => Boolean(n));
+    return names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names.at(-1)}` : (names[0] ?? '');
+}
+const form = reactive<StandardApiForm>({ base_url: '', token: '', orders: true, invoices: false, appointments: false, enabled: true });
 
 const statusInfo = {
     pending: { label: 'Sin probar', type: 'default' },
@@ -45,8 +51,15 @@ const statusInfo = {
 
 function edit(): void {
     Object.assign(form, connection.value
-        ? { base_url: connection.value.base_url, token: '', orders: connection.value.orders, invoices: connection.value.invoices, enabled: connection.value.enabled }
-        : { base_url: '', token: '', orders: true, invoices: false, enabled: true });
+        ? {
+            base_url: connection.value.base_url,
+            token: '',
+            orders: connection.value.orders,
+            invoices: connection.value.invoices,
+            appointments: connection.value.appointments,
+            enabled: connection.value.enabled,
+        }
+        : { base_url: '', token: '', orders: true, invoices: false, appointments: false, enabled: true });
     errors.value = {};
     editing.value = true;
 }
@@ -124,7 +137,7 @@ onMounted(async () => {
                     <strong>{{ connection.base_url }}</strong>
                 </NSpace>
                 <NText depth="3">
-                    {{ [connection.orders ? 'Pedidos' : null, connection.invoices ? 'Facturas' : null].filter(Boolean).join(' y ') }}
+                    {{ parts(connection) }}
                     <template v-if="connection.last_tested_at"> · probada {{ formatDateTime(connection.last_tested_at) }}</template>
                 </NText>
                 <NAlert v-if="connection.status === 'failing' && connection.last_error" type="error" :show-icon="false">
@@ -156,13 +169,14 @@ onMounted(async () => {
                 <NSpace>
                     <NCheckbox v-model:checked="form.orders">Pedidos</NCheckbox>
                     <NCheckbox v-model:checked="form.invoices">Facturas</NCheckbox>
+                    <NCheckbox v-model:checked="form.appointments" data-test="appointments">Citas</NCheckbox>
                 </NSpace>
             </NFormItem>
             <NFormItem label="Activada">
                 <NSwitch v-model:value="form.enabled" />
             </NFormItem>
             <NSpace>
-                <NButton type="primary" attr-type="submit" :loading="busy" :disabled="!form.orders && !form.invoices" data-test="save">Guardar y probar</NButton>
+                <NButton type="primary" attr-type="submit" :loading="busy" :disabled="!form.orders && !form.invoices && !form.appointments" data-test="save">Guardar y probar</NButton>
                 <NButton @click="editing = false">Cancelar</NButton>
             </NSpace>
         </NForm>

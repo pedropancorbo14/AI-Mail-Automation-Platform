@@ -17,9 +17,13 @@ use Illuminate\Http\JsonResponse;
  * demostración si la empresa los tiene, o nada).
  *
  * - `standard_api`: su propio sistema (URL y clave, descifrada: esta ruta solo
- *   la lee el servidor MCP con el token de datos). Manda sobre lo demás.
+ *   la lee el servidor MCP con el token de datos). Manda sobre lo demás. Es
+ *   el único origen de facturas y citas.
  * - `woocommerce`: su tienda (URL y claves de API, descifradas). Solo pedidos.
  * - `csv`: pedidos importados, servidos por /internal/standard-api/{tenant}.
+ *
+ * `tenant_slug`: con él el servidor MCP encuentra los datos de demostración
+ * de la empresa ("empresa-demo", "clinica-demo") sin configurar ids.
  *
  * Una empresa desactivada no tiene nada. Nunca se guarda en cachés.
  */
@@ -28,7 +32,7 @@ class IntegrationsController extends Controller
     public function __invoke(int $tenant, TenantService $tenants): JsonResponse
     {
         $model = Tenant::find($tenant);
-        $config = ['orders' => null, 'invoices' => null];
+        $config = ['orders' => null, 'invoices' => null, 'appointments' => null];
 
         if ($model !== null && $model->is_active) {
             $config = $tenants->runAs($model, function () {
@@ -49,11 +53,15 @@ class IntegrationsController extends Controller
                     default => null,
                 };
 
-                return ['orders' => $orders, 'invoices' => $api?->invoices ? $own : null];
+                return [
+                    'orders' => $orders,
+                    'invoices' => $api?->invoices ? $own : null,
+                    'appointments' => $api?->appointments ? $own : null,
+                ];
             });
         }
 
-        return response()->json(['tenant_id' => $tenant, ...$config, 'tickets' => null])
+        return response()->json(['tenant_id' => $tenant, 'tenant_slug' => $model?->slug, ...$config, 'tickets' => null])
             ->header('Cache-Control', 'no-store');
     }
 }

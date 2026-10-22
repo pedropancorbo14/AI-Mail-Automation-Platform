@@ -8,7 +8,7 @@ import { saveWooCommerce, type IntegrationConnection } from '@/api/integrations'
 import { useAuthStore } from '@/stores/auth';
 
 const shop: IntegrationConnection = {
-    type: 'woocommerce', base_url: 'https://tienda.acme.test', has_token: true, consumer_key_hint: '…cdef', orders: true, invoices: false,
+    type: 'woocommerce', base_url: 'https://tienda.acme.test', has_token: true, consumer_key_hint: '…cdef', orders: true, invoices: false, appointments: false,
     enabled: true, status: 'active', last_tested_at: '2026-10-19T08:00:00Z', last_error: null, updated_at: null,
 };
 

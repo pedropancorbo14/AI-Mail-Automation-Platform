@@ -12,6 +12,8 @@ export interface IntegrationConnection {
     consumer_key_hint: string | null;
     orders: boolean;
     invoices: boolean;
+    /** Agenda (clínicas, talleres…): solo el sistema propio. */
+    appointments: boolean;
     enabled: boolean;
     status: IntegrationStatus;
     last_tested_at: string | null;
@@ -31,6 +33,7 @@ export interface StandardApiForm {
     token: string;
     orders: boolean;
     invoices: boolean;
+    appointments: boolean;
     enabled: boolean;
 }
 

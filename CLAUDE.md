@@ -5166,6 +5166,33 @@ aplazados hasta que haya demanda.
   contra PostgreSQL 16 + `postgresql-16-pgvector` y Redis de la sesión; con
   `GREENMAIL_HOST=127.0.0.1` como en el CI (si no, 2 tests de anti-SSRF
   fallan porque `greenmail` no resuelve)
+- [x] 6.4 **La agenda de una empresa en el panel y Clínica Demo.**
+  Migración `add_appointments_to_tenant_integrations` (booleano
+  `appointments`, como `orders`/`invoices`: más simple que una lista
+  genérica de recursos). `IntegrationService` lo guarda (sin el campo en la
+  petición, **se conserva**: un cliente antiguo de la API no lo apaga;
+  WooCommerce nunca) y lo audita; `StandardApiTester` prueba también
+  `/v1/appointments` contra `appointment-list.v1` ("El sistema de citas
+  no responde con el formato…"; sin ninguna parte: "pedidos, facturas o
+  citas"); validación `sometimes|boolean`, recurso con `appointments`;
+  `/internal/integrations` manda `appointments` (solo del sistema propio)
+  y **`tenant_slug`**. **Datos de demostración por slug:**
+  `DemoIntegrations.for_tenant(tenant_id, slug=)` y `LaravelIntegrations`
+  pasa el `tenant_slug` al respaldo de demostración (`fallback` tipado como
+  `DemoIntegrations`): una empresa con slug `clinica-demo` tiene las citas
+  sin configurar ids; un slug que no está en los ficheros no recibe nada
+  aunque su id coincida con `AI_SERVICE_MCP_DEMO_TENANTS` (que sigue para
+  el modo sin Laravel). **`ClinicDemoSeeder`** (aparte, como
+  `KnowledgeBaseSeeder`; idempotente): "Clínica Demo", propietaria
+  `clinica@example.com` / `password`, herramientas de citas activadas.
+  Panel: casilla **Citas** en "Tu propio sistema" (`parts()`: "Pedidos,
+  Facturas y Citas"), "Citas" en la auditoría. Tests: Pest (agenda de una
+  clínica probada solo en `/v1/appointments` y entregada al servidor MCP,
+  formato erróneo, se conserva al editar sin el campo, ninguna parte,
+  seeder), Python (demostración por slug) y Vitest (clínica solo con
+  citas). 526 de Python, 1039 de Laravel, 101 de Vitest. **Pendiente:**
+  la tarjeta vive en la página "Pedidos" y pide `orders.manage`; si se
+  añaden más tipos de negocio, valorar una página "Integraciones"
 
 #### Opciones que se plantearon para la tarea 6
 

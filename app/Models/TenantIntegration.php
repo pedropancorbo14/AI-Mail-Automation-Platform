@@ -27,6 +27,7 @@ class TenantIntegration extends Model
         'status' => 'pending',
         'orders' => true,
         'invoices' => false,
+        'appointments' => false,
         'enabled' => true,
     ];
 
@@ -36,6 +37,7 @@ class TenantIntegration extends Model
             'credentials' => 'encrypted',
             'orders' => 'boolean',
             'invoices' => 'boolean',
+            'appointments' => 'boolean',
             'enabled' => 'boolean',
             'last_tested_at' => 'datetime',
         ];

@@ -22,9 +22,9 @@ from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
 from ai_service.mcp_server.integrations.contracts import (
     IntegrationError,
-    IntegrationResolver,
     TenantIntegrations,
 )
+from ai_service.mcp_server.integrations.demo import DemoIntegrations
 from ai_service.mcp_server.integrations.standard_api import (
     HostGuard,
     StandardApiAppointments,
@@ -59,6 +59,8 @@ class _Config(BaseModel):
     invoices: _Source | None = None
     tickets: _Source | None = None
     appointments: _Source | None = None
+    # Para los datos de demostración (p. ej. "clinica-demo"), sin configurar ids.
+    tenant_slug: str | None = None
 
 
 class LaravelIntegrations:
@@ -67,7 +69,7 @@ class LaravelIntegrations:
         base_url: str,
         token: str,
         *,
-        fallback: IntegrationResolver | None = None,
+        fallback: DemoIntegrations | None = None,
         ttl_seconds: float = 60.0,
         timeout: float = 5.0,
         transport: httpx.AsyncBaseTransport | None = None,
@@ -95,7 +97,7 @@ class LaravelIntegrations:
             appointments=self._appointments(tenant_id, config.appointments),
         )
         if integrations == TenantIntegrations() and self._fallback is not None:
-            return await self._fallback.for_tenant(tenant_id)
+            return await self._fallback.for_tenant(tenant_id, slug=config.tenant_slug)
         return integrations
 
     async def _config(self, tenant_id: int) -> _Config:

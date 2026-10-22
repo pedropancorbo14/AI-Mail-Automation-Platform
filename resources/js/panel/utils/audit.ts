@@ -84,6 +84,7 @@ const fieldLabels: Record<string, string> = {
     token: 'Clave',
     orders: 'Pedidos',
     invoices: 'Facturas',
+    appointments: 'Citas',
     enabled: 'Activada',
 };
 

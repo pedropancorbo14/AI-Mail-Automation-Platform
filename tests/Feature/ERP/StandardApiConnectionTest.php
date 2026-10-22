@@ -174,3 +174,44 @@ it('gives the MCP server the company system, which wins over the imported orders
         ->assertJsonPath('orders', ['type' => 'csv'])
         ->assertJsonPath('invoices', null);
 });
+
+it('connects a clinic agenda: tests only the appointments and gives them to the MCP server', function () {
+    $appointments = json_decode(file_get_contents(base_path('contracts/integrations/examples/valid/appointment-list--two.json')), true);
+    fakeErp(body: $appointments);
+
+    connectErp(['orders' => false, 'invoices' => false, 'appointments' => true])
+        ->assertOk()
+        ->assertJsonPath('data.appointments', true)
+        ->assertJsonPath('data.orders', false)
+        ->assertJsonPath('result.ok', true);
+
+    Http::assertSent(fn (Request $r) => str_starts_with($r->url(), ERP_URL . '/v1/appointments?'));
+    Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/v1/orders'));
+
+    $own = ['type' => 'standard_api', 'base_url' => ERP_URL, 'token' => ERP_KEY];
+    $this->getJson("/internal/integrations/{$this->tenant->id}", ['Authorization' => 'Bearer token-de-datos'])
+        ->assertJsonPath('appointments', $own)
+        ->assertJsonPath('orders', null)
+        ->assertJsonPath('invoices', null);
+});
+
+it('says when the agenda does not answer with the appointments format', function () {
+    // Una lista de pedidos donde se esperaban citas: falta starts_at.
+    fakeErp(body: ['data' => [['id' => 'C-1', 'customer_email' => 'a@b.test', 'status' => 'scheduled']]]);
+
+    connectErp(['orders' => false, 'appointments' => true])
+        ->assertJsonPath('data.status', 'failing')
+        ->assertJsonPath('data.last_error', fn (string $error) => str_contains($error, 'El sistema de citas no responde con el formato'));
+});
+
+it('keeps the appointments when an older client edits without them, and needs at least one part', function () {
+    fakeErp();
+    connectErp(['orders' => false, 'appointments' => true]);
+
+    connectErp(['orders' => true, 'token' => null])->assertJsonPath('data.appointments', true); // no lo envía: se conserva
+    $changes = inTenant($this->tenant, fn () => AuditLog::where('action', 'integration.updated')->sole()->changes);
+    expect($changes)->toHaveKey('orders')->not->toHaveKey('appointments');
+    connectErp(['orders' => false, 'invoices' => false, 'appointments' => false, 'token' => null])
+        ->assertJsonPath('data.status', 'failing')
+        ->assertJsonPath('data.last_error', fn (string $error) => str_contains($error, 'pedidos, facturas o citas'));
+});

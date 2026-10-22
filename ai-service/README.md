@@ -528,7 +528,11 @@ no tiene datos"), y `/capabilities` responde 503.
 **Datos de demostración** (`integrations/demo.py`, `DemoIntegrations`):
 pedidos en `mcp_server/data/orders.json`, facturas derivadas de ellos (una
 `FAC-<pedido>` por pedido facturado) y tickets en `mcp_server/data/tickets.json`
-(los creados, en memoria). `AI_SERVICE_MCP_DEMO_TENANTS` asocia el
+(los creados, en memoria) y citas de "Clínica Demo" en
+`mcp_server/data/appointments.json` (Fase 14). Con Laravel, la empresa se
+busca **por su slug** (`tenant_slug` de `/internal/integrations`): una
+empresa con slug `clinica-demo` tiene la agenda de demostración sin
+configurar ids. Sin Laravel, `AI_SERVICE_MCP_DEMO_TENANTS` asocia el
 `tenant_id` con la clave del fichero (`{"1": "empresa-demo"}`).
 
 ### Cliente MCP (`ToolPort`)

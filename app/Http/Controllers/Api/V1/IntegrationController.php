@@ -62,6 +62,7 @@ class IntegrationController extends Controller
                 'token' => [$required, 'string', 'max:2000'],
                 'orders' => ['required', 'boolean'],
                 'invoices' => ['required', 'boolean'],
+                'appointments' => ['sometimes', 'boolean'],
             ];
 
         ['connection' => $connection, 'result' => $result] = $this->connections->save($type, $request->validate($rules), $request->user());

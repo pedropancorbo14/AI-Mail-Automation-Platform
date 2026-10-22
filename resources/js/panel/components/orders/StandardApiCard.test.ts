@@ -8,8 +8,8 @@ import { saveStandardApi, type IntegrationConnection } from '@/api/integrations'
 import { useAuthStore } from '@/stores/auth';
 
 const connection = (overrides: Partial<IntegrationConnection> = {}): IntegrationConnection => ({
-    type: 'standard_api', base_url: 'https://erp.acme.test/aimail', has_token: true, consumer_key_hint: null, orders: true, invoices: true, enabled: true,
-    status: 'failing', last_tested_at: '2026-10-19T08:00:00Z', last_error: 'El sistema de pedidos rechazó la clave.', updated_at: null,
+    type: 'standard_api', base_url: 'https://erp.acme.test/aimail', has_token: true, consumer_key_hint: null, orders: true, invoices: true, appointments: false,
+    enabled: true, status: 'failing', last_tested_at: '2026-10-19T08:00:00Z', last_error: 'El sistema de pedidos rechazó la clave.', updated_at: null,
     ...overrides,
 });
 
@@ -70,9 +70,21 @@ describe('sistema propio de la empresa', () => {
     it('al editar, una clave vacía no se envía (se conserva la guardada)', async () => {
         const fetchMock = stubApi(connection());
 
-        await saveStandardApi({ base_url: 'https://erp.acme.test/aimail', token: '', orders: true, invoices: false, enabled: true });
+        await saveStandardApi({ base_url: 'https://erp.acme.test/aimail', token: '', orders: true, invoices: false, appointments: true, enabled: true });
 
         const [, init] = fetchMock.mock.calls.find(([url]) => String(url).startsWith('/api/v1/integrations'))!;
-        expect(JSON.parse(String(init.body))).toEqual({ base_url: 'https://erp.acme.test/aimail', orders: true, invoices: false, enabled: true });
+        expect(JSON.parse(String(init.body))).toEqual({ base_url: 'https://erp.acme.test/aimail', orders: true, invoices: false, appointments: true, enabled: true });
+    });
+
+    it('una clínica conecta solo su agenda: se ven las citas y se pueden marcar', async () => {
+        stubApi(connection({ orders: false, invoices: false, appointments: true, status: 'active', last_error: null }));
+
+        const wrapper = await mountCard(['orders.view', 'orders.manage']);
+        expect(wrapper.get('[data-test="connection"]').text()).toContain('Citas');
+        expect(wrapper.get('[data-test="connection"]').text()).not.toContain('Pedidos');
+
+        await wrapper.findAll('button').find((b) => b.text() === 'Editar')!.trigger('click');
+        expect(wrapper.find('[data-test="appointments"]').exists()).toBe(true);
+        expect(wrapper.get('[data-test="save"]').attributes('disabled')).toBeUndefined();
     });
 });

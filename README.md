@@ -97,6 +97,9 @@ docker compose exec ollama ollama pull bge-m3
 
 # 7. (Opcional) Documentación de ejemplo de "Empresa Demo" para probar el RAG
 docker compose exec app php artisan db:seed --class=KnowledgeBaseSeeder
+
+# 8. (Opcional) "Clínica Demo": un negocio con citas (clinica@example.com / password)
+docker compose exec app php artisan db:seed --class=ClinicDemoSeeder
 ```
 
 El **panel** (`http://localhost:8080`) lo sirve en desarrollo el servicio
@@ -701,9 +704,17 @@ los ven con `orders.view`), con plantilla descargable.
 
 Si la empresa tiene un ERP o programa a medida, su informático publica la
 **API estándar** ([`contracts/integrations/`](contracts/integrations/README.md):
-cuatro consultas de solo lectura) y en **Pedidos → Tu propio sistema** se
+consultas de solo lectura) y en **Pedidos → Tu propio sistema** se
 guarda la dirección y la clave. Si está activada, **manda sobre los pedidos
-importados**; puede ofrecer solo pedidos, solo facturas o las dos cosas.
+importados**; ofrece solo las partes que tiene: pedidos, facturas y/o
+**citas** (una clínica o un taller conecta solo su agenda).
+
+**Probar las citas en local:** `php artisan db:seed --class=ClinicDemoSeeder`
+crea "Clínica Demo" (`clinica@example.com` / `password`) con las
+herramientas de citas activadas. El servidor MCP le da las citas de
+demostración por su slug (`clinica-demo`), sin configurar nada: un email de
+`maria@cliente.test` preguntando "¿a qué hora es mi cita?" se contesta con su
+cita C-2031. Para recibir correo, añade un buzón en **Buzones**.
 
 - **Se prueba al guardar** (y con "Probar conexión"): pide la lista de un
   cliente que no existe y comprueba que responde con el formato del

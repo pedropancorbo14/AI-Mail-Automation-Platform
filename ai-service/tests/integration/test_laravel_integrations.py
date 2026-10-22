@@ -28,6 +28,8 @@ class FakeLaravel:
     def __init__(self) -> None:
         self.requests: list[httpx.Request] = []
         self.down = False
+        # Slug de cada empresa (Laravel lo manda; sin él, la demo usa el id).
+        self.slugs: dict[int, str] = {}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -39,8 +41,10 @@ class FakeLaravel:
         if path.startswith("/internal/integrations/"):
             tenant = int(path.rsplit("/", 1)[1])
             orders = {"type": "csv"} if tenant == 7 else None
+            slug = self.slugs.get(tenant)
             return httpx.Response(
-                200, json={"tenant_id": tenant, "orders": orders, "invoices": None}
+                200,
+                json={"tenant_id": tenant, "tenant_slug": slug, "orders": orders, "invoices": None},
             )
         if path == "/internal/standard-api/7/v1/orders/45821":
             return httpx.Response(200, json=ORDER)
@@ -162,3 +166,19 @@ def test_with_a_laravel_url_the_token_is_required() -> None:
         McpSettings(_env_file=None, laravel_url=LARAVEL, laravel_token=TOKEN)  # type: ignore[arg-type]
     )
     assert isinstance(built, LaravelIntegrations)
+
+
+async def test_the_demo_data_is_found_by_the_company_slug_without_configuring_ids() -> None:
+    laravel = FakeLaravel()
+    laravel.slugs = {12: "clinica-demo", 1: "otra-cosa"}
+    tools = BusinessTools(resolver(laravel))
+
+    clinic = await tools.availability(12)  # ningún id configurado: basta el slug
+    renamed = await tools.availability(1)  # el id 1 ya no es Empresa Demo
+
+    assert clinic["get_customer_appointments"] is True
+    assert clinic["get_order"] is False
+    listed = await tools.get_customer_appointments(12, "maria@cliente.test", 5)
+    assert [a["appointment_id"] for a in listed["appointments"]] == ["C-2031", "C-1877"]
+    # Un slug que no está en los datos de demostración: nada, aunque el id coincida.
+    assert set(renamed.values()) == {False}
