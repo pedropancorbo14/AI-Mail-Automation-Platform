@@ -1,7 +1,11 @@
 # Informes de evaluación guardados
 
 Informes generados por `uv run ai-service-eval` (los ficheros de trabajo de
-`evals/runs/` no se versionan). Resumen de la ronda del 2026-10-22:
+`evals/runs/` no se versionan). **Comparación completa de los dos modelos** (seguridad, calidad, confianza, coste,
+tokens, tiempos, herramientas, por intención y caso a caso):
+[`2026-10-22-opus-vs-sonnet.md`](2026-10-22-opus-vs-sonnet.md).
+
+Resumen de la ronda del 2026-10-22:
 
 | Ejecución | Casos | Envíos inseguros | Fugas | Intención | Decisión | Automatización | Coste/email |
 |---|---|---|---|---|---|---|---|
