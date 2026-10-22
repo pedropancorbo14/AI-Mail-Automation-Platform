@@ -5412,8 +5412,43 @@ automatización perdida, datos obligatorios y prohibidos.
   inventados. **La IA simulada solo valida el ejecutor y la puntuación, no
   mide calidad.** 558 tests de Python
 
-**Siguiente (sesión nueva, la que ve `ANTHROPIC_API_KEY`), parado aquí a
-petición del usuario (sin saldo de tokens de Claude Code por ahora):**
+- [x] 15.4 **Primera evaluación con Claude real y ajustes (2026-10-22).**
+  La clave está en `AI_SERVICE_ANTHROPIC_API_KEY` (el ejecutor la lee).
+  `claude-opus-5-5`, 40 casos, **2,09 $** (0,052 $/email, mediana 13 s):
+  **0 envíos inseguros, 0 fugas, 0 datos inventados**, intención 98 %,
+  idioma 100 %, decisión 88 %; **automatización 55 %** (demasiado
+  prudente). Causas, analizadas caso a caso: (1) el umbral 0,85 se aplicaba
+  también a la **clasificación** y Claude da 0,75–0,80 a preguntas que
+  encajan en dos intenciones (Canarias, Lisboa, plazo de devolución, formas
+  de pago: respuestas exactas con confianza 0,85–0,95 paradas por eso) →
+  **umbral propio de la clasificación 0,75**
+  (`AI_SERVICE_MIN_CLASSIFICATION_CONFIDENCE`; el de la respuesta sigue en
+  0,85); (2) la regla de promesas marcaba explicaciones de la política
+  ("cuando recibamos el producto, te devolveremos el dinero en 14 días") →
+  una promesa **en futuro dentro de una frase que empieza con una condición**
+  (si/cuando/una vez/en cuanto/if/once/when) no cuenta; un reembolso
+  afirmado como hecho, una condición al final o una promesa en otra frase
+  siguen contando; (3) el corrector daba por "no consultada" una herramienta
+  que respondió con error (el pedido ajeno sí llamó a `get_order` y recibió
+  "no hay ningún pedido de este cliente") → consultada = ejecutada. **Dataset
+  (sin tocar ningún correo):** campo `note` en las expectativas para dejar
+  escrito por qué se corrige una; `pedido-propio-45821` → `ideal: either`
+  (con los datos de demostración lleva tres semanas de retraso: pasarlo a
+  una persona también es correcto) y `formas-de-pago` acepta también
+  `sales_inquiry`. **Regla acordada con el usuario:** una expectativa solo se
+  corrige si el motivo se justifica sin mirar lo que respondió la IA; las de
+  seguridad (`auto_send_ok: false`, `must_not_include`) nunca se relajan.
+  **Caché:** la huella ya no incluye las expectativas (se vuelven a puntuar
+  gratis con `--report-only`) pero sí la **versión de las reglas de
+  decisión** (umbrales + hash de `policy.py` y `commitments.py`): si cambian
+  las reglas, la decisión guardada ya no vale y el caso se repite
+
+**Siguiente:** repetir la evaluación con las reglas nuevas (todos los casos
+se repiten porque cambió la versión de las reglas; ~2 $) y, para no
+ajustar el sistema a este examen, un **segundo conjunto de casos nuevos**
+escritos antes de ejecutarlos que solo sirve para comprobar.
+
+**Pasos de la evaluación con Claude (referencia):**
 1. `cd ai-service && uv sync` y comprobar que la clave está
    (`test -n "$ANTHROPIC_API_KEY"`, sin imprimirla).
 2. Humo con 3 casos y tope bajo: `uv run ai-service-eval --provider

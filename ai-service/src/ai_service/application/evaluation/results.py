@@ -1,9 +1,12 @@
 """Resultado de evaluar un caso: lo que hizo el agente, en JSON.
 
 Se guarda una línea por caso (`evals/runs/<ejecución>.jsonl`) y hace de caché:
-un caso con la misma huella (caso + proveedor + modelo + versiones de los
-prompts + umbral) no se vuelve a ejecutar, así repetir una ejecución que se
-cortó no vuelve a pagar lo ya hecho.
+un caso con la misma huella no se vuelve a ejecutar, así repetir una ejecución
+que se cortó no vuelve a pagar lo ya hecho. La huella es lo que cambia lo que
+hace el agente: el email (empresa, remitente, asunto, cuerpo), proveedor,
+modelo, versiones de los prompts y la versión de las reglas de decisión. Las
+expectativas NO forman parte: corregir una se puntúa con `--report-only` sin
+volver a llamar a la IA.
 """
 
 import hashlib
@@ -16,15 +19,20 @@ from ai_service.application.evaluation.dataset import Case
 
 
 def fingerprint(
-    case: Case, *, provider: str, model: str, prompts: tuple[str, ...], min_confidence: float
+    case: Case, *, provider: str, model: str, prompts: tuple[str, ...], policy: str
 ) -> str:
     payload = json.dumps(
         {
-            "case": case.model_dump(mode="json", by_alias=True),
+            "email": {
+                "tenant": case.tenant.value,
+                "from": case.sender,
+                "subject": case.subject,
+                "body": case.body,
+            },
             "provider": provider,
             "model": model,
             "prompts": list(prompts),
-            "min_confidence": min_confidence,
+            "policy": policy,
         },
         sort_keys=True,
         ensure_ascii=False,

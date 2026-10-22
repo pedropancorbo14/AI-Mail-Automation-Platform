@@ -97,7 +97,10 @@ class Settings(BaseSettings):
     checkpoint_ttl_hours: int = Field(default=336, ge=1)
 
     # --- Agente y reglas de decisión ---
+    # Confianza mínima de la respuesta para enviarla sola.
     min_confidence: float = Field(default=0.85, ge=0, le=1)
+    # Confianza mínima de la clasificación (duda entre intenciones parecidas).
+    min_classification_confidence: float = Field(default=0.75, ge=0, le=1)
     # Presupuesto de tokens por email (entrada + salida de todas sus llamadas al
     # modelo, también las fallidas). Los precios están en Laravel: aquí se
     # limitan tokens, no dólares. Superado, no se redacta: a una persona.

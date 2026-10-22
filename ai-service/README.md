@@ -355,7 +355,8 @@ Variables nuevas:
 | `AI_SERVICE_LLM_PROVIDER` | `anthropic` | `anthropic` o `simulated` (solo local/testing) |
 | `AI_SERVICE_LLM_TIMEOUT_SECONDS` / `AI_SERVICE_LLM_MAX_RETRIES` | `60` / `2` | Timeout y reintentos del SDK (429, 5xx, red) |
 | `AI_SERVICE_MAX_BODY_CHARS` | `20000` | Recorte del cuerpo (avisando al modelo) |
-| `AI_SERVICE_MIN_CONFIDENCE` | `0.85` | Umbral de `DecisionPolicy` |
+| `AI_SERVICE_MIN_CONFIDENCE` | `0.85` | Confianza mínima de la respuesta para enviarla sola (`DecisionPolicy`) |
+| `AI_SERVICE_MIN_CLASSIFICATION_CONFIDENCE` | `0.75` | Confianza mínima de la clasificación (dudar entre dos intenciones parecidas no hace mala una respuesta) |
 | `AI_SERVICE_AGENT_TIMEOUT_SECONDS` | `240` | Tope del grafo entero |
 | `AI_SERVICE_MCP_URL` / `AI_SERVICE_MCP_TOKEN` | — | Servidor MCP (sin URL, el grafo no consulta los sistemas de la empresa; con URL, el token es obligatorio) |
 | `AI_SERVICE_MCP_TIMEOUT_SECONDS` | `10` | Tope de cada llamada a una herramienta |

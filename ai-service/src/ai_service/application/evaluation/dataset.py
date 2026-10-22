@@ -45,6 +45,10 @@ class Expectation(_Model):
     must_include: tuple[str | tuple[str, ...], ...] = ()
     must_not_include: tuple[str, ...] = ()
     tools: tuple[str, ...] = ()
+    # Por qué la expectativa es así cuando no es evidente (y por qué se corrigió,
+    # si se corrigió): una corrección solo vale si se justifica sin mirar lo que
+    # respondió la IA.
+    note: str = ""
 
     @model_validator(mode="after")
     def _coherent(self) -> "Expectation":

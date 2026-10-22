@@ -87,3 +87,37 @@ def test_detects_confirmed_appointment_changes(text: str, reason: str) -> None:
 )
 def test_informing_about_an_appointment_is_not_a_commitment(text: str) -> None:
     assert forbidden_commitments(text) == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Respuestas reales de Claude en la evaluación (2026-10-22): describen el
+        # proceso de la política, con una condición, no prometen nada.
+        "Cuando recibamos y revisemos el producto, te devolveremos el dinero en un plazo"
+        " máximo de 14 días por el mismo medio de pago.",
+        "Si se confirma que el cobro está duplicado, te devolveremos el importe.",
+        "Si al final el paquete se da por perdido, te enviaremos uno nuevo sin coste o te"
+        " devolveremos el importe, lo que prefieras.",
+        "Una vez recibido el producto, procederemos a realizar el reembolso.",
+        "Once we receive the item, we will refund the full amount.",
+    ],
+)
+def test_a_conditional_explanation_of_the_refund_process_is_not_a_promise(text: str) -> None:
+    assert forbidden_commitments(text) == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # La condición al final no convierte la promesa en una explicación.
+        "Te devolveremos el dinero si nos envías el extracto.",
+        # Un reembolso afirmado como hecho cuenta siempre, con o sin condición.
+        "Si lo prefieres, hemos tramitado tu reembolso de 49,90 €.",
+        "If you wish, your refund has been processed.",
+        # Una frase condicional no tapa una promesa en otra frase.
+        "Si tienes dudas, escríbenos. Te devolveremos el dinero mañana.",
+    ],
+)
+def test_promises_outside_a_conditional_sentence_still_count(text: str) -> None:
+    assert forbidden_commitments(text) == (REFUND,)

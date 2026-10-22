@@ -44,6 +44,25 @@ def test_threshold_is_configurable() -> None:
     )
 
 
+def test_the_classification_has_its_own_lower_threshold() -> None:
+    # Dudar entre dos intenciones parecidas no hace mala una respuesta segura.
+    outcome = policy.decide(
+        make_email(), make_classification(confidence=Confidence(0.75)), make_draft()
+    )
+
+    assert outcome.decision is Decision.AUTO_SEND
+
+
+def test_classification_threshold_is_configurable() -> None:
+    strict = DecisionPolicy(min_classification_confidence=Confidence(0.85))
+
+    outcome = strict.decide(
+        make_email(), make_classification(confidence=Confidence(0.8)), make_draft()
+    )
+
+    assert outcome.reasons == ("La clasificación no es segura (confianza 0,80, mínimo 0,85).",)
+
+
 def test_uncertain_classification_goes_to_a_person() -> None:
     outcome = policy.decide(
         make_email(), make_classification(confidence=Confidence(0.6)), make_draft()

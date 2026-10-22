@@ -41,19 +41,33 @@ def test_an_unknown_model_with_tokens_has_unknown_cost_never_zero() -> None:
     assert cost_usd([make_call("x", model="modelo-nuevo", input_tokens=10)], prices) is None
 
 
-def test_the_fingerprint_changes_with_the_model_or_the_prompts() -> None:
+def test_the_fingerprint_changes_with_what_the_agent_sees_or_decides_with() -> None:
     case = load_dataset(DATASET).cases[0]
     base = {
         "provider": "anthropic",
         "model": "claude-opus-5-5",
         "prompts": ("a@1",),
-        "min_confidence": 0.85,
+        "policy": "0.85/0.75/abc",
     }
 
     same = fingerprint(case, **base)  # type: ignore[arg-type]
     assert fingerprint(case, **base) == same  # type: ignore[arg-type]
     assert fingerprint(case, **{**base, "model": "claude-sonnet-5-5"}) != same  # type: ignore[arg-type]
     assert fingerprint(case, **{**base, "prompts": ("a@2",)}) != same  # type: ignore[arg-type]
+    assert fingerprint(case, **{**base, "policy": "0.85/0.75/def"}) != same  # type: ignore[arg-type]
+    other_body = case.model_copy(update={"body": case.body + " ¿Me decís algo?"})
+    assert fingerprint(other_body, **base) != same  # type: ignore[arg-type]
+
+
+def test_correcting_an_expectation_does_not_repeat_the_case() -> None:
+    # Las expectativas no cambian lo que hace la IA: se vuelve a puntuar gratis.
+    case = load_dataset(DATASET).cases[0]
+    base = {"provider": "anthropic", "model": "m", "prompts": ("a@1",), "policy": "p"}
+    corrected = case.model_copy(
+        update={"expect": case.expect.model_copy(update={"ideal": "either", "note": "x"})}
+    )
+
+    assert fingerprint(corrected, **base) == fingerprint(case, **base)  # type: ignore[arg-type]
 
 
 def test_a_case_run_survives_a_round_trip_to_json() -> None:

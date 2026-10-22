@@ -102,7 +102,10 @@ def build_agent(
     tools = build_tools(settings)
     return LangGraphEmailAgent(
         llm or build_llm(settings),
-        DecisionPolicy(min_confidence=Confidence(settings.min_confidence)),
+        DecisionPolicy(
+            min_confidence=Confidence(settings.min_confidence),
+            min_classification_confidence=Confidence(settings.min_classification_confidence),
+        ),
         retriever=build_retriever(settings),
         tools=tools,
         actions=tools,

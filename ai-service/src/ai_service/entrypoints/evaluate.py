@@ -23,6 +23,7 @@ caso ya evaluado con la misma huella se reutiliza de `evals/runs/<run>.jsonl`
 import argparse
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -49,6 +50,7 @@ from ai_service.application.services.chunking import TextChunker
 from ai_service.application.services.knowledge import KnowledgeRetriever, RetrievalOptions
 from ai_service.application.services.tool_catalog import SEARCH_TOOL
 from ai_service.config import Environment, Settings
+from ai_service.domain import commitments, policy
 from ai_service.domain.confidence import Confidence
 from ai_service.domain.email import Email, EmailAddress, TenantId
 from ai_service.domain.policy import DecisionPolicy
@@ -178,6 +180,18 @@ async def mcp_server() -> AsyncIterator[str]:
         await task
 
 
+def policy_version(settings: Settings) -> str:
+    """Umbrales + huella del código de las reglas de decisión.
+
+    Si cambian, la decisión guardada en la caché ya no vale y el caso se repite.
+    """
+    sources = "".join(
+        Path(module.__file__ or "").read_text("utf-8") for module in (policy, commitments)
+    )
+    digest = hashlib.sha256(sources.encode()).hexdigest()[:12]
+    return f"{settings.min_confidence}/{settings.min_classification_confidence}/{digest}"
+
+
 def load_previous(path: Path) -> dict[str, CaseRun]:
     """Lo ya evaluado en esta ejecución (la última línea de cada caso manda)."""
     if not path.exists():
@@ -203,7 +217,10 @@ async def evaluate(
     async with mcp_server() as url:
         agent = LangGraphEmailAgent(
             llm,
-            DecisionPolicy(min_confidence=Confidence(settings.min_confidence)),
+            DecisionPolicy(
+                min_confidence=Confidence(settings.min_confidence),
+                min_classification_confidence=Confidence(settings.min_classification_confidence),
+            ),
             retriever=retriever,
             tools=McpToolClient(url, MCP_TOKEN),
             max_tool_calls=settings.max_tool_calls,
@@ -220,7 +237,7 @@ async def evaluate(
                     provider=options.provider,
                     model=options.model,
                     prompts=refs,
-                    min_confidence=settings.min_confidence,
+                    policy=policy_version(settings),
                 )
                 cached = previous.get(case.id)
                 if cached is not None and cached.fingerprint == key and cached.status == "ok":

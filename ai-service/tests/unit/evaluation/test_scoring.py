@@ -116,3 +116,17 @@ def test_errors_count_and_an_unknown_cost_stays_unknown() -> None:
     assert summary.errors == 1
     assert summary.cost_usd is None
     assert not summary.ok
+
+
+def test_a_tool_that_answered_with_an_error_was_still_consulted() -> None:
+    # "No hay ningún pedido de este cliente" es la respuesta correcta a un pedido ajeno.
+    errored = ORDER | {"status": "error", "result": None}
+    rejected = ORDER | {"status": "rejected", "result": None}
+
+    asked = score_case(case(tools=["get_order"]), run("No lo encuentro.", tool_calls=(errored,)))
+    never_ran = score_case(
+        case(tools=["get_order"]), run("No lo encuentro.", tool_calls=(rejected,))
+    )
+
+    assert asked.missing_tools == ()
+    assert never_ran.missing_tools == ("get_order",)

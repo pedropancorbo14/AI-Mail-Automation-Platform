@@ -17,6 +17,10 @@ from ai_service.domain.draft import Draft
 from ai_service.domain.email import Email
 
 DEFAULT_MIN_CONFIDENCE = Confidence(0.85)
+# La clasificación tiene su propio umbral: que dude entre dos intenciones
+# parecidas (p. ej. product_question o sales_inquiry) no hace mala una respuesta;
+# lo que dice si la respuesta es buena es su propia confianza (umbral de arriba).
+DEFAULT_MIN_CLASSIFICATION_CONFIDENCE = Confidence(0.75)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +49,7 @@ _LEGAL_THREAT = re.compile(
 @dataclass(frozen=True, slots=True)
 class DecisionPolicy:
     min_confidence: Confidence = field(default=DEFAULT_MIN_CONFIDENCE)
+    min_classification_confidence: Confidence = field(default=DEFAULT_MIN_CLASSIFICATION_CONFIDENCE)
 
     def decide(
         self,
@@ -64,10 +69,10 @@ class DecisionPolicy:
 
         if not classification.category.needs_reply:
             review.append(f"No necesita respuesta ({classification.category.value}).")
-        if classification.confidence.is_below(self.min_confidence):
+        if classification.confidence.is_below(self.min_classification_confidence):
             review.append(
                 f"La clasificación no es segura (confianza {classification.confidence}, "
-                f"mínimo {self.min_confidence})."
+                f"mínimo {self.min_classification_confidence})."
             )
         if classification.needs_human and not classification.injection_suspected:
             review.append(

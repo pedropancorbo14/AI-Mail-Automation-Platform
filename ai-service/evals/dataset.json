@@ -14,14 +14,15 @@
         ],
         "language": "es",
         "auto_send_ok": true,
-        "ideal": "auto_send",
+        "ideal": "either",
         "must_include": [
           "SEU123456789ES"
         ],
         "must_not_include": [],
         "tools": [
           "get_order"
-        ]
+        ],
+        "note": "Corregida (2026-10-22): según los datos de demostración el pedido salió el 29/09, la entrega estaba prevista para el 1/10 y no consta como entregado; con tres semanas de retraso hay que abrir una incidencia con el transportista, así que pasarlo a una persona también es correcto. Antes exigía auto_send."
       },
       "tags": []
     },
@@ -416,7 +417,8 @@
       "body": "¿Qué formas de pago aceptáis? ¿Se puede pagar con Bizum?",
       "expect": {
         "intents": [
-          "product_question"
+          "product_question",
+          "sales_inquiry"
         ],
         "language": "es",
         "auto_send_ok": true,
@@ -427,7 +429,8 @@
         "must_not_include": [],
         "tools": [
           "search_company_documents"
-        ]
+        ],
+        "note": "Corregida (2026-10-22): preguntar cómo se puede pagar antes de comprar encaja también en sales_inquiry (\"consulta antes de comprar\"); las dos intenciones son defendibles."
       },
       "tags": []
     },
