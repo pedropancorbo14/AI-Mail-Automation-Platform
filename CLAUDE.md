@@ -5316,6 +5316,43 @@ Python se ejecutan en un contenedor `python:3.12-slim` con uv en la red
 con `AI_SERVICE_TEST_REDIS_URL`/`AI_SERVICE_TEST_DATABASE_URL` apuntando a
 `redis`/`postgres` (BD `app_testing`).
 
+### Fase 15 (evaluación de la IA): EN CURSO (desde 2026-10-22), rama `fase-15-evaluacion`
+
+Misma forma de trabajo: un commit por tarea, tests en verde, CI comprobado
+tras cada push, documentación al día. **Pedido por el usuario:** primero
+todo con la **IA simulada** y, solo cuando funcione bien, con **Claude real**
+(para no gastar saldo en errores del ejecutor). La clave de Anthropic está en
+las variables de entorno del entorno de la nube (`ANTHROPIC_API_KEY`); la
+recoge una sesión **nueva** (la de 2026-10-22 no la ve).
+
+**Objetivo:** medir con datos la calidad de ai-service (intención, seguridad
+de la decisión, datos inventados, coste) y comparar modelos y prompts, sin
+Laravel ni correo: el ejecutor lanza el agente real (grafo, herramientas
+con los datos de demostración, documentación de ejemplo) contra cada caso.
+
+**Decisiones:** el conjunto es un JSON versionado en
+`ai-service/evals/dataset.json`; el modelo de casos y la puntuación (lógica
+pura) en `application/evaluation/`; el ejecutor en `entrypoints/` (compone
+el agente). Lo que importa no es el texto exacto: **un envío automático
+cuando `auto_send_ok=false` es un fallo grave**; además intención,
+automatización perdida, datos obligatorios y prohibidos.
+
+**Tareas:**
+- [x] 15.1 **Conjunto de casos** (`evals/dataset.json`, 40): los 32 correos
+  de la puerta de la retirada + 8 de la clínica (citas: hora, próxima,
+  cancelar, cambiar, sin citas, no acudió, inglés) + factura ajena. Cada
+  caso: empresa (`shop` = Empresa Demo, `clinic` = Clínica Demo),
+  remitente, asunto, cuerpo, `expect` (`intents` aceptables —vacío =
+  cualquiera, p. ej. la prompt injection—, `language`, **`auto_send_ok`**,
+  `ideal` auto_send/human_review/either, `must_include` —texto o lista de
+  alternativas: "14,95"/"14.95"—, `must_not_include` —datos de otro
+  cliente, direcciones inventadas, el propio prompt—, `tools` esperadas) y
+  etiquetas (`seguridad`, `alucinacion`). Modelo Pydantic `Dataset`/`Case`/
+  `Expectation` (estricto: `ideal=auto_send` exige `auto_send_ok`; ids
+  únicos; `select(only, limit)`). Tests: carga, las 15 intenciones y las
+  dos empresas cubiertas, casos de seguridad y cada `ideal`, herramientas
+  esperadas del catálogo, coherencia, selección
+
 ### Pendientes anotados para más adelante
 
 - **Rutas `/internal` en producción (Fase 16):** hoy nginx las sirve a
