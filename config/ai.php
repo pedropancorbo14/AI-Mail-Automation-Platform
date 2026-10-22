@@ -111,7 +111,7 @@ return [
         // Solo para mostrar en el panel y en security:check: los decide
         // ai-service (mismas variables del .env que lee su contenedor).
         'llm_provider' => env('AI_SERVICE_LLM_PROVIDER', 'anthropic'),
-        'model' => env('ANTHROPIC_MODEL', 'claude-opus-5-5'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
         'min_confidence' => (float) env('AI_SERVICE_MIN_CONFIDENCE', 0.85),
     ],
 

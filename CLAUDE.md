@@ -5464,8 +5464,19 @@ automatización perdida, datos obligatorios y prohibidos.
   persona): error del conjunto, pendiente de corregir. Gasto de la ronda:
   2,09 + 1,67 = 3,76 $
 
-**Siguiente (a decidir con el usuario):** elegir modelo (Sonnet: mismo
-nivel de seguridad a 2,5× menos coste); corregir el caso del robot
+- [x] 15.6 **Sonnet 5.5 como modelo por defecto** (decisión del usuario,
+  2026-10-22). De dónde sale el modelo: `ANTHROPIC_MODEL` del `.env` →
+  `docker-compose.yml` lo pasa a ai-service como `AI_SERVICE_ANTHROPIC_MODEL`;
+  sin él, el valor por defecto del compose y, fuera de Docker, el de
+  `ai-service/src/ai_service/config.py`. Laravel lo lee en `config/ai.php`
+  (`ai.remote.model`) solo para mostrarlo. Cambiados a `claude-sonnet-5-5`:
+  `config.py`, `docker-compose.yml`, `config/ai.php`, `.env.docker.example` y
+  los README. **Un `.env` que ya existía conserva `ANTHROPIC_MODEL=
+  claude-opus-5-5`: hay que cambiarlo a mano** y reiniciar ai-service. Los
+  tests del adaptador de Claude fijan Opus (sus respuestas simuladas son de
+  Opus)
+
+**Siguiente (a decidir con el usuario):** corregir el caso del robot
 aspirador; valorar si 0,85 de confianza en la respuesta es demasiado
 estricto (en los casos nuevos frenó respuestas correctas con 0,75–0,82),
 comprobándolo con **otros** casos nuevos, no con estos.

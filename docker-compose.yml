@@ -145,7 +145,7 @@ services:
       AI_SERVICE_LOG_LEVEL: ${AI_SERVICE_LOG_LEVEL:-INFO}
       AI_SERVICE_LLM_PROVIDER: ${AI_SERVICE_LLM_PROVIDER:-anthropic}
       AI_SERVICE_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      AI_SERVICE_ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+      AI_SERVICE_ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
       # Misma BD de Redis (sin prefijo) que la conexión "streams" de Laravel.
       AI_SERVICE_REDIS_URL: redis://:${REDIS_PASSWORD:-secret}@redis:6379/${REDIS_STREAMS_DB:-3}
       AI_SERVICE_DEBUG_ENDPOINTS: ${AI_SERVICE_DEBUG_ENDPOINTS:-false}

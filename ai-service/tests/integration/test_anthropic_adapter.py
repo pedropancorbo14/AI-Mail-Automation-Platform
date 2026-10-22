@@ -59,7 +59,10 @@ class FakeAnthropic:
 
 
 def settings(**overrides: Any) -> Settings:
-    return Settings(_env_file=None, anthropic_api_key=SecretStr(API_KEY), **overrides)
+    # Las respuestas simuladas son de Opus 5.5 (fallbacks, sin tool_choice):
+    # se fija aquí para no depender del modelo por defecto.
+    values: dict[str, Any] = {"anthropic_model": "claude-opus-5-5"} | overrides
+    return Settings(_env_file=None, anthropic_api_key=SecretStr(API_KEY), **values)
 
 
 def adapter(fake: FakeAnthropic, **overrides: Any) -> AnthropicLLM:

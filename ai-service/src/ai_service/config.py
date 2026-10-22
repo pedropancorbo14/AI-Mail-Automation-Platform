@@ -42,7 +42,9 @@ class Settings(BaseSettings):
 
     # Sin clave el consumidor no arranca con el proveedor anthropic (se dice claro).
     anthropic_api_key: SecretStr | None = None
-    anthropic_model: str = "claude-opus-5-5"
+    # Sonnet 5.5: la evaluación de la Fase 15 (evals/reports/) le dio la misma
+    # seguridad que Opus 5.5 a 2,5 veces menos coste por email.
+    anthropic_model: str = "claude-sonnet-5-5"
     # Si los filtros de seguridad rechazan, Anthropic reintenta con otro modelo en
     # la misma llamada (fallbacks "default"); se sigue comprobando stop_reason.
     anthropic_fallbacks: bool = True
