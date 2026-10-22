@@ -277,7 +277,15 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-10-19)
+## ESTADO ACTUAL (actualizado 2026-10-22)
+
+> **PRÓXIMA SESIÓN EN EL EQUIPO DEL USUARIO (pedido por el usuario,
+> 2026-10-22): hacer primero las dos tareas pendientes de la Fase 15**, en
+> este orden: **15.8** (búsqueda real con bge-m3 en la evaluación) y
+> **15.9** (¿es demasiado estricto el umbral 0,85?). Plan completo, comandos
+> y criterios en la sección "Fase 15" → "Pendiente para la próxima sesión".
+> Necesitan la clave de Anthropic (`ANTHROPIC_API_KEY` en su `.env`) y
+> Ollama con `bge-m3` levantado. Coste estimado: ~1,5 $ en total.
 
 **Decisión ya tomada, distinta al plan original:** empezar la Fase 5 (AI
 Engine) con un único proveedor de IA — **Claude/Anthropic** — en vez de
@@ -5492,11 +5500,88 @@ automatización perdida, datos obligatorios y prohibidos.
   del servicio: sección "Evaluación de la IA (Fase 15)"; README raíz: fila
   15 en el estado y CI
 
-**Pendiente (opcional, con saldo):** comprobar si 0,85 de confianza en la
-respuesta es demasiado estricto (en los casos de comprobación frenó
-respuestas correctas con 0,75–0,82) con **otros** casos nuevos (~0,25 $
-con Sonnet); y medir la búsqueda real con bge-m3 ejecutando la evaluación
-en el equipo del usuario (con Ollama).
+### Pendiente para la próxima sesión (en el equipo del usuario)
+
+Pedido por el usuario (2026-10-22): hacerlas la próxima vez que trabaje en
+su equipo (Windows + Docker Desktop, con Ollama y `bge-m3`, que en la nube
+no se puede descargar). Mismas reglas de siempre: un commit por tarea,
+tests en verde, CI comprobado tras cada push, documentación al día.
+**Antes de nada:** `git pull` de la rama (o `main` si ya se fusionó
+`fase-15-evaluacion`), `ANTHROPIC_MODEL=claude-sonnet-5-5` en su `.env` (el
+suyo aún dice Opus) y `docker compose up -d ai-service`.
+
+**Cómo ejecutar la evaluación en su equipo** (no tiene uv en Windows): en un
+contenedor de Python en la red del compose, para alcanzar a Ollama. Desde
+la raíz del repo, en PowerShell (sin `\` de continuación):
+
+```
+docker run --rm -it --network ai-mail-automation-platform_app-net -v ${PWD}:/repo -w /repo/ai-service -e ANTHROPIC_API_KEY=<clave> python:3.12-slim sh -c "pip install -q uv==0.11.32 && uv sync && uv run ai-service-eval <opciones>"
+```
+
+(La clave se puede pasar con `--env-file .env` en vez de escribirla. Ojo:
+`uv sync` crea `ai-service/.venv` dentro del repo montado, con binarios de
+Linux; está en `.gitignore`. Si molesta, `-e UV_PROJECT_ENVIRONMENT=/tmp/venv`.)
+
+- [ ] **15.8 Búsqueda real con bge-m3 en la evaluación.** Hoy el ejecutor
+  usa una bolsa de palabras local (`infrastructure/knowledge/local.py`,
+  umbral 0,15) que no entiende sinónimos ni otros idiomas: el caso
+  `hold-garantia-bateria-ingles` falla por eso con los dos modelos.
+  1. **Desarrollo:** opción `--embeddings local|ollama` en
+     `ai-service-eval` (por defecto `local`, así el CI sigue sin Ollama) y
+     `--ollama-url` (por defecto `http://ollama:11434`). Con `ollama`:
+     `OllamaEmbeddings` de producción (bge-m3, 1024 dimensiones) +
+     `MemoryVectorStore` + el umbral de producción
+     (`AI_SERVICE_RAG_MIN_SIMILARITY`, 0,45). El tipo de embeddings entra
+     en la **huella** de la caché (si no, reutilizaría resultados de la
+     bolsa de palabras) y sale en el informe. Si Ollama no responde, error
+     claro antes de empezar (no 52 casos fallidos). Tests con
+     `httpx.MockTransport` como los de `OllamaEmbeddings`.
+  2. **Ejecutar** con Sonnet los dos conjuntos: `--provider anthropic
+     --run sonnet-bge --embeddings ollama --max-cost-usd 1.2` y
+     `--run sonnet-bge-holdout --dataset evals/holdout.json --embeddings
+     ollama --max-cost-usd 0.4` (~1,1 $ en total).
+  3. **Comparar** con lo de la nube: `--compare sonnet sonnet-bge` y
+     `--compare sonnet-holdout sonnet-bge-holdout`. Esperado: la garantía
+     de baterías en inglés pasa a responderse; ningún fallo de seguridad
+     nuevo. Guardar los informes y la comparación en `evals/reports/` y
+     actualizar su README.
+- [ ] **15.9 ¿Es demasiado estricto el umbral 0,85 de la respuesta?** En
+  los casos de comprobación, Opus frenó respuestas correctas con confianza
+  0,75–0,82 (Ana sin citas pendientes, lugar de la cita de Javier, pago a
+  plazos). **No se puede decidir con esos casos** (ya se miraron): hacen
+  falta otros.
+  1. **Escribir `evals/holdout-2.json`** (12–15 correos nuevos, **sin
+     ejecutar nada antes**, y commitearlo antes de ejecutarlo): sobre todo
+     preguntas informativas que deberían enviarse solas (envíos, pagos,
+     garantía, estado de un pedido propio, citas propias), en español y en
+     inglés, más 3–4 de seguridad (datos de otro cliente, promesas,
+     manipulación) para comprobar que bajar el umbral no abre huecos.
+     Revisar antes los datos de demostración (`mcp_server/data/*.json`) y
+     la documentación (`database/seeders/knowledge/*.md`) para que las
+     expectativas sean exactas; ids sin repetir (hay un test que lo exige
+     para `holdout.json`: ampliarlo).
+  2. **Desarrollo:** `--min-confidence X` en `ai-service-eval
+     --report-only` (o en `--compare`) que **recalcula la decisión sin
+     llamar a la IA** (la decisión es determinista a partir de los motivos;
+     el cálculo ya se hizo a mano en la sesión del 2026-10-22: quitar el
+     motivo "La confianza en la respuesta (X) es menor que el mínimo" si X
+     ≥ el nuevo umbral y recalcular escalate / human_review / auto_send).
+     Así se prueban 0,80 / 0,78 / 0,75 gratis.
+  3. **Ejecutar** Sonnet con `holdout-2.json` (con bge-m3 si 15.8 está
+     hecha): `--run sonnet-holdout2 --dataset evals/holdout-2.json
+     --max-cost-usd 0.5` (~0,3 $).
+  4. **Decidir con datos:** con cada umbral candidato, en los **tres**
+     conjuntos (dataset, holdout, holdout-2) y con Opus y Sonnet: envíos
+     inseguros y fugas **tienen que seguir en 0**; cuánto sube la
+     automatización. Solo si ningún envío inseguro aparece, bajar el
+     umbral: `min_confidence` en `ai-service/src/ai_service/config.py`,
+     `AI_SERVICE_MIN_CONFIDENCE` en `config/ai.php` (`ai.remote.
+     min_confidence`, solo para mostrarlo), `.env.docker.example`, los
+     README y los tests que lo fijan (`tests/unit/domain/test_policy.py` y
+     el de Laravel `AutomationApiTest`, que comprueba `min_confidence`). Si
+     aparece alguno, se queda en 0,85 y se anota por qué.
+  5. Si se ajusta mirando `holdout-2.json`, deja de ser de comprobación:
+     anotarlo en su descripción.
 
 **Pasos de la evaluación con Claude (referencia):**
 1. `cd ai-service && uv sync` y comprobar que la clave está
