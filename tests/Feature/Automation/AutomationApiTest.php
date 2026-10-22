@@ -35,7 +35,7 @@ it('shows the ai configuration of the company', function () {
         ->assertJsonPath('data.auto_send_intents_custom', false)
         ->assertJsonPath('data.platform.ai_configured', true)
         ->assertJsonPath('data.platform.auto_send_enabled', true)
-        ->assertJsonPath('data.platform.model', 'claude-opus-5-5')
+        ->assertJsonPath('data.platform.model', 'claude-sonnet-5-5')
         ->assertJsonPath('data.platform.min_confidence', 0.85);
 
     expect(collect($response->json('data.intents'))->firstWhere('value', 'complaint'))->toBe(['value' => 'complaint', 'allows_auto_send' => false])
