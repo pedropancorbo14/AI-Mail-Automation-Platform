@@ -13,6 +13,8 @@ from pydantic import BaseModel, ValidationError
 from referencing import Registry, Resource
 
 from ai_service.mcp_server.integrations.standard_api import (
+    AppointmentListPayload,
+    AppointmentPayload,
     InvoiceListPayload,
     InvoicePayload,
     OrderListPayload,
@@ -29,6 +31,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "invoice": InvoicePayload,
     "order-list": OrderListPayload,
     "invoice-list": InvoiceListPayload,
+    "appointment": AppointmentPayload,
+    "appointment-list": AppointmentListPayload,
 }
 
 
@@ -77,10 +81,16 @@ def test_invalid_examples_are_refused_by_the_schema_and_the_model(path: Path) ->
 
 def test_there_are_examples_of_every_schema() -> None:
     assert {schema_of(p) for p in examples("valid")} == set(MODELS)
-    assert {schema_of(p) for p in examples("invalid")} >= {"order", "invoice", "order-list"}
+    assert {schema_of(p) for p in examples("invalid")} >= {
+        "order",
+        "invoice",
+        "order-list",
+        "appointment",
+        "appointment-list",
+    }
 
 
-def test_openapi_documents_the_four_endpoints_with_the_shared_schemas() -> None:
+def test_openapi_documents_the_endpoints_with_the_shared_schemas() -> None:
     spec = yaml.safe_load((INTEGRATIONS / "standard-api.v1.openapi.yaml").read_text("utf-8"))
     text = (INTEGRATIONS / "standard-api.v1.openapi.yaml").read_text("utf-8")
 
@@ -89,6 +99,8 @@ def test_openapi_documents_the_four_endpoints_with_the_shared_schemas() -> None:
         "/v1/orders",
         "/v1/invoices/{number}",
         "/v1/invoices",
+        "/v1/appointments/{id}",
+        "/v1/appointments",
     }
     refs = set(re.findall(r'"(schemas/[^"]+)"', text))
     assert refs == {f"schemas/{name}.v1.schema.json" for name in MODELS}

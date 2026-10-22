@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/integrations/appointment.v1.schema.json",
+  "title": "Cita (API estándar v1)",
+  "description": "Una cita de un cliente (clínica, taller, academia…). Campos desconocidos se ignoran (lector tolerante). Nunca notas internas ni clínicas.",
+  "type": "object",
+  "required": ["id", "customer_email", "status", "starts_at"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "description": "Identificador o localizador de la cita en el sistema de la empresa (\"C-2031\").",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "customer_email": {
+      "description": "Email del cliente de la cita. La plataforma comprueba que coincide con quien escribe.",
+      "type": "string",
+      "pattern": "^[^@\\s]+@[^@\\s]+$",
+      "maxLength": 254
+    },
+    "status": {
+      "description": "scheduled = pendiente de celebrarse; completed = ya se celebró; no_show = el cliente no acudió.",
+      "type": "string",
+      "enum": ["scheduled", "cancelled", "completed", "no_show"]
+    },
+    "starts_at": {
+      "description": "Inicio, ISO 8601 con zona horaria (la IA la usa para decir la hora local correcta).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "ends_at": { "type": ["string", "null"], "format": "date-time" },
+    "customer_name": { "type": ["string", "null"], "maxLength": 200 },
+    "service": {
+      "description": "Qué se hace en la cita (\"Limpieza dental\", \"Revisión de los 30.000 km\").",
+      "type": ["string", "null"],
+      "maxLength": 200
+    },
+    "professional": {
+      "description": "Quién atiende (\"Dra. López\").",
+      "type": ["string", "null"],
+      "maxLength": 200
+    },
+    "location": {
+      "description": "Dónde es: centro, sala, o \"Videollamada\". Es el lugar de la empresa, nunca la dirección del cliente.",
+      "type": ["string", "null"],
+      "maxLength": 300
+    },
+    "instructions": {
+      "description": "Indicaciones que el cliente puede leer (\"Venir en ayunas\"). Nunca notas internas ni datos clínicos.",
+      "type": ["string", "null"],
+      "maxLength": 1000
+    },
+    "price": { "type": ["number", "null"], "minimum": 0 },
+    "currency": { "type": ["string", "null"], "pattern": "^[A-Z]{3}$" }
+  }
+}

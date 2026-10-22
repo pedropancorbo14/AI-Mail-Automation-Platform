@@ -5074,7 +5074,35 @@ dejarlas planificadas. Antes de empezar cualquiera de las dos: que haga push
 de `fase-14-integraciones` y el CI esté en verde (cinco commits sin pasar por
 GitHub Actions).
 
-#### Tarea 6 — APARCADA: dos opciones planificadas (elegir una con el usuario)
+#### Tarea 6 — opción A elegida (2026-10-22), rama `fase-14-citas`
+
+`fase-14-integraciones` se fusionó en `main` (fast-forward, CI en verde) y
+se borraron las ramas de fases anteriores (las remotas, a mano por el
+usuario: el proxy de la sesión no deja borrarlas). Alcance acordado,
+recortado a propósito: **consultar citas** (no cambiarlas ni cancelarlas:
+modificar datos exigiría aprobación humana, más adelante), tickets en la API
+estándar después; contratos, conectores de agenda concretos y CSV de citas,
+aplazados hasta que haya demanda.
+
+- [x] 6.1 **Contrato de las citas.** `contracts/integrations/`: esquemas
+  `appointment.v1` (requeridos `id`, `customer_email`, `status` —
+  `scheduled`/`cancelled`/`completed`/`no_show`—, `starts_at` con zona; y
+  `ends_at`, `customer_name`, `service`, `professional`, `location` —lugar de
+  la empresa, nunca la dirección del cliente—, `instructions` —solo lo que
+  el cliente puede leer, **nunca notas internas ni clínicas**—, `price`,
+  `currency`) y `appointment-list.v1` (ordenadas por `starts_at` de la más
+  lejana a la más antigua: las próximas, primero); endpoints
+  `GET /v1/appointments/{id}` y `GET /v1/appointments` en el OpenAPI y el
+  README (una empresa implementa solo las partes que tiene). Ejemplos
+  válidos (completo, mínimo, lista, lista vacía) e inválidos (sin inicio,
+  estado desconocido, inicio como número, id vacío, precio negativo, cita
+  inválida en la lista). Python: `AppointmentPayload` y
+  `AppointmentListPayload` (estrictos) en `standard_api.py`; el test de
+  contrato exige que esquema y modelo acepten y rechacen lo mismo. Laravel
+  valida los ejemplos nuevos solo (mismo test de `StandardApiTest`;
+  comprobado aparte con opis en la sesión, sin entorno de Laravel)
+
+#### Opciones que se plantearon para la tarea 6
 
 **Opción A (recomendada): herramientas para negocios sin pedidos** (citas,
 contratos/suscripciones, tickets). Abre la plataforma a empresas de

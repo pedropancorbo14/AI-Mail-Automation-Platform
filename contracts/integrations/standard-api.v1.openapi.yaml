@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: |
     API que implementa el sistema de una empresa (ERP, programa propio) para
-    que la plataforma consulte los pedidos y facturas **del cliente que
+    que la plataforma consulte los pedidos, facturas y citas **del cliente que
     escribe un email**. Solo lectura. Ver `README.md` (reglas de seguridad,
     errores, límites).
 servers:
@@ -67,6 +67,33 @@ paths:
             application/json:
               schema: { $ref: "schemas/invoice-list.v1.schema.json" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/appointments/{id}:
+    get:
+      summary: Una cita del cliente
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/CustomerEmail"
+      responses:
+        "200":
+          description: La cita (debe ser de `customer_email`).
+          content:
+            application/json:
+              schema: { $ref: "schemas/appointment.v1.schema.json" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/appointments:
+    get:
+      summary: Citas del cliente, las próximas primero (de la más lejana a la más antigua)
+      parameters:
+        - $ref: "#/components/parameters/CustomerEmail"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Lista (vacía si no tiene citas; nunca 404).
+          content:
+            application/json:
+              schema: { $ref: "schemas/appointment-list.v1.schema.json" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
     bearer:
@@ -79,6 +106,12 @@ components:
       in: path
       required: true
       description: Número tal como lo escribió el cliente, normalizado ("#45821" → "45821"), codificado en la URL.
+      schema: { type: string, maxLength: 64 }
+    Id:
+      name: id
+      in: path
+      required: true
+      description: Identificador de la cita tal como lo escribió el cliente, codificado en la URL.
       schema: { type: string, maxLength: 64 }
     CustomerEmail:
       name: customer_email

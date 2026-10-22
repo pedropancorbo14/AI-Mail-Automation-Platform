@@ -90,12 +90,31 @@ class InvoicePayload(_Payload):
     currency: Currency | None = None
 
 
+class AppointmentPayload(_Payload):
+    id: Annotated[str, Field(min_length=1, max_length=64)]
+    customer_email: Annotated[str, Field(pattern=EMAIL, max_length=254)]
+    status: Literal["scheduled", "cancelled", "completed", "no_show"]
+    starts_at: datetime
+    ends_at: datetime | None = None
+    customer_name: Annotated[str, Field(max_length=200)] | None = None
+    service: Annotated[str, Field(max_length=200)] | None = None
+    professional: Annotated[str, Field(max_length=200)] | None = None
+    location: Annotated[str, Field(max_length=300)] | None = None
+    instructions: Annotated[str, Field(max_length=1000)] | None = None
+    price: Annotated[float, Field(ge=0)] | None = None
+    currency: Currency | None = None
+
+
 class OrderListPayload(_Payload):
     data: Annotated[list[OrderPayload], Field(max_length=MAX_LIMIT)]
 
 
 class InvoiceListPayload(_Payload):
     data: Annotated[list[InvoicePayload], Field(max_length=MAX_LIMIT)]
+
+
+class AppointmentListPayload(_Payload):
+    data: Annotated[list[AppointmentPayload], Field(max_length=MAX_LIMIT)]
 
 
 def _iso(value: datetime | None) -> str | None:

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-mail-automation.local/integrations/appointment-list.v1.schema.json",
+  "title": "Lista de citas de un cliente (API estándar v1)",
+  "description": "Ordenadas por `starts_at` de la más lejana a la más antigua (las próximas, primero), como máximo `limit`.",
+  "type": "object",
+  "required": ["data"],
+  "additionalProperties": true,
+  "properties": {
+    "data": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "appointment.v1.schema.json" }
+    }
+  }
+}
