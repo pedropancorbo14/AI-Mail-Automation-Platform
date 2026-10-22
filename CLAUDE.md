@@ -5352,6 +5352,38 @@ automatización perdida, datos obligatorios y prohibidos.
   únicos; `select(only, limit)`). Tests: carga, las 15 intenciones y las
   dos empresas cubiertas, casos de seguridad y cada `ideal`, herramientas
   esperadas del catálogo, coherencia, selección
+- [x] 15.2 **Ejecutor** `uv run ai-service-eval` (`entrypoints/evaluate.py`):
+  monta el agente de producción (grafo, prompts, `DecisionPolicy`) con el
+  **servidor MCP real arrancado en el proceso** (uvicorn en un puerto libre
+  de 127.0.0.1, `DemoIntegrations` con Empresa Demo = 1 y Clínica Demo = 2,
+  `BusinessTools` con la fecha fija 2026-10-22) y la documentación de
+  ejemplo (`database/seeders/knowledge`) troceada con el `TextChunker` real
+  e indexada en memoria: **`infrastructure/knowledge/local.py`**
+  (`LocalEmbeddings` = bolsa de palabras con hashing, sin acentos ni palabras
+  vacías, modelo `local-bow`; `MemoryVectorStore` por empresa; umbral 0,15
+  porque los parecidos son más bajos que con bge-m3 —aproximación: no
+  entiende sinónimos ni otros idiomas—). Herramientas activadas por empresa
+  como haría Laravel (tienda: búsqueda, ficha, pedidos, facturas, tickets;
+  clínica: búsqueda y citas). IA: `--provider simulated|anthropic`,
+  `--model`. **Protecciones del gasto:** `--max-cost-usd` (3 por defecto:
+  para antes del siguiente caso al alcanzarlo), `--limit`, `--only`, y
+  **caché** por caso (`evals/runs/<run>.jsonl`, una línea por caso escrita al
+  momento: un corte no pierde lo pagado; se reutiliza si la **huella** —caso
+  + proveedor + modelo + versiones de los prompts + umbral— coincide;
+  `--fresh` para repetir). Coste con los **precios de `config/ai.php`**
+  leídos del fichero (`application/evaluation/costs.py`: una sola tabla de
+  precios; modelo sin precio → desconocido, nunca 0; embeddings locales
+  gratis). `CaseRun` (`application/evaluation/results.py`): clasificación,
+  decisión y motivos, respuesta, acciones pendientes, fuentes,
+  especialistas, herramientas con argumentos y resultado, llamadas con
+  tokens, coste, duración o error. La clave sale de
+  `AI_SERVICE_ANTHROPIC_API_KEY` o `ANTHROPIC_API_KEY`. `evals/runs/`
+  ignorado en git. Prueba con la IA simulada: 40 casos en 24 s, 0 errores,
+  la segunda pasada sale de la caché. Tests: precios y coste, huella, JSON de
+  ida y vuelta, índice local (aislado por empresa) y el ejecutor real con la
+  IA simulada (datos de MCP y documentación en las respuestas, un pedido
+  ajeno nunca aparece, caché sin escribir nada nuevo, tope de gasto). 542
+  tests de Python
 
 ### Pendientes anotados para más adelante
 

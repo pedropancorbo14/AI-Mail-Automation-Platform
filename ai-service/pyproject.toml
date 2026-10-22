@@ -29,6 +29,7 @@ ai-service-http = "ai_service.entrypoints.http.app:main"
 ai-service-worker = "ai_service.entrypoints.worker:main"
 ai-service-mcp = "ai_service.entrypoints.mcp:main"
 ai-service-tool = "ai_service.entrypoints.tool_cli:main"
+ai-service-eval = "ai_service.entrypoints.evaluate:main"
 
 [dependency-groups]
 dev = [
