@@ -61,3 +61,12 @@ def test_select_filters_and_limits_in_order() -> None:
 
     assert [c.id for c in dataset.select(limit=2)] == [c.id for c in dataset.cases[:2]]
     assert [c.id for c in dataset.select(only={"spam", "garantia"})] == ["garantia", "spam"]
+
+
+def test_the_holdout_set_loads_and_does_not_repeat_cases() -> None:
+    holdout = load_dataset(DATASET.with_name("holdout.json"))
+    main_ids = {c.id for c in load_dataset(DATASET).cases}
+
+    assert len(holdout.cases) >= 10
+    assert not main_ids & {c.id for c in holdout.cases}
+    assert any("seguridad" in c.tags for c in holdout.cases)
