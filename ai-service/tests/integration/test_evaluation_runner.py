@@ -1,10 +1,14 @@
 """El ejecutor de la evaluación con la IA simulada: agente real, servidor MCP
 real en el proceso y documentación local. Sin red ni coste."""
 
+import logging
+from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
+
 from ai_service.application.evaluation.costs import parse_pricing
-from ai_service.entrypoints.evaluate import Options, evaluate, settings_for
+from ai_service.entrypoints.evaluate import Options, evaluate, main, settings_for
 from ai_service.infrastructure.llm.simulated import SimulatedLLM
 
 REPO = Path(__file__).parents[3]
@@ -71,3 +75,29 @@ async def test_cached_cases_are_not_run_again_and_the_budget_stops_the_run(tmp_p
     assert again == first
     assert (tmp_path / "prueba.jsonl").read_text().splitlines() == lines  # nada nuevo escrito
     assert len(capped) == 1  # el primero se paga; antes del segundo, el tope ya se alcanzó
+
+
+@pytest.fixture
+def restore_log_levels() -> Iterator[None]:
+    # main() baja el nivel de varios loggers para todo el proceso (en la línea de
+    # comandos es lo que se quiere); en los tests no debe afectar a los demás.
+    names = ("uvicorn", "uvicorn.error", "httpx", "httpx2", "mcp")
+    levels = {name: logging.getLogger(name).level for name in names}
+    yield
+    for name, level in levels.items():
+        logging.getLogger(name).setLevel(level)
+
+
+@pytest.mark.usefixtures("restore_log_levels")
+def test_smoke_mode_only_fails_on_errors_and_compare_reads_saved_runs(tmp_path: Path) -> None:
+    out = str(tmp_path)
+    args = ["--provider", "simulated", "--only", "spam,prompt-injection", "--out", out]
+
+    # La IA simulada no es apta (envía casos que no debe), pero sin errores.
+    assert main([*args, "--run", "a"]) in (0, 1)
+    assert main([*args, "--run", "a", "--report-only", "--smoke"]) == 0
+    assert main([*args, "--run", "b"]) in (0, 1)
+
+    assert main(["--compare", "a", "b", "--out", out]) == 0
+    assert (tmp_path / "compare-a-vs-b.md").exists()
+    assert main(["--compare", "a", "no-existe", "--out", out]) == 2

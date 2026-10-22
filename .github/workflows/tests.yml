@@ -241,6 +241,16 @@ jobs:
       - name: Tests (pytest)
         run: uv run pytest
 
+      # El agente completo (grafo, prompts, reglas, servidor MCP real y la
+      # documentación de ejemplo) contra todos los casos con la IA simulada:
+      # gratis y sin claves. No mide calidad (la IA simulada responde por
+      # palabras clave): --smoke solo falla si algún caso termina con un error.
+      - name: Evaluación de la IA con la IA simulada (humo)
+        run: |
+          uv run ai-service-eval --provider simulated --smoke --fresh --run ci --out "$RUNNER_TEMP/evals"
+          uv run ai-service-eval --provider simulated --smoke --fresh --run ci-holdout \
+            --dataset evals/holdout.json --out "$RUNNER_TEMP/evals"
+
       - name: Auditar dependencias de Python (pip-audit)
         run: |
           uv export --locked --no-dev --no-emit-project --format requirements-txt > /tmp/requirements.txt

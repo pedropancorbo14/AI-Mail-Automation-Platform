@@ -126,8 +126,8 @@
       "id": "devolucion-76540",
       "tenant": "shop",
       "from": "marcos@cliente.test",
-      "subject": "Devolver robot",
-      "body": "Hola, quiero devolver el robot aspirador del pedido 76540, no me convence. ¿Cómo lo hago?\nMarcos",
+      "subject": "Devolver sofá",
+      "body": "Hola, quiero devolver el sofá del pedido 76540, no me convence. ¿Cómo lo hago?\nMarcos",
       "expect": {
         "intents": [
           "return_request"
@@ -142,7 +142,8 @@
           ]
         ],
         "must_not_include": [],
-        "tools": []
+        "tools": [],
+        "note": "Corregido (2026-10-22): el correo hablaba de un \"robot aspirador\", pero el pedido 76540 de Marcos es un sofá; la contradicción no era lo que el caso quería medir (una devolución). Solo cambia el producto."
       },
       "tags": []
     },
@@ -463,19 +464,20 @@
     {
       "id": "robot-no-enciende",
       "tenant": "shop",
-      "from": "marcos@cliente.test",
-      "subject": "El robot no enciende",
-      "body": "Hola, el robot aspirador del pedido 76540 no enciende desde ayer, ya lo he cargado toda la noche. Marcos",
+      "from": "john@customer.test",
+      "subject": "My lamp won't turn on",
+      "body": "Hi, the Nordic table lamp from order 75555 stopped turning on yesterday. I've tried another bulb and another socket. John",
       "expect": {
         "intents": [
           "technical_support"
         ],
-        "language": "es",
+        "language": "en",
         "auto_send_ok": true,
         "ideal": "either",
         "must_include": [],
         "must_not_include": [],
-        "tools": []
+        "tools": [],
+        "note": "Corregido (2026-10-22): el correo era de Marcos sobre un \"robot aspirador\" del pedido 76540, que es un sofá; ningún cliente de demostración tiene un robot. Pasa a John y su lámpara entregada (75555): mismo tipo de caso (un aparato que no funciona). El id se mantiene."
       },
       "tags": []
     },

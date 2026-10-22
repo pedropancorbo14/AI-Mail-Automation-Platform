@@ -35,7 +35,8 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 12 | Seguridad: auditoría inmutable, cuenta propia, freno del gasto de IA, revisión del texto antes de enviar, cabeceras y CSP, secretos fuera de los logs, retención y derecho de supresión, infraestructura solo en local, tests de arquitectura | ✅ Hecha (probada con ataques contra el stack) |
 | 13 | Revisión humana (*human in the loop*): bandeja de casos pendientes, aprobar, corregir o descartar la respuesta de la IA, responder, cerrar, reprocesar, asignarse casos, historial de decisiones con métricas y alerta | ✅ Hecha (probada en el navegador con la IA simulada y GreenMail) |
 | AI | **Microservicio de IA en Python** ([`ai-service/`](ai-service/README.md)): LangGraph, Redis Streams, MCP, arquitectura hexagonal; Laravel publica cada email como evento y aplica el resultado | ✅ Las 6 fases hechas: 1 camino mínimo, 2 RAG, 3 MCP + tools, 4 aprobación humana (`interrupt` y checkpoints en PostgreSQL), 5 supervisor con especialistas, redactor agéntico y modo sombra, y 6 Kubernetes (Kustomize, Pod Security restricted, NetworkPolicies; desplegado en kind en el CI en cada push). Probadas de punta a punta con la IA simulada y con Claude real. **Es el único motor de IA**: el de Laravel se retiró (octubre de 2026) tras una puerta de calidad con Claude real en modo sombra |
-| 14–17 | Integraciones, evaluación, producción, SaaS | Pendiente |
+| 15 | Evaluación de la IA: 52 correos de prueba (12 de comprobación) contra el agente real, informe de seguridad y calidad, comparación de modelos y evaluación con la IA simulada en el CI ([ai-service](ai-service/README.md#evaluación-de-la-ia-fase-15)) | ✅ Hecha (con Claude real: 0 envíos inseguros y 0 fugas con Opus y Sonnet; Sonnet 5.5 elegido por coste) |
+| 14, 16–17 | Integraciones, producción, SaaS | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
@@ -1630,7 +1631,8 @@ Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales, y además el job
 `frontend` comprueba los tipos del panel, sus tests y que compila, y el job
 `observability` valida la configuración de Prometheus, prueba las alertas
-(`promtool test rules`) y revisa los dashboards de Grafana. **`composer
+(`promtool test rules`) y revisa los dashboards de Grafana. El job
+`ai-service` pasa además la evaluación de la IA con la IA simulada. **`composer
 audit`** y **`npm audit`** hacen fallar el CI si alguna dependencia tiene
 una vulnerabilidad conocida
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado

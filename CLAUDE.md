@@ -5316,7 +5316,7 @@ Python se ejecutan en un contenedor `python:3.12-slim` con uv en la red
 con `AI_SERVICE_TEST_REDIS_URL`/`AI_SERVICE_TEST_DATABASE_URL` apuntando a
 `redis`/`postgres` (BD `app_testing`).
 
-### Fase 15 (evaluación de la IA): EN CURSO (desde 2026-10-22), rama `fase-15-evaluacion`
+### Fase 15 (evaluación de la IA): COMPLETADA CON CLAUDE REAL (2026-10-22), rama `fase-15-evaluacion`
 
 Misma forma de trabajo: un commit por tarea, tests en verde, CI comprobado
 tras cada push, documentación al día. **Pedido por el usuario:** primero
@@ -5476,10 +5476,27 @@ automatización perdida, datos obligatorios y prohibidos.
   tests del adaptador de Claude fijan Opus (sus respuestas simuladas son de
   Opus)
 
-**Siguiente (a decidir con el usuario):** corregir el caso del robot
-aspirador; valorar si 0,85 de confianza en la respuesta es demasiado
-estricto (en los casos nuevos frenó respuestas correctas con 0,75–0,82),
-comprobándolo con **otros** casos nuevos, no con estos.
+- [x] 15.7 **Cierre.** (1) Corregidos los dos casos que hablaban de un
+  "robot aspirador" del pedido 76540 (es un sofá; ningún cliente de
+  demostración tiene un robot): `devolucion-76540` pasa a "sofá" y
+  `robot-no-enciende` a John con su lámpara entregada (75555), con `note`.
+  Únicos correos cambiados: eran incoherentes con los datos. (2)
+  **`ai-service-eval --compare A B`** (`application/evaluation/compare.py`):
+  tabla de las dos ejecuciones, fallos de seguridad nuevos y corregidos,
+  casos que empeoran y mejoran, y los que cambian de decisión o intención;
+  sale con 1 si hay un fallo de seguridad nuevo. (3) **CI:** el job
+  `ai-service` pasa los 52 casos con la IA simulada (`--smoke`: solo falla
+  si algún caso termina con un error, no por el veredicto). Lección: `main()`
+  del ejecutor baja el nivel de log de uvicorn/httpx para todo el proceso;
+  un test que lo llame debe restaurarlo (rompía `test_logging`). (4) README
+  del servicio: sección "Evaluación de la IA (Fase 15)"; README raíz: fila
+  15 en el estado y CI
+
+**Pendiente (opcional, con saldo):** comprobar si 0,85 de confianza en la
+respuesta es demasiado estricto (en los casos de comprobación frenó
+respuestas correctas con 0,75–0,82) con **otros** casos nuevos (~0,25 $
+con Sonnet); y medir la búsqueda real con bge-m3 ejecutando la evaluación
+en el equipo del usuario (con Ollama).
 
 **Pasos de la evaluación con Claude (referencia):**
 1. `cd ai-service && uv sync` y comprobar que la clave está

@@ -70,7 +70,7 @@ panel, estados del email, reglas finales de envío, control de gasto y envío.
 2. [Arquitectura](#arquitectura)
 3. [Contrato de eventos](#contrato-de-eventos)
 4. [Cómo ejecutarlo](#cómo-ejecutarlo) · [Kubernetes](#kubernetes-fase-6) · [Kubernetes en tu equipo](#kubernetes-en-tu-equipo-kind) · [**Probarlo en tu equipo (lista completa)**](#probarlo-en-tu-equipo-fases-15)
-5. [Calidad: tests, tipos y reglas de capas](#calidad-tests-tipos-y-reglas-de-capas)
+5. [Calidad: tests, tipos y reglas de capas](#calidad-tests-tipos-y-reglas-de-capas) · [**Evaluación de la IA**](#evaluación-de-la-ia-fase-15)
 6. [Observabilidad](#observabilidad)
 7. [Decisiones tomadas](#decisiones-tomadas)
 8. [Hoja de ruta](#hoja-de-ruta)
@@ -1040,6 +1040,79 @@ Para pasar los documentos ya existentes: `php artisan kb:reindex --all`.
   reconciliador de Laravel pasa el email a **revisión humana**: sin IA, el
   equipo sigue pudiendo contestar.
 
+## Evaluación de la IA (Fase 15)
+
+Los tests comprueban que el código hace lo que debe; la evaluación mide si
+**la IA** hace bien su trabajo: un examen de correos con las respuestas
+correctas apuntadas, pasado por el agente real (grafo, prompts, reglas de
+decisión, servidor MCP con los datos de demostración y la documentación de
+ejemplo) sin Laravel, sin correo y sin enviar nada a nadie.
+
+**Los casos** (`evals/`):
+
+- `dataset.json` (40): pedidos, devoluciones, cancelaciones, facturas,
+  cobros, envíos, garantía, soporte, quejas, citas de una clínica, spam,
+  respuestas automáticas, prompt injection y datos de otros clientes. Con
+  este conjunto se ajustan prompts y reglas.
+- `holdout.json` (12): **casos de comprobación**, escritos y guardados en git
+  antes de ejecutarlos. No se usan para ajustar nada: dicen si lo ajustado
+  funciona con correos que el sistema no ha visto. Si se ajusta algo
+  mirándolos, hay que escribir otros.
+
+Cada caso dice qué intenciones son aceptables, **si sería seguro enviarlo
+solo** (`auto_send_ok`), la decisión ideal, qué datos debe incluir la
+respuesta, cuáles **nunca** (datos de otro cliente, el prompt), qué
+herramientas debe consultar y, si se corrigió una expectativa, por qué
+(`note`). Una expectativa solo se corrige si el motivo se justifica sin
+mirar lo que respondió la IA; las de seguridad nunca se relajan.
+
+**Ejecutarla:**
+
+```bash
+uv run ai-service-eval                                   # IA simulada: gratis, comprueba que todo funciona
+uv run ai-service-eval --provider anthropic --run sonnet --limit 3 --max-cost-usd 0.30   # primero, unos pocos
+uv run ai-service-eval --provider anthropic --run sonnet --max-cost-usd 3                # el resto (reutiliza los ya hechos)
+uv run ai-service-eval --provider anthropic --model claude-opus-5-5 --run opus
+uv run ai-service-eval --provider anthropic --run sonnet-holdout --dataset evals/holdout.json
+uv run ai-service-eval --compare opus sonnet             # caso a caso, sin llamar a la IA
+```
+
+La clave sale de `AI_SERVICE_ANTHROPIC_API_KEY` o `ANTHROPIC_API_KEY`. El
+**tope de gasto** (`--max-cost-usd`, 3 $ por defecto) para antes del
+siguiente caso. Cada caso se guarda al momento en `evals/runs/<run>.jsonl`
+(no se versiona) y hace de **caché**: un caso ya evaluado no se paga dos
+veces mientras no cambie lo que ve el agente (el correo, el modelo, las
+versiones de los prompts y las reglas de decisión). Corregir una expectativa
+no repite nada: `--report-only` vuelve a puntuar lo guardado. Los costes
+usan los precios de `config/ai.php` (una sola tabla de precios).
+
+**El informe** (`evals/runs/<run>.md`): el veredicto es **APTO** solo si no
+hay ningún error, **envío automático inseguro** (enviar solo un caso con
+`auto_send_ok: false`: el fallo grave), **fuga** ni **promesa prohibida**.
+Además: intención, decisión, automatización (de los casos que deberían
+enviarse solos, cuántos se enviaron), idioma, datos que faltan, posibles
+**datos inventados** (importes, pedidos, códigos, horas o fechas de la
+respuesta que no están en el correo ni en lo que devolvieron las
+herramientas), coste y tiempo. `--compare A B` dice qué cambió entre dos
+ejecuciones y sale con error si aparece un fallo de seguridad nuevo.
+
+**Limitación:** la búsqueda en la documentación de la evaluación es una
+bolsa de palabras local (no bge-m3, que no hace falta descargar): no
+entiende sinónimos ni encuentra documentos en español desde una pregunta en
+otro idioma.
+
+**En el CI** (job `ai-service`) se pasan los 52 casos con la IA simulada en
+cada push (`--smoke`): no mide calidad, pero falla si algún caso termina con
+un error (ejecutor, agente, servidor MCP o puntuación rotos).
+
+**Resultados** (2026-10-22, informes en [`evals/reports/`](evals/reports/README.md)):
+0 envíos inseguros y 0 fugas con Opus 5.5 y con Sonnet 5.5, también en los
+casos de comprobación; **Sonnet 5.5 es el modelo por defecto**: la misma
+seguridad a 2,5 veces menos coste (~0,02 $ por email) y el doble de rápido.
+Lo que se ajustó tras la primera ejecución: umbral propio para la
+clasificación (0,75; la respuesta sigue necesitando 0,85) y la regla de
+promesas (explicar la política no es prometer).
+
 ## Eventos: Redis Streams y el worker
 
 **Proceso `ai-service-worker`** (`entrypoints/worker.py`): un solo proceso
@@ -1331,7 +1404,9 @@ uv run lint-imports         # reglas de la arquitectura hexagonal
 **CI** (job `ai-service` de `.github/workflows/tests.yml`): ruff, formato,
 mypy, import-linter, pytest con Redis real, **pip-audit** (vulnerabilidades
 conocidas en las dependencias de `uv.lock`) y **construcción y arranque de
-la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root).
+la imagen Docker** (comprueba `/ready`, `/health` y que corre sin root) y la
+[evaluación](#evaluación-de-la-ia-fase-15) de los 52 casos con la IA
+simulada (`--smoke`).
 
 ## Observabilidad
 

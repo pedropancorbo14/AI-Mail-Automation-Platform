@@ -40,6 +40,7 @@ from pydantic import SecretStr
 
 from ai_service.agents.email_graph import LangGraphEmailAgent
 from ai_service.application.errors import AgentError
+from ai_service.application.evaluation.compare import compare, render_comparison
 from ai_service.application.evaluation.costs import Price, cost_usd, parse_pricing
 from ai_service.application.evaluation.dataset import Case, Tenant, load_dataset
 from ai_service.application.evaluation.report import render
@@ -111,6 +112,8 @@ class Options:
     max_cost_usd: float
     fresh: bool
     report_only: bool = False
+    compare: tuple[str, str] | None = None
+    smoke: bool = False
 
 
 def email_for(case: Case, index: int) -> Email:
@@ -321,6 +324,19 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
         action="store_true",
         help="Solo puntuar lo ya guardado (sin llamar a la IA).",
     )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Prueba de humo (CI): sale con error solo si algún caso falla con un error,"
+        " no por el veredicto.",
+    )
+    parser.add_argument(
+        "--compare",
+        nargs=2,
+        metavar=("REFERENCIA", "NUEVA"),
+        default=None,
+        help="Comparar dos ejecuciones guardadas caso a caso (sin llamar a la IA).",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
     model = (
         "simulated" if args.provider == "simulated" else (args.model or Settings().anthropic_model)
@@ -336,6 +352,8 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
         max_cost_usd=args.max_cost_usd,
         fresh=args.fresh,
         report_only=args.report_only,
+        compare=(args.compare[0], args.compare[1]) if args.compare else None,
+        smoke=args.smoke,
     )
 
 
@@ -351,8 +369,29 @@ def write_report(options: Options) -> Summary:
     return summary
 
 
+def write_comparison(options: Options, before: str, after: str) -> int:
+    """Compara dos ejecuciones guardadas; sale con 1 si hay fallos de seguridad nuevos."""
+    cases = load_dataset(options.dataset).select(options.only, options.limit)
+    summaries = []
+    for run in (before, after):
+        path = options.out / f"{run}.jsonl"
+        if not path.exists():
+            print(f"No existe la ejecución {run} ({path}).", file=sys.stderr)
+            return 2
+        summaries.append(summarize(run, cases, load_previous(path)))
+    comparison = compare(summaries[0], summaries[1])
+    text = render_comparison(comparison)
+    out = options.out / f"compare-{before}-vs-{after}.md"
+    out.write_text(text, "utf-8")
+    print(text)
+    print(f"Comparación guardada en: {out}")
+    return 0 if comparison.ok else 1
+
+
 def main(argv: Iterable[str] | None = None) -> int:
     options = parse_args(argv)
+    if options.compare is not None:
+        return write_comparison(options, *options.compare)
     # Solo el progreso: sin los logs de cada petición al servidor MCP.
     for name in ("uvicorn", "uvicorn.error", "httpx", "httpx2", "mcp"):
         logging.getLogger(name).setLevel(logging.WARNING)
@@ -372,4 +411,6 @@ def main(argv: Iterable[str] | None = None) -> int:
     summary = write_report(options)
     print("\n" + render(summary).split("\n## ")[0])
     print(f"Informe completo: {options.out / (options.run + '.md')}")
+    if options.smoke:
+        return 0 if summary.errors == 0 else 1
     return 0 if summary.ok else 1
