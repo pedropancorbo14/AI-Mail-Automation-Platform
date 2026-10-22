@@ -36,6 +36,7 @@ export const intentLabels: Record<EmailIntent, string> = {
     complaint: 'Queja',
     sales_inquiry: 'Consulta comercial',
     account_change: 'Cambio de cuenta',
+    appointment: 'Cita',
     feedback: 'Opinión',
     auto_reply: 'Respuesta automática',
     spam: 'Spam',
@@ -118,6 +119,7 @@ export const sourceTypeLabels: Record<string, string> = {
     invoice: 'Factura',
     ticket: 'Ticket',
     customer: 'Cliente',
+    appointment: 'Cita',
 };
 
 /** Decisiones de la revisión humana. */

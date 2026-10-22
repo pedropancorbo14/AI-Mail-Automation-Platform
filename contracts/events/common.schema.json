@@ -39,7 +39,8 @@
       "enum": [
         "order_status", "return_request", "cancellation", "invoice_request",
         "billing_issue", "product_question", "technical_support", "complaint",
-        "sales_inquiry", "account_change", "feedback", "auto_reply", "spam", "other"
+        "sales_inquiry", "account_change", "appointment", "feedback", "auto_reply", "spam",
+        "other"
       ]
     },
     "confidence": {
@@ -80,7 +81,7 @@
       "description": "Dato citado en la respuesta: documento (fuente citable \"Título, sección «X»\"), pedido, factura (Fase 5), ticket o cliente.",
       "type": "object",
       "properties": {
-        "type": { "type": "string", "enum": ["document", "order", "invoice", "ticket", "customer"] },
+        "type": { "type": "string", "enum": ["document", "order", "invoice", "ticket", "customer", "appointment"] },
         "reference": { "type": "string", "minLength": 1, "maxLength": 255 }
       },
       "required": ["type", "reference"],

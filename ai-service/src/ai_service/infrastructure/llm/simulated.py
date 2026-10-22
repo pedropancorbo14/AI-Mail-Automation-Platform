@@ -15,6 +15,7 @@ import re
 import time
 from collections.abc import Sequence
 from dataclasses import replace
+from datetime import datetime
 from typing import Any
 
 from ai_service.application.dto import (
@@ -84,6 +85,9 @@ _RULES: tuple[tuple[Category, tuple[str, ...]], ...] = (
         ("envío", "envíos", "enviáis", "ship", "plazo", "garantía", "warranty", "¿", "?"),
     ),
 )
+# Con límites de palabra: "solicitar" contiene "cita". Va después de spam,
+# respuestas automáticas y quejas, y antes que cancelar ("cancelar la cita").
+_APPOINTMENT = re.compile(r"\b(citas?|appointments?)\b")
 _INJECTION = (
     "ignora las instrucciones",
     "ignora tus instrucciones",
@@ -111,7 +115,7 @@ class SimulatedLLM:
         await self._wait()
         text = f"{email.subject}\n{email.body}".lower()
         injection = any(p in text for p in _INJECTION)
-        category = next((c for c, words in _RULES if any(w in text for w in words)), Category.OTHER)
+        category = _category(text)
         confidence = (
             0.3
             if injection
@@ -174,12 +178,14 @@ class SimulatedLLM:
         orders = _orders(context)
         invoices = _invoices(context)
         tickets = _created_tickets(context)
+        appointments = _appointments(context)
         facts = [best.content] if best else []
         # Documentación que buscó en una ronda anterior (search_company_documents).
         searched = [] if best else _searched_docs(context)
         facts += [content for _, content in searched]
         facts += [_order_fact(order, english=english) for order in orders]
         facts += [_invoice_fact(invoice, english=english) for invoice in invoices]
+        facts += [_appointment_fact(a, english=english) for a in appointments]
         facts += [
             f"We have opened ticket {t['id']} for you."
             if english
@@ -196,6 +202,7 @@ class SimulatedLLM:
         sources += [Source(SourceType.ORDER, str(order["order_number"])) for order in orders]
         sources += [Source(SourceType.INVOICE, str(i["invoice_number"])) for i in invoices]
         sources += [Source(SourceType.TICKET, str(t["id"])) for t in tickets]
+        sources += [Source(SourceType.APPOINTMENT, str(a["appointment_id"])) for a in appointments]
         confident = bool(facts)
         draft = Draft(
             body=body,
@@ -231,6 +238,15 @@ class SimulatedLLM:
             provider_request_id=f"sim_{int(time.time() * 1000)}",
             prompt=prompt,
         )
+
+
+def _category(text: str) -> Category:
+    for category, words in _RULES:
+        if category is Category.CANCELLATION and _APPOINTMENT.search(text):
+            return Category.APPOINTMENT
+        if any(w in text for w in words):
+            return category
+    return Category.APPOINTMENT if _APPOINTMENT.search(text) else Category.OTHER
 
 
 def _wanted_lookup(
@@ -336,6 +352,43 @@ def _invoice_fact(invoice: dict[str, Any], *, english: bool) -> str:
     if english:
         return f"Invoice {number}: {total} {currency}, {invoice.get('status')}."
     return f"Factura {number}: {total} {currency}, {invoice.get('status_label')}."
+
+
+def _appointments(context: DraftContext) -> list[dict[str, Any]]:
+    """La cita de get_appointment o, de la lista, la próxima (si no hay, la más reciente)."""
+    for record in context.tool_results:
+        if record.status != "success" or not record.result:
+            continue
+        if record.tool == "get_appointment" and record.result.get("appointment_id"):
+            return [record.result]
+        if record.tool == "get_customer_appointments":
+            rows = [a for a in record.result.get("appointments", []) if isinstance(a, dict)]
+            upcoming = [a for a in rows if a.get("upcoming")]
+            # Las próximas vienen de la más lejana a la más cercana: la última es la siguiente.
+            chosen = upcoming[-1:] or rows[:1]
+            return [a for a in chosen if a.get("appointment_id")]
+    return []
+
+
+def _appointment_fact(appointment: dict[str, Any], *, english: bool) -> str:
+    try:
+        start = datetime.fromisoformat(str(appointment["starts_at"]))
+        when = (
+            f"{start:%d/%m/%Y} at {start:%H:%M}"
+            if english
+            else f"{start:%d/%m/%Y} a las {start:%H:%M}"
+        )
+    except (KeyError, ValueError):
+        when = str(appointment.get("starts_at"))
+    details = ", ".join(
+        str(appointment[k]) for k in ("professional", "location") if appointment.get(k)
+    )
+    label = appointment.get("status") if english else appointment.get("status_label")
+    name = appointment["appointment_id"]
+    service = f" ({appointment['service']})" if appointment.get("service") else ""
+    if english:
+        return f"Appointment {name}{service}: {when}. {details}. Status: {label}."
+    return f"Cita {name}{service}: {when}. {details}. Estado: {label}."
 
 
 def _created_tickets(context: DraftContext) -> list[dict[str, Any]]:

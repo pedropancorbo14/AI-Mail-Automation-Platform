@@ -62,6 +62,7 @@ def test_billing_looks_up_invoices() -> None:
     [
         (Specialist.SUPPORT, Category.TECHNICAL_SUPPORT, ["get_customer_tickets"]),
         (Specialist.SUPPORT, Category.COMPLAINT, ["get_customer_tickets"]),
+        (Specialist.APPOINTMENTS, Category.APPOINTMENT, ["get_customer_appointments"]),
         (Specialist.GENERAL, Category.ACCOUNT_CHANGE, ["get_customer"]),
         (Specialist.GENERAL, Category.PRODUCT_QUESTION, []),
         (Specialist.GENERAL, Category.SALES_INQUIRY, []),
@@ -103,5 +104,9 @@ def test_references_come_only_from_what_the_tools_returned() -> None:
     assert references_in("get_customer_invoices", {"invoices": [{"invoice_number": "FAC-2"}]}) == {
         "FAC-2"
     }
+    assert references_in("get_appointment", {"appointment_id": "C-2031"}) == {"C-2031"}
+    assert references_in(
+        "get_customer_appointments", {"appointments": [{"appointment_id": "C-1877"}]}
+    ) == {"C-1877"}
     assert references_in("get_order", None) == set()
     assert references_in("get_customer_orders", {"orders": "no es una lista"}) == set()

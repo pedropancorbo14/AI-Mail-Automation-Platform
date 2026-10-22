@@ -19,6 +19,7 @@ class Category(StrEnum):
     COMPLAINT = "complaint"
     SALES_INQUIRY = "sales_inquiry"
     ACCOUNT_CHANGE = "account_change"
+    APPOINTMENT = "appointment"  # Fase 14: negocios con agenda (clínicas, talleres…)
     FEEDBACK = "feedback"
     AUTO_REPLY = "auto_reply"
     SPAM = "spam"

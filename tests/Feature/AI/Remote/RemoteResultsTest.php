@@ -330,3 +330,44 @@ it('ai:process --now publishes and waits for ai-service, and says so when it doe
     expect($this->streams->entries['email.received.v1'])->toHaveCount(2)
         ->and($email->fresh()->status)->toBe(EmailStatus::Processing);
 });
+
+/** Fase 14: el ejemplo del contrato de una cita, aplicado al email publicado. */
+function appointmentResult(Email $email): array
+{
+    $event = json_decode(file_get_contents(base_path('contracts/events/examples/valid/email.processed.v1--appointment.json')), true);
+
+    return array_merge($event, [
+        'event_id' => (string) Str::uuid(),
+        'tenant_id' => $email->tenant_id,
+        'email_id' => $email->id,
+        'causation_id' => null,
+    ]);
+}
+
+it('sends an appointment answer by itself when the company allows that intent', function () {
+    $this->tenant->configureAutomation(AutomationMode::Auto, ['appointment']);
+
+    deliverResult(appointmentResult($this->email));
+
+    $email = $this->email->fresh();
+    $reply = inTenant($this->tenant, fn () => $email->replies()->sole());
+    $call = inTenant($this->tenant, fn () => App\Models\AiToolCall::sole());
+
+    // ReplyContentGuard no ve importes ni pedidos inventados: la fecha sale de la cita consultada.
+    expect($email->status)->toBe(EmailStatus::Sent)
+        ->and($email->intent->value)->toBe('appointment')
+        ->and($this->mail->sent[0]->textBody)->toContain('29/10/2026 a las 10:30')
+        ->and($reply->sources)->toBe([['type' => 'appointment', 'reference' => 'C-2031']])
+        ->and($call->tool)->toBe('get_customer_appointments')
+        ->and($call->result['appointments'][0]['appointment_id'])->toBe('C-2031')
+        ->and(inTenant($this->tenant, fn () => App\Models\AiAgentRun::sole())->final_output['specialists'])->toBe(['appointments']);
+});
+
+it('sends appointment answers to a person unless the company allows that intent', function () {
+    deliverResult(appointmentResult($this->email)); // intenciones por defecto: order_status, product_question
+
+    expect($this->email->fresh()->status)->toBe(EmailStatus::HumanReview)
+        ->and(lastStatusReasonOf($this->email))->toContain('«appointment»')
+        ->and($this->mail->sent)->toBe([])
+        ->and(App\AI\Classification\EmailIntent::Appointment->allowsAutoSend())->toBeTrue();
+});

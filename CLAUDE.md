@@ -5133,6 +5133,39 @@ aplazados hasta que haya demanda.
   codificado, límite, 404, respuestas no válidas como error del "sistema de
   citas", una clínica que solo implementa citas) y la agenda propia de una
   empresa vía Laravel. 515 tests de Python
+- [x] 6.3 **Intención "cita" y enrutado.** Intención nueva **`appointment`**
+  ("pregunta por una cita o pide reservarla, cambiarla o cancelarla"; en
+  `cancellation` se aclara "no una cita") en los dos lados a la vez:
+  contrato (`category` y `source.type` `appointment`), `Category` y
+  `SourceType` de Python, `EmailIntent` de Laravel (se puede permitir el
+  envío automático; no está entre las de por defecto) y panel (`Cita` en
+  intenciones y fuentes). Prompts: **`email_classification@2`** y
+  **`email_draft@7`** (reglas del especialista de citas: fecha y hora tal
+  como figuran, `upcoming` para no presentar como próxima una cita pasada,
+  cancelada o a la que no acudió, preguntar si hay varias próximas, **nunca
+  confirmar que una cita se reservó, cambió o canceló** → `pending_actions`
+  + persona; fuente `appointment` con su id). Supervisor: `appointment` →
+  especialista `appointments`, cuyo plan es `get_customer_appointments`
+  (el clasificador no extrae identificadores de cita y el cliente casi
+  nunca los da); el modelo puede pedir `get_appointment`; `references_in`
+  reconoce las citas como consultadas. IA simulada: "cita/citas/
+  appointment" con límites de palabra ("solicitar" contiene "cita") antes
+  que "cancelar"; redacta con la siguiente cita próxima (o la más reciente
+  si no hay) y la cita como fuente. Ejemplo de contrato
+  `email.processed.v1--appointment.json`. Tests: enrutado, plan,
+  referencias, clasificación y redacción simuladas, **grafo + IA simulada +
+  servidor MCP real con la clínica** (María recibe su C-2031 y se envía
+  sola; Javier solo ve la suya; una tienda sin agenda recibe la lista vacía
+  y pasa a una persona) y Pest (el ejemplo aplicado: enviada sola con la
+  intención permitida, a una persona con las de por defecto). 525 tests de
+  Python, 1035 de Laravel (todo menos el grupo `greenmail`) y 100 de
+  Vitest en verde. **Entorno de la sesión:** PHP 8.3 en el sistema y
+  Composer sin zips de GitHub (403) → `composer install --prefer-source
+  --ignore-platform-req=php` (clona con git) y Pest en
+  `mirror.gcr.io/serversideup/php:8.4-cli-alpine` (`-u 0`, red del host)
+  contra PostgreSQL 16 + `postgresql-16-pgvector` y Redis de la sesión; con
+  `GREENMAIL_HOST=127.0.0.1` como en el CI (si no, 2 tests de anti-SSRF
+  fallan porque `greenmail` no resuelve)
 
 #### Opciones que se plantearon para la tarea 6
 

@@ -8,8 +8,8 @@ from tests.unit.domain.factories import make_classification, make_email
 # hash nuevo: cada llamada registrada apunta a "clave@versión" y debe poder saberse
 # qué texto exacto se envió (mismo criterio que ai_prompt_versions en Laravel).
 KNOWN_VERSIONS = {
-    "email_classification@1": "03ecdefea2ee8948dc116d58721e686fd8a2e71aa97fe4d738219377fcbf758c",
-    "email_draft@6": "1c0163c0b47e8070906c84376508aae5c2d6934b75972029f97719eb5a860309",
+    "email_classification@2": "6b70f311e170ff5adaf242031b6cab47ed091d6f36824a57f9c61b4482f967b6",
+    "email_draft@7": "51974ee90d7560e0825789618888a5447b583b4394a950d19a2937316cc3057f",
 }
 
 

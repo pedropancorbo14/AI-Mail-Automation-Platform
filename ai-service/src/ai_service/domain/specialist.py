@@ -29,6 +29,7 @@ _PRIMARY = {
     Category.BILLING_ISSUE: Specialist.BILLING,
     Category.TECHNICAL_SUPPORT: Specialist.SUPPORT,
     Category.COMPLAINT: Specialist.SUPPORT,
+    Category.APPOINTMENT: Specialist.APPOINTMENTS,
 }
 
 

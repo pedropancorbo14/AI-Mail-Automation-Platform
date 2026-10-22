@@ -179,7 +179,7 @@ async def test_classify_sends_structured_outputs_effort_and_fallbacks() -> None:
     assert (call.provider, call.model, call.status) == ("anthropic", "claude-opus-5-5", "success")
     assert (call.input_tokens, call.output_tokens) == (1960, 159)
     assert call.purpose == "ai_service.classification"
-    assert call.prompt == "email_classification@1"
+    assert call.prompt == "email_classification@2"
     assert call.provider_request_id == "msg_01ABC"
     assert call.stop_reason == "end_turn"
 
@@ -370,7 +370,7 @@ async def test_draft_uses_its_own_effort_and_the_classification() -> None:
     assert d.confidence.value == 0.6
     assert d.pending_actions == ("Revisar el envío con SEUR",)
     assert [s.reference for s in d.sources] == ["Política de envíos, sección «Coste del envío»"]
-    assert result.calls[0].prompt == "email_draft@6"
+    assert result.calls[0].prompt == "email_draft@7"
     assert result.calls[0].purpose == "ai_service.draft"
 
 

@@ -163,7 +163,7 @@ class ClassificationPayload(BaseModel):
 class SourcePayload(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    type: Literal["document", "order", "invoice", "ticket", "customer"]
+    type: Literal["document", "order", "invoice", "ticket", "customer", "appointment"]
     reference: str = Field(min_length=1, max_length=255)
 
 

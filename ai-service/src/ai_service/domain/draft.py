@@ -12,6 +12,7 @@ class SourceType(StrEnum):
     INVOICE = "invoice"
     TICKET = "ticket"
     CUSTOMER = "customer"
+    APPOINTMENT = "appointment"
 
 
 @dataclass(frozen=True, slots=True)

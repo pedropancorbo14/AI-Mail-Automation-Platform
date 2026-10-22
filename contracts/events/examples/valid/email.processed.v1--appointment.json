@@ -1,0 +1,109 @@
+{
+  "event_id": "5c1d9e2a-7b3f-4e8a-9d6c-2f4a1b3c5d7e",
+  "event_type": "email.processed",
+  "event_version": 1,
+  "occurred_at": "2026-10-17T10:00:00.123456Z",
+  "trace_id": "9f2c4e6a8b1d4f3e",
+  "tenant_id": 1,
+  "email_id": 43,
+  "causation_id": "7a2e4c6b-1d3f-4b5a-8c9e-0f1a2b3c4d5e",
+  "category": "appointment",
+  "draft": "Hola María:\n\nTu cita C-2031 (Limpieza dental) es el jueves 29/10/2026 a las 10:30 con la Dra. López, en Clínica Centro, consulta 2. Si llevas aparato, trae la funda.\n\nUn saludo,\nEl equipo de Clínica Demo",
+  "confidence": 0.92,
+  "decision": "auto_send",
+  "tools_used": [
+    "get_customer_appointments"
+  ],
+  "language": "es",
+  "reasons": [],
+  "model": "claude-opus-5-5",
+  "classification": {
+    "confidence": 0.95,
+    "summary": "La paciente pregunta a qué hora es su próxima cita.",
+    "sentiment": "neutral",
+    "urgency": "normal",
+    "injection_suspected": false,
+    "needs_human": false,
+    "needs_human_reason": null,
+    "order_numbers": [],
+    "invoice_numbers": [],
+    "customer_name": "María Gómez"
+  },
+  "usage": {
+    "calls": [
+      {
+        "purpose": "ai_service.classification",
+        "provider": "anthropic",
+        "requested_model": "claude-opus-5-5",
+        "model": "claude-opus-5-5",
+        "status": "success",
+        "input_tokens": 1960,
+        "output_tokens": 159,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 0,
+        "latency_ms": 2300,
+        "stop_reason": "end_turn",
+        "provider_request_id": "msg_01ABC",
+        "error": null,
+        "prompt": "email_classification@2"
+      },
+      {
+        "purpose": "ai_service.draft",
+        "provider": "anthropic",
+        "requested_model": "claude-opus-5-5",
+        "model": "claude-opus-5-5",
+        "status": "success",
+        "input_tokens": 2400,
+        "output_tokens": 310,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 0,
+        "latency_ms": 2300,
+        "stop_reason": "end_turn",
+        "provider_request_id": "msg_01ABC",
+        "error": null,
+        "prompt": "email_draft@7"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "type": "appointment",
+      "reference": "C-2031"
+    }
+  ],
+  "tool_calls": [
+    {
+      "tool": "get_customer_appointments",
+      "arguments": {
+        "limit": 5
+      },
+      "result": {
+        "appointments": [
+          {
+            "appointment_id": "C-2031",
+            "status": "scheduled",
+            "status_label": "Programada",
+            "upcoming": true,
+            "starts_at": "2026-10-29T10:30:00+01:00",
+            "ends_at": "2026-10-29T11:00:00+01:00",
+            "service": "Limpieza dental",
+            "professional": "Dra. López",
+            "location": "Clínica Centro, consulta 2",
+            "instructions": "Si llevas aparato, trae la funda.",
+            "price": 45.0,
+            "currency": "EUR"
+          }
+        ]
+      },
+      "status": "success",
+      "error": null,
+      "duration_ms": 38,
+      "origin": "plan"
+    }
+  ],
+  "duration_ms": 3100,
+  "specialists": [
+    "appointments"
+  ],
+  "mode": "live"
+}

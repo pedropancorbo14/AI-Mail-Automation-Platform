@@ -1,5 +1,6 @@
 """Cliente MCP contra el servidor MCP real (HTTP con token)."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 from ai_service.agents.email_graph import LangGraphEmailAgent
@@ -10,7 +11,9 @@ from ai_service.domain.policy import DecisionPolicy
 from ai_service.infrastructure.checkpoints.postgres import PostgresCheckpoints
 from ai_service.infrastructure.llm.simulated import SimulatedLLM
 from ai_service.infrastructure.tools.mcp_client import McpToolClient
+from ai_service.mcp_server.tools import BusinessTools
 from tests.integration.test_mcp_server import TOKEN, running
+from tests.support.mcp import CLINIC, demo_integrations
 from tests.unit.domain.factories import make_email
 
 CLIENTE = ToolContext(TenantId(1), EmailAddress("cliente@cliente.test"))
@@ -242,3 +245,48 @@ async def test_the_graph_waits_for_approval_across_a_restart(checkpoint_db: Any)
     assert ticket in done.draft.body
     assert done.outcome.decision is Decision.AUTO_SEND
     assert left is None  # terminado: no queda estado con datos personales
+
+
+async def test_a_clinic_answers_appointment_questions_with_real_mcp_data() -> None:
+    """Fase 14: un negocio con agenda. La intención cita va al especialista de
+    citas, que consulta las del cliente; cada paciente ve solo las suyas."""
+    tools = BusinessTools(demo_integrations(), clock=lambda: datetime(2026, 10, 22, tzinfo=UTC))
+    async with running(18133, tools) as url:
+        agent = LangGraphEmailAgent(
+            SimulatedLLM(), DecisionPolicy(), tools=McpToolClient(url, TOKEN)
+        )
+        maria = await agent.run(
+            make_email(
+                tenant_id=TenantId(CLINIC),
+                tenant_name="Clínica Demo",
+                sender=EmailAddress("maria@cliente.test"),
+                subject="Mi cita",
+                body="Hola, ¿a qué hora tengo la cita? No me acuerdo.",
+            )
+        )
+        javier = await agent.run(
+            make_email(
+                tenant_id=TenantId(CLINIC),
+                sender=EmailAddress("javier@cliente.test"),
+                subject="Cita",
+                body="¿Cuándo es mi próxima cita?",
+            )
+        )
+        shop = await agent.run(make_email(subject="Cita", body="¿Cuándo es mi cita?"))
+
+    assert [s.value for s in maria.specialists] == ["appointments"]
+    assert [(r.tool, r.origin, r.status) for r in maria.tool_calls] == [
+        ("get_customer_appointments", "plan", "success")
+    ]
+    assert maria.draft is not None
+    assert "Cita C-2031 (Limpieza dental): 29/10/2026 a las 10:30." in maria.draft.body
+    assert [s.reference for s in maria.draft.sources] == ["C-2031"]
+    assert maria.outcome.decision is Decision.AUTO_SEND
+    assert javier.draft is not None
+    assert "C-2044" in javier.draft.body
+    assert "C-2031" not in javier.draft.body  # la cita de otra paciente
+    # Una tienda sin agenda: la consulta vuelve vacía ("no inventes") y va a una persona.
+    [empty] = shop.tool_calls
+    assert empty.result is not None
+    assert empty.result["appointments"] == []
+    assert shop.outcome.decision is Decision.HUMAN_REVIEW

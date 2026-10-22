@@ -9,7 +9,8 @@ export type EmailStatus = 'received' | 'processing' | 'ai_review' | 'human_revie
 
 export type EmailIntent =
     | 'order_status' | 'return_request' | 'cancellation' | 'invoice_request' | 'billing_issue' | 'product_question'
-    | 'technical_support' | 'complaint' | 'sales_inquiry' | 'account_change' | 'feedback' | 'auto_reply' | 'spam' | 'other';
+    | 'technical_support' | 'complaint' | 'sales_inquiry' | 'account_change' | 'appointment' | 'feedback' | 'auto_reply'
+    | 'spam' | 'other';
 
 export interface Person {
     id: number;
@@ -58,7 +59,7 @@ export interface EmailReply {
     confidence: number | null;
     needs_human: boolean;
     needs_human_reason: string | null;
-    sources: { type: 'document' | 'order' | 'invoice' | 'ticket' | 'customer'; reference: string }[];
+    sources: { type: 'document' | 'order' | 'invoice' | 'ticket' | 'customer' | 'appointment'; reference: string }[];
     pending_actions: string[];
     internal_note: string | null;
     approved_by?: { id: number; name: string } | null;

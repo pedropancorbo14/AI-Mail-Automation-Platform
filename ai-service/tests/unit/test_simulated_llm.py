@@ -27,6 +27,11 @@ def written(result: DraftResult) -> Draft:
         ("Me habéis cobrado dos veces", Category.BILLING_ISSUE),
         ("¿Dónde está mi pedido #45821?", Category.ORDER_STATUS),
         ("¿Hacéis envíos a Canarias?", Category.PRODUCT_QUESTION),
+        ("¿A qué hora es mi cita del jueves?", Category.APPOINTMENT),
+        ("Quiero cancelar la cita del día 5", Category.APPOINTMENT),
+        ("I need to move my appointment", Category.APPOINTMENT),
+        ("Quiero solicitar una factura", Category.INVOICE_REQUEST),  # "solicitar" no es "cita"
+        ("Quiero cancelar mi pedido", Category.CANCELLATION),
         ("Hola", Category.OTHER),
     ],
 )
@@ -36,7 +41,7 @@ async def test_classifies_by_keywords(body: str, category: Category) -> None:
     assert result.classification.category is category
     [call] = result.calls
     assert (call.model, call.provider, call.status) == ("simulated", "simulated", "success")
-    assert call.prompt == "email_classification@1"
+    assert call.prompt == "email_classification@2"
     assert call.input_tokens > 0
 
 
@@ -87,7 +92,7 @@ async def test_drafts_with_order_data_cite_the_order() -> None:
     )
     assert [(s.type.value, s.reference) for s in written(result).sources] == [("order", "45821")]
     assert written(result).confidence.value == 0.9
-    assert result.calls[0].prompt == "email_draft@6"
+    assert result.calls[0].prompt == "email_draft@7"
 
 
 async def test_replies_in_english_to_english_emails() -> None:
@@ -194,3 +199,66 @@ async def test_without_tools_it_never_asks() -> None:
 
     assert result.tool_requests == ()
     assert written(result)
+
+
+def _appointments(*rows: dict[str, object]) -> ToolCallRecord:
+    return ToolCallRecord(
+        tool="get_customer_appointments",
+        arguments={"limit": 5},
+        status="success",
+        result={"appointments": list(rows)},
+    )
+
+
+async def test_drafts_with_the_next_appointment_and_cite_it() -> None:
+    llm = SimulatedLLM()
+    email = make_email(subject="Mi cita", body="¿A qué hora es mi cita?")
+    question = await llm.classify(email)
+    later = {"appointment_id": "C-3000", "upcoming": True, "starts_at": "2026-12-01T09:00:00+01:00"}
+    nxt = {
+        "appointment_id": "C-2031",
+        "upcoming": True,
+        "status": "scheduled",
+        "status_label": "Programada",
+        "starts_at": "2026-10-29T10:30:00+01:00",
+        "service": "Limpieza dental",
+        "professional": "Dra. López",
+        "location": "Clínica Centro, consulta 2",
+    }
+    past = {"appointment_id": "C-1877", "upcoming": False, "starts_at": "2026-04-02T09:00:00+02:00"}
+
+    draft = written(
+        await llm.draft(
+            email,
+            question.classification,
+            DraftContext(tool_results=(_appointments(later, nxt, past),)),
+        )
+    )
+
+    # De la más lejana a la más antigua: la siguiente es la última de las próximas.
+    assert "Cita C-2031 (Limpieza dental): 29/10/2026 a las 10:30." in draft.body
+    assert "Dra. López, Clínica Centro, consulta 2" in draft.body
+    assert "C-3000" not in draft.body
+    assert [(s.type.value, s.reference) for s in draft.sources] == [("appointment", "C-2031")]
+    assert not draft.needs_human
+
+
+async def test_without_upcoming_appointments_it_quotes_the_latest_one() -> None:
+    llm = SimulatedLLM()
+    email = make_email(subject="Cita", body="Did I miss my appointment?")
+    question = await llm.classify(email)
+    missed = {
+        "appointment_id": "C-1990",
+        "upcoming": False,
+        "status": "no_show",
+        "starts_at": "2026-10-08T12:00:00+02:00",
+    }
+
+    draft = written(
+        await llm.draft(
+            email, question.classification, DraftContext(tool_results=(_appointments(missed),))
+        )
+    )
+
+    assert "Appointment C-1990: 08/10/2026 at 12:00." in draft.body
+    assert "Status: no_show." in draft.body

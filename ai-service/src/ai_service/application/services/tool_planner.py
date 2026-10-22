@@ -59,6 +59,10 @@ def plan_for(
             plan = [PlannedCall("get_customer_invoices", {"limit": 5})]
     elif specialist is Specialist.SUPPORT:
         plan = [PlannedCall("get_customer_tickets", {"limit": 5})]
+    elif specialist is Specialist.APPOINTMENTS:
+        # Sus citas, las próximas primero: el clasificador no extrae
+        # identificadores de cita y el cliente casi nunca los da ("la del jueves").
+        plan = [PlannedCall("get_customer_appointments", {"limit": 5})]
     elif classification.category is Category.ACCOUNT_CHANGE:
         plan = [PlannedCall("get_customer")]
     return [call for call in plan if call.tool in available]
@@ -73,7 +77,13 @@ def references_in(tool: str, result: dict[str, Any] | None) -> set[str]:
         found.add(str(result["order_number"]))
     if tool == "get_invoice" and result.get("invoice_number"):
         found.add(str(result["invoice_number"]))
-    for key, field_name in (("orders", "order_number"), ("invoices", "invoice_number")):
+    if tool == "get_appointment" and result.get("appointment_id"):
+        found.add(str(result["appointment_id"]))
+    for key, field_name in (
+        ("orders", "order_number"),
+        ("invoices", "invoice_number"),
+        ("appointments", "appointment_id"),
+    ):
         rows = result.get(key)
         for row in rows if isinstance(rows, list) else []:
             if isinstance(row, dict) and row.get(field_name):

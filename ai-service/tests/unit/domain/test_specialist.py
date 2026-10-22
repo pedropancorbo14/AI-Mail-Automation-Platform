@@ -15,6 +15,7 @@ from tests.unit.domain.factories import make_classification
         (Category.BILLING_ISSUE, Specialist.BILLING),
         (Category.TECHNICAL_SUPPORT, Specialist.SUPPORT),
         (Category.COMPLAINT, Specialist.SUPPORT),
+        (Category.APPOINTMENT, Specialist.APPOINTMENTS),
         (Category.PRODUCT_QUESTION, Specialist.GENERAL),
         (Category.SALES_INQUIRY, Specialist.GENERAL),
         (Category.ACCOUNT_CHANGE, Specialist.GENERAL),

@@ -19,6 +19,7 @@ enum EmailIntent: string
     case Complaint = 'complaint';
     case SalesInquiry = 'sales_inquiry';
     case AccountChange = 'account_change';
+    case Appointment = 'appointment';
     case Feedback = 'feedback';
     case AutoReply = 'auto_reply';
     case Spam = 'spam';
@@ -30,7 +31,7 @@ enum EmailIntent: string
         return match ($this) {
             self::OrderStatus => 'pregunta por el estado, la entrega o el seguimiento de un pedido',
             self::ReturnRequest => 'quiere devolver un producto o pide un reembolso por devolución',
-            self::Cancellation => 'quiere cancelar un pedido, servicio o suscripción',
+            self::Cancellation => 'quiere cancelar un pedido, servicio o suscripción (no una cita)',
             self::InvoiceRequest => 'pide una factura, un duplicado o un justificante',
             self::BillingIssue => 'problema con un cobro: importe incorrecto, cargo duplicado, pago fallido',
             self::ProductQuestion => 'pregunta sobre un producto o servicio antes o después de comprarlo',
@@ -38,6 +39,7 @@ enum EmailIntent: string
             self::Complaint => 'queja o reclamación por el servicio, el trato o un problema no resuelto',
             self::SalesInquiry => 'quiere comprar, pide presupuesto, precios o condiciones comerciales',
             self::AccountChange => 'cambiar datos de su cuenta: dirección, email, contraseña, datos fiscales',
+            self::Appointment => 'pregunta por una cita (fecha, hora, lugar, profesional) o pide reservarla, cambiarla o cancelarla',
             self::Feedback => 'opinión, agradecimiento o sugerencia sin petición concreta',
             self::AutoReply => 'respuesta automática: fuera de la oficina, acuse de recibo, aviso de entrega fallida',
             self::Spam => 'publicidad no solicitada, phishing o correo sin relación con la empresa',

@@ -85,9 +85,9 @@ async def test_a_failing_company_system_reaches_the_ai_as_a_readable_error() -> 
 
 
 @contextlib.asynccontextmanager
-async def running(port: int) -> AsyncIterator[str]:
+async def running(port: int, tools: BusinessTools | None = None) -> AsyncIterator[str]:
     config = uvicorn.Config(
-        build_app(demo_tools(), TOKEN), host="127.0.0.1", port=port, log_config=None
+        build_app(tools or demo_tools(), TOKEN), host="127.0.0.1", port=port, log_config=None
     )
     server = uvicorn.Server(config)
     task = asyncio.create_task(server.serve())
