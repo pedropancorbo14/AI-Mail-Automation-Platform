@@ -23,6 +23,7 @@ caso ya evaluado con la misma huella se reutiliza de `evals/runs/<run>.jsonl`
 import argparse
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import socket
@@ -40,7 +41,9 @@ from ai_service.agents.email_graph import LangGraphEmailAgent
 from ai_service.application.errors import AgentError
 from ai_service.application.evaluation.costs import Price, cost_usd, parse_pricing
 from ai_service.application.evaluation.dataset import Case, Tenant, load_dataset
+from ai_service.application.evaluation.report import render
 from ai_service.application.evaluation.results import CaseRun, fingerprint
+from ai_service.application.evaluation.scoring import Summary, summarize
 from ai_service.application.ports import LLMPort
 from ai_service.application.services.chunking import TextChunker
 from ai_service.application.services.knowledge import KnowledgeRetriever, RetrievalOptions
@@ -105,6 +108,7 @@ class Options:
     limit: int | None
     max_cost_usd: float
     fresh: bool
+    report_only: bool = False
 
 
 def email_for(case: Case, index: int) -> Email:
@@ -295,6 +299,11 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--max-cost-usd", type=float, default=3.0)
     parser.add_argument("--fresh", action="store_true", help="No reutilizar resultados guardados.")
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help="Solo puntuar lo ya guardado (sin llamar a la IA).",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
     model = (
         "simulated" if args.provider == "simulated" else (args.model or Settings().anthropic_model)
@@ -309,7 +318,20 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
         limit=args.limit,
         max_cost_usd=args.max_cost_usd,
         fresh=args.fresh,
+        report_only=args.report_only,
     )
+
+
+def write_report(options: Options) -> Summary:
+    """Puntúa lo guardado de la ejecución y escribe `<run>.md` y `<run>.summary.json`."""
+    cases = load_dataset(options.dataset).select(options.only, options.limit)
+    runs = load_previous(options.out / f"{options.run}.jsonl")
+    summary = summarize(options.run, cases, runs)
+    (options.out / f"{options.run}.md").write_text(render(summary), "utf-8")
+    (options.out / f"{options.run}.summary.json").write_text(
+        json.dumps(summary.to_dict(), ensure_ascii=False, indent=2, default=list), "utf-8"
+    )
+    return summary
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -317,19 +339,20 @@ def main(argv: Iterable[str] | None = None) -> int:
     # Solo el progreso: sin los logs de cada petición al servidor MCP.
     for name in ("uvicorn", "uvicorn.error", "httpx", "httpx2", "mcp"):
         logging.getLogger(name).setLevel(logging.WARNING)
-    settings = settings_for(options.provider, options.model)
-    if options.provider == "anthropic" and settings.anthropic_api_key is None:
-        print("Falta ANTHROPIC_API_KEY (o AI_SERVICE_ANTHROPIC_API_KEY).", file=sys.stderr)
-        return 2
-    prices = parse_pricing((REPO / "config" / "ai.php").read_text("utf-8"))
-    started = time.perf_counter()
-    results = asyncio.run(evaluate(options, build_llm(settings), settings, prices))
-    spent = sum(r.cost_usd or 0.0 for r in results)
-    errors = sum(r.status == "error" for r in results)
-    print(
-        f"\n{len(results)} casos en {time.perf_counter() - started:.1f} s · {errors} con error · "
-        f"coste {spent:.4f} $"
-        + (" (ficticio: IA simulada)" if options.provider == "simulated" else "")
-        + f" · resultados en {options.out / (options.run + '.jsonl')}"
-    )
-    return 1 if errors else 0
+    if not options.report_only:
+        settings = settings_for(options.provider, options.model)
+        if options.provider == "anthropic" and settings.anthropic_api_key is None:
+            print("Falta ANTHROPIC_API_KEY (o AI_SERVICE_ANTHROPIC_API_KEY).", file=sys.stderr)
+            return 2
+        prices = parse_pricing((REPO / "config" / "ai.php").read_text("utf-8"))
+        started = time.perf_counter()
+        results = asyncio.run(evaluate(options, build_llm(settings), settings, prices))
+        spent = sum(r.cost_usd or 0.0 for r in results)
+        print(
+            f"\n{len(results)} casos en {time.perf_counter() - started:.1f} s · coste {spent:.4f} $"
+            + (" (ficticio: IA simulada)" if options.provider == "simulated" else "")
+        )
+    summary = write_report(options)
+    print("\n" + render(summary).split("\n## ")[0])
+    print(f"Informe completo: {options.out / (options.run + '.md')}")
+    return 0 if summary.ok else 1

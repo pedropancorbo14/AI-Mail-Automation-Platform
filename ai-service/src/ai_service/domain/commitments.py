@@ -36,10 +36,22 @@ _RULES = (
     _Rule(
         "La respuesta confirma una cancelación (solo puede hacerla una persona).",
         _compile(
-            r"\bhemos\s+cancelado\s+(tu|el|su)\s+(pedido|suscripción|contrato)",
-            r"\b(tu|el|su)\s+(pedido|suscripción|contrato)\s+(ha\s+sido|queda|está)\s+cancelad[oa]",
+            r"\bhemos\s+cancelado\s+(tu|el|su|la)\s+(pedido|suscripción|contrato|cita)",
+            r"\b(tu|el|su|la)\s+(pedido|suscripción|contrato|cita)\s+(ha\s+sido|queda|está)"
+            r"\s+cancelad[oa]",
             r"\bwe\s*(have|'ve)\s+cancell?ed\s+your\b",
-            r"\byour\s+(order|subscription)\s+(has\s+been|is)\s+cancell?ed",
+            r"\byour\s+(order|subscription|appointment)\s+(has\s+been|is)\s+cancell?ed",
+        ),
+    ),
+    _Rule(
+        "La respuesta confirma que una cita se ha reservado o cambiado"
+        " (solo puede hacerlo una persona).",
+        _compile(
+            r"\bhemos\s+(cambiado|movido|modificado|reprogramado|reservado)\s+(tu|su|la)\s+cita",
+            r"\b(tu|su|la)\s+cita\s+(ha\s+sido|queda|está)\s+"
+            r"(cambiada|movida|modificada|reprogramada|reservada)",
+            r"\bwe\s*(have|'ve)\s+(moved|rescheduled|changed|booked)\s+your\s+appointment",
+            r"\byour\s+appointment\s+(has\s+been|is)\s+(moved|rescheduled|changed|booked)",
         ),
     ),
 )

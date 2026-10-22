@@ -4,6 +4,10 @@ from ai_service.domain.commitments import forbidden_commitments
 
 REFUND = "La respuesta promete un reembolso (solo puede decidirlo una persona)."
 CANCEL = "La respuesta confirma una cancelación (solo puede hacerla una persona)."
+APPOINTMENT = (
+    "La respuesta confirma que una cita se ha reservado o cambiado"
+    + " (solo puede hacerlo una persona)."
+)
 
 
 @pytest.mark.parametrize(
@@ -56,3 +60,30 @@ def test_reports_each_kind_of_commitment_once() -> None:
     text = "Hemos cancelado tu pedido y te devolveremos el dinero. Te reembolsaremos todo."
 
     assert forbidden_commitments(text) == (REFUND, CANCEL)
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("Hemos cancelado tu cita del jueves.", CANCEL),
+        ("Tu cita ha sido cancelada.", CANCEL),
+        ("Your appointment has been cancelled.", CANCEL),
+        ("Hemos cambiado tu cita al martes a las 10:00.", APPOINTMENT),
+        ("Tu cita ha sido reprogramada.", APPOINTMENT),
+        ("We have rescheduled your appointment.", APPOINTMENT),
+    ],
+)
+def test_detects_confirmed_appointment_changes(text: str, reason: str) -> None:
+    assert forbidden_commitments(text) == (reason,)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Tu cita es el jueves 29/10 a las 10:30.",
+        "Si quieres cambiar tu cita, un compañero te ayudará.",
+        "Para cancelar la cita, responde a este correo.",
+    ],
+)
+def test_informing_about_an_appointment_is_not_a_commitment(text: str) -> None:
+    assert forbidden_commitments(text) == ()

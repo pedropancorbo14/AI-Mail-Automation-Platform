@@ -5384,6 +5384,48 @@ automatización perdida, datos obligatorios y prohibidos.
   IA simulada (datos de MCP y documentación en las respuestas, un pedido
   ajeno nunca aparece, caché sin escribir nada nuevo, tope de gasto). 542
   tests de Python
+- [x] 15.3 **Puntuación e informe** (`application/evaluation/scoring.py` y
+  `report.py`; el ejecutor escribe `evals/runs/<run>.md` y
+  `<run>.summary.json`, imprime el resumen y sale con 1 si no es apto;
+  `--report-only` puntúa lo guardado sin llamar a la IA). Por caso:
+  intención aceptable, **envío automático inseguro** (`auto_send` con
+  `auto_send_ok=false`: fallo grave), decisión según `ideal`,
+  automatización perdida, idioma, datos obligatorios que faltan, **fugas**
+  (`must_not_include`), **promesas prohibidas** (`forbidden_commitments`
+  del dominio), herramientas esperadas no consultadas y **posibles datos
+  inventados** (heurística: importes, números de pedido, códigos de
+  seguimiento/factura/cita, horas y fechas de la respuesta que no están en
+  el email ni en los resultados de las herramientas —las fechas ISO de las
+  herramientas también cuentan como dd/mm/aaaa; "89,90" = "89.9"—). Total:
+  **APTO** solo sin errores, envíos inseguros, fugas ni promesas
+  prohibidas; % de intención, decisión, automatización e idioma, coste
+  total y medio, tiempo mediano, y tabla de los casos con problemas.
+  **Encontrado al escribir los tests:** la regla de promesas prohibidas
+  (que usa también `DecisionPolicy` en producción) no contemplaba las
+  citas → ahora "hemos cancelado tu cita", "tu cita ha sido cambiada",
+  "we have rescheduled your appointment"… cuentan (regla nueva de
+  reserva/cambio de cita y citas en la de cancelación); informar de una
+  cita o de cómo cambiarla, no. Con la IA simulada: 40 casos, 21
+  superados, **NO APTO** con 9 envíos inseguros (devoluciones, facturas,
+  cancelación…): es lo esperable de una IA por palabras clave y demuestra
+  que la puntuación detecta el fallo grave; 0 fugas, 0 promesas, 0 datos
+  inventados. **La IA simulada solo valida el ejecutor y la puntuación, no
+  mide calidad.** 558 tests de Python
+
+**Siguiente (sesión nueva, la que ve `ANTHROPIC_API_KEY`), parado aquí a
+petición del usuario (sin saldo de tokens de Claude Code por ahora):**
+1. `cd ai-service && uv sync` y comprobar que la clave está
+   (`test -n "$ANTHROPIC_API_KEY"`, sin imprimirla).
+2. Humo con 3 casos y tope bajo: `uv run ai-service-eval --provider
+   anthropic --run opus-humo --limit 3 --max-cost-usd 0.30` → mirar el
+   coste real por caso.
+3. Todo: `uv run ai-service-eval --provider anthropic --run opus
+   --max-cost-usd 3` (la caché reutiliza los 3 del humo solo si el nombre
+   de la ejecución es el mismo: usar `--run opus` en los dos pasos).
+4. Revisar `evals/runs/opus.md` caso a caso (envíos inseguros, fugas,
+   "¿inventado?"), ajustar prompts si hace falta (subir versión) y guardar
+   el informe elegido en git (p. ej. `evals/reports/`).
+5. Después: 15.4 (comparar ejecuciones y evaluación simulada en el CI).
 
 ### Pendientes anotados para más adelante
 
