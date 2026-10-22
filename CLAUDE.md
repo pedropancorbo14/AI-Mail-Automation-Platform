@@ -5062,6 +5062,12 @@ para empresas con equipo técnico: que conecten su propio servidor MCP.
   cifras (los de WooCommerce de pruebas son 13–15). Tras la prueba, tienda
   desconectada de "Empresa Demo" y contenedores parados (volúmenes intactos)
 
+- [x] Fix (CI en rojo tras el push, 2026-10-22): el paso `pip-audit` del job
+  `ai-service` falló por vulnerabilidades publicadas en dependencias, no por
+  el código: **pypdf** 6.19.0 (5 CVE) → 6.21.2 y **certifi** 2026.7.22 →
+  2026.10.19 (`uv lock --upgrade-package`); mínimo de `pyproject.toml` a
+  `pypdf>=6.21.1` para que nunca se resuelva una versión vulnerable
+
 **Estado (2026-10-21): tareas 1–5 hechas, sin push.** El usuario **aparca la
 tarea 6** (las dos opciones de abajo) hasta que decida retomarla; pidió
 dejarlas planificadas. Antes de empezar cualquiera de las dos: que haga push
