@@ -262,3 +262,21 @@ async def test_without_upcoming_appointments_it_quotes_the_latest_one() -> None:
 
     assert "Appointment C-1990: 08/10/2026 at 12:00." in draft.body
     assert "Status: no_show." in draft.body
+
+
+async def test_asking_to_change_an_appointment_leaves_it_to_a_person() -> None:
+    llm = SimulatedLLM()
+    email = make_email(subject="Mi cita", body="Quiero cancelar mi cita del jueves.")
+    question = await llm.classify(email)
+    nxt = {"appointment_id": "C-2031", "upcoming": True, "starts_at": "2026-10-29T10:30:00+01:00"}
+
+    draft = written(
+        await llm.draft(
+            email, question.classification, DraftContext(tool_results=(_appointments(nxt),))
+        )
+    )
+
+    assert question.classification.category is Category.APPOINTMENT
+    assert draft.needs_human
+    assert draft.pending_actions
+    assert "Cita C-2031" in draft.body  # informa de la cita, pero no confirma nada

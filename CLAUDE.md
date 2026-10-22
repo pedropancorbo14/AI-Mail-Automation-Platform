@@ -5193,6 +5193,35 @@ aplazados hasta que haya demanda.
   citas). 526 de Python, 1039 de Laravel, 101 de Vitest. **Pendiente:**
   la tarjeta vive en la página "Pedidos" y pide `orders.manage`; si se
   añaden más tipos de negocio, valorar una página "Integraciones"
+- [x] 6.5 **Prueba de punta a punta con la IA simulada (2026-10-22).**
+  Ajuste previo: la IA simulada imita la regla de `email_draft@7` (pedir
+  reservar, cambiar o cancelar una cita → acción pendiente + persona; antes
+  lo habría enviado solo). Stack de la sesión: PostgreSQL + pgvector y
+  Redis locales, GreenMail (`mirror.gcr.io`), Laravel en el contenedor de
+  PHP 8.4 (`php artisan serve` con **`PHP_CLI_SERVER_WORKERS=4`**: con un
+  solo proceso, Laravel → ai-service → MCP → Laravel se bloquea y la
+  disponibilidad de las herramientas sale "desconocida"), `queue:work
+  redis --queue=ai,mail,default` en lugar de Horizon (`ProcessEmailJob`
+  usa la conexión `redis` aunque `QUEUE_CONNECTION=sync`), servidor MCP y
+  worker de ai-service con `uv run`. `migrate --seed` + `ClinicDemoSeeder`
+  (Clínica Demo = empresa 2) → buzón `recepcion@clinica.test` creado y
+  probado por la API (recepción y envío OK) → modo `auto` con
+  `appointment` permitida → el panel ve `get_appointment` y
+  `get_customer_appointments` **disponibles** (citas de demostración por el
+  slug, sin configurar ids). 5 correos por SMTP → `mail:sync` → publicados
+  → `email_processed` ×5 → `ai:consume-results` (5 `applied`):
+  - María "¿a qué hora tengo la cita?" → `get_customer_appointments` (plan)
+    → **enviada sola**: C-2031, Limpieza dental, 29/10/2026 a las 10:30,
+    Dra. López, consulta 2; llegó a su buzón como "Re: Mi cita", en el hilo
+    y con `Auto-Submitted`. Traza en el panel: especialista `appointments`,
+    fuente `appointment` C-2031.
+  - Javier "¿cuándo es mi próxima cita?" → **enviada sola** con **su**
+    C-2044 (Empaste, 05/11 a las 17:00, Dr. Martín), nunca la de María.
+  - Ana "quiero cancelar mi cita" y María "quiero cambiar mi cita" →
+    **revisión humana** con acción pendiente; nada enviado.
+  - Pedro (sin citas) → **revisión humana** (confianza 0,50, sin datos);
+    nada enviado.
+  - Bandeja de revisión: 3 casos. **Tarea 6 (opción A) terminada.**
 
 #### Opciones que se plantearon para la tarea 6
 

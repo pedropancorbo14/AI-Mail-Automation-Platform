@@ -715,6 +715,10 @@ herramientas de citas activadas. El servidor MCP le da las citas de
 demostración por su slug (`clinica-demo`), sin configurar nada: un email de
 `maria@cliente.test` preguntando "¿a qué hora es mi cita?" se contesta con su
 cita C-2031. Para recibir correo, añade un buzón en **Buzones**.
+Probado de punta a punta con la IA simulada: las preguntas por una cita se
+contestan solas con la cita de quien escribe (si la empresa permite la
+intención `appointment` en modo automático); pedir cambiarla o cancelarla,
+o no tener citas, va a revisión humana.
 
 - **Se prueba al guardar** (y con "Probar conexión"): pide la lista de un
   cliente que no existe y comprueba que responde con el formato del

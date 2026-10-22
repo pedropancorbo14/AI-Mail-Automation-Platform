@@ -88,6 +88,11 @@ _RULES: tuple[tuple[Category, tuple[str, ...]], ...] = (
 # Con límites de palabra: "solicitar" contiene "cita". Va después de spam,
 # respuestas automáticas y quejas, y antes que cancelar ("cancelar la cita").
 _APPOINTMENT = re.compile(r"\b(citas?|appointments?)\b")
+# Pedir reservar, cambiar o cancelar una cita: la IA solo informa (regla de
+# email_draft@7) → acción pendiente y una persona.
+_APPOINTMENT_CHANGE = re.compile(
+    r"\b(cancel\w*|anul\w*|cambi\w*|mov\w*|reserv\w*|pedir|reschedul\w*|book\w*|change)\b"
+)
 _INJECTION = (
     "ignora las instrucciones",
     "ignora tus instrucciones",
@@ -204,14 +209,25 @@ class SimulatedLLM:
         sources += [Source(SourceType.TICKET, str(t["id"])) for t in tickets]
         sources += [Source(SourceType.APPOINTMENT, str(a["appointment_id"])) for a in appointments]
         confident = bool(facts)
+        change = classification.category is Category.APPOINTMENT and bool(
+            _APPOINTMENT_CHANGE.search(f"{email.subject}\n{email.body}".lower())
+        )
+        reason = None
+        if change:
+            reason = (
+                "[IA simulada] Pide reservar, cambiar o cancelar una cita: lo gestiona una persona."
+            )
+        elif not confident:
+            reason = "[IA simulada] No hay datos suficientes para responder."
         draft = Draft(
             body=body,
             language=classification.language,
             confidence=Confidence(0.9 if confident else 0.5),
-            needs_human=not confident,
-            needs_human_reason=None
-            if confident
-            else "[IA simulada] No hay datos suficientes para responder.",
+            needs_human=reason is not None,
+            needs_human_reason=reason,
+            pending_actions=("Gestionar el cambio de la cita que pide el paciente.",)
+            if change
+            else (),
             sources=tuple(sources),
         )
         call = self._call(
