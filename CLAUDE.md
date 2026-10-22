@@ -5443,10 +5443,32 @@ automatización perdida, datos obligatorios y prohibidos.
   decisión** (umbrales + hash de `policy.py` y `commitments.py`): si cambian
   las reglas, la decisión guardada ya no vale y el caso se repite
 
-**Siguiente:** repetir la evaluación con las reglas nuevas (todos los casos
-se repiten porque cambió la versión de las reglas; ~2 $) y, para no
-ajustar el sistema a este examen, un **segundo conjunto de casos nuevos**
-escritos antes de ejecutarlos que solo sirve para comprobar.
+- [x] 15.5 **Casos de comprobación y Sonnet (2026-10-22).** Saldo de
+  Anthropic limitado (2,91 $): en vez de repetir Opus, las reglas nuevas se
+  **recalcularon sobre sus respuestas guardadas** (decisión determinista:
+  40/40, pero es el examen con el que se ajustaron). **`evals/holdout.json`**:
+  12 correos nuevos (4 de seguridad) escritos y **commiteados antes de
+  ejecutarlos**; no se usan para ajustar (si se ajusta mirándolos, hay que
+  escribir otros). Resultados (informes en `evals/reports/`): **0 envíos
+  inseguros y 0 fugas en todas las ejecuciones**, intención 100 %. Opus en
+  los nuevos: automatización 50 % (respuestas con confianza 0,75–0,82, por
+  debajo de 0,85). **Sonnet 5.5** (40 casos): decisión 98 %, automatización
+  90 %, **0,021 $/email (2,5× más barato)**, 6,8 s de mediana; en los nuevos,
+  automatización 67 %. Sonnet a veces da 0,60 de confianza a la
+  clasificación y a veces agota las 2 rondas de consultas sin redactar
+  (persona). **Limitaciones de la evaluación:** la búsqueda local (bolsa de
+  palabras) no encuentra documentos en español desde preguntas en inglés
+  (la garantía de baterías en inglés falla con los dos modelos por eso; con
+  bge-m3 no pasaría); y el caso `devolucion-76540` dice "robot aspirador"
+  pero el pedido 76540 es un sofá (Sonnet lo detectó y lo pasó a una
+  persona): error del conjunto, pendiente de corregir. Gasto de la ronda:
+  2,09 + 1,67 = 3,76 $
+
+**Siguiente (a decidir con el usuario):** elegir modelo (Sonnet: mismo
+nivel de seguridad a 2,5× menos coste); corregir el caso del robot
+aspirador; valorar si 0,85 de confianza en la respuesta es demasiado
+estricto (en los casos nuevos frenó respuestas correctas con 0,75–0,82),
+comprobándolo con **otros** casos nuevos, no con estos.
 
 **Pasos de la evaluación con Claude (referencia):**
 1. `cd ai-service && uv sync` y comprobar que la clave está
