@@ -46,7 +46,8 @@ def build_server(tools: BusinessTools) -> MCPServer:
     server = MCPServer(
         "ai-mail-business-tools",
         instructions=(
-            "Datos de CRM, ERP, facturación y tickets de la empresa, siempre del cliente indicado."
+            "Datos de CRM, ERP, facturación, citas y tickets de la empresa, siempre del "
+            "cliente indicado."
         ),
     )
 
@@ -109,6 +110,33 @@ def build_server(tools: BusinessTools) -> MCPServer:
     ) -> dict[str, Any]:
         try:
             return await tools.get_customer_invoices(tenant_id, customer_email, limit)
+        except EXPECTED as error:
+            raise ToolError(str(error)) from error
+
+    @server.tool(
+        description=(
+            "Detalle de una cita del cliente que escribe: fecha y hora, servicio, "
+            "profesional, lugar e indicaciones. Una cita de otro cliente no se encuentra."
+        ),
+        annotations=READ_ONLY,
+    )
+    async def get_appointment(
+        tenant_id: int, customer_email: str, appointment_id: str
+    ) -> dict[str, Any]:
+        try:
+            return await tools.get_appointment(tenant_id, customer_email, appointment_id)
+        except EXPECTED as error:
+            raise ToolError(str(error)) from error
+
+    @server.tool(
+        description="Citas del cliente que escribe, las próximas primero.",
+        annotations=READ_ONLY,
+    )
+    async def get_customer_appointments(
+        tenant_id: int, customer_email: str, limit: int = 5
+    ) -> dict[str, Any]:
+        try:
+            return await tools.get_customer_appointments(tenant_id, customer_email, limit)
         except EXPECTED as error:
             raise ToolError(str(error)) from error
 

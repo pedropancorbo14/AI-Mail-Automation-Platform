@@ -5101,6 +5101,38 @@ aplazados hasta que haya demanda.
   contrato exige que esquema y modelo acepten y rechacen lo mismo. Laravel
   valida los ejemplos nuevos solo (mismo test de `StandardApiTest`;
   comprobado aparte con opis en la sesión, sin entorno de Laravel)
+- [x] 6.2 **Herramientas de citas en el servidor MCP.** Modelo `Appointment`
+  e interfaz `AppointmentSource` (`find_appointment`,
+  `customer_appointments`) en `TenantIntegrations.appointments`.
+  `BusinessTools.get_appointment` (identificador normalizado como los
+  pedidos: "la cita C-2031" → `C-2031`; cita de otro cliente, inexistente o
+  empresa sin agenda → el mismo "No hay ninguna cita con ese identificador
+  asociada a este cliente") y `get_customer_appointments` (las próximas
+  primero, límite 1–10, `note` si no tiene). Lo que ve la IA, sin email ni
+  nombre: id, estado + etiqueta, **`upcoming`** (programada y aún no ha
+  empezado, calculado con un reloj inyectable: la IA no compara fechas),
+  inicio/fin, servicio, profesional, lugar, indicaciones y precio.
+  `StandardApiAppointments` (`/v1/appointments`; errores "el sistema de
+  citas…") y `standard_api_integrations(appointments=)`; `LaravelIntegrations`
+  ya entiende `appointments` en la configuración (solo `standard_api`: el
+  CSV es de pedidos), Laravel lo enviará en la 6.4. **Demostración:**
+  `data/appointments.json` con "clinica-demo" (María, Javier y Ana: citas
+  programadas, realizada, no acudió y cancelada) y
+  `AI_SERVICE_MCP_APPOINTMENTS_FILE`; una empresa de demostración tiene
+  citas solo si las tiene en el fichero. **Especialista nuevo
+  `appointments`** (contrato de eventos, dominio, `READ_TOOLS`, etiqueta
+  "citas" en el prompt y "Citas" en el panel), dueño de las dos
+  herramientas; todavía **no le llega ningún email** (el enrutado con la
+  intención nueva es la 6.3), así que nada cambia para los emails actuales.
+  Catálogo (`contracts/tools/catalog.json`, desactivadas por defecto),
+  `SPECS` del redactor, `READ_ONLY_TOOLS` del cliente MCP y `toolLabels`
+  del panel. Tests: reglas de `BusinessTools` (cita propia, ajena/
+  inexistente/otra empresa con el mismo mensaje, las próximas primero,
+  `upcoming` según estado y hora, nota sin citas, límite, un proveedor que
+  devuelve citas de otro no llega a la IA), API estándar simulada (id
+  codificado, límite, 404, respuestas no válidas como error del "sistema de
+  citas", una clínica que solo implementa citas) y la agenda propia de una
+  empresa vía Laravel. 515 tests de Python
 
 #### Opciones que se plantearon para la tarea 6
 

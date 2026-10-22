@@ -4,20 +4,29 @@ Cada operación recibe la empresa (`tenant_id`) y el cliente (`customer_email`)
 del email que se procesa (los pone ai-service, nunca el modelo), pide los
 datos al proveedor de esa empresa y **solo** devuelve datos de ese cliente:
 aunque el proveedor devuelva un pedido de otra persona, aquí se descarta. Un
-pedido de otro cliente se responde igual que uno que no existe (ni siquiera se
-puede averiguar si un número existe). También aquí: normalización de números,
-límites, validación de tickets y lo que ve la IA (sin dirección completa).
+pedido (o cita) de otro cliente se responde igual que uno que no existe (ni
+siquiera se puede averiguar si un número existe). También aquí: normalización
+de números, límites, validación de tickets y lo que ve la IA (sin dirección
+completa).
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Any
 
 from ai_service.mcp_server.integrations.contracts import (
     IntegrationResolver,
     TenantIntegrations,
 )
-from ai_service.mcp_server.integrations.models import Invoice, NewTicket, Order, Ticket
+from ai_service.mcp_server.integrations.models import (
+    Appointment,
+    Invoice,
+    NewTicket,
+    Order,
+    Ticket,
+)
 
 STATUS_LABELS = {
     "pending_payment": "Pendiente de pago",
@@ -29,10 +38,17 @@ STATUS_LABELS = {
 }
 TICKET_LABELS = {"open": "Abierto", "pending": "Esperando al cliente", "closed": "Cerrado"}
 INVOICE_LABELS = {"paid": "Pagada", "refunded": "Abonada (devolución)", "pending": "Pendiente"}
+APPOINTMENT_LABELS = {
+    "scheduled": "Programada",
+    "cancelled": "Cancelada",
+    "completed": "Realizada",
+    "no_show": "El cliente no acudió",
+}
 PRIORITIES = frozenset({"low", "normal", "high"})
 
 NOT_FOUND = "No hay ningún pedido con ese número asociado a este cliente."
 INVOICE_NOT_FOUND = "No hay ninguna factura con ese número asociada a este cliente."
+APPOINTMENT_NOT_FOUND = "No hay ninguna cita con ese identificador asociada a este cliente."
 NO_HELPDESK = "Esta empresa no tiene un sistema de tickets configurado."
 # Pedidos que se leen para la ficha del cliente (recuento y fechas).
 CUSTOMER_SCAN = 100
@@ -57,8 +73,15 @@ def _limit(value: int) -> int:
 
 
 class BusinessTools:
-    def __init__(self, resolver: IntegrationResolver) -> None:
+    def __init__(
+        self,
+        resolver: IntegrationResolver,
+        *,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
         self._resolver = resolver
+        # Para marcar qué citas están por llegar: la IA no tiene que calcularlo.
+        self._clock = clock
 
     async def _integrations(self, tenant_id: int) -> TenantIntegrations:
         return await self._resolver.for_tenant(tenant_id)
@@ -114,6 +137,34 @@ class BusinessTools:
         result: dict[str, Any] = {"invoices": invoices[: _limit(limit)]}
         if not invoices:
             result["note"] = "Este cliente no tiene facturas. No inventes ninguna."
+        return result
+
+    async def get_appointment(
+        self, tenant_id: int, customer: str, appointment_id: str
+    ) -> dict[str, Any]:
+        wanted = normalize_order_number(appointment_id)
+        source = (await self._integrations(tenant_id)).appointments
+        if wanted is None or source is None:
+            raise ToolInputError(APPOINTMENT_NOT_FOUND)
+        appointment = await source.find_appointment(wanted, customer.strip().lower())
+        if appointment is None or not _same(appointment.customer_email, customer):
+            raise ToolInputError(APPOINTMENT_NOT_FOUND)
+        return present_appointment(appointment, self._clock())
+
+    async def get_customer_appointments(
+        self, tenant_id: int, customer: str, limit: int
+    ) -> dict[str, Any]:
+        source = (await self._integrations(tenant_id)).appointments
+        rows = (
+            await source.customer_appointments(customer.strip().lower(), _limit(limit))
+            if source
+            else []
+        )
+        now = self._clock()
+        mine = [a for a in rows if _same(a.customer_email, customer)][: _limit(limit)]
+        result: dict[str, Any] = {"appointments": [present_appointment(a, now) for a in mine]}
+        if not mine:
+            result["note"] = "Este cliente no tiene citas. No inventes ninguna."
         return result
 
     async def get_customer(self, tenant_id: int, customer: str) -> dict[str, Any]:
@@ -177,12 +228,15 @@ class BusinessTools:
         has_orders = found.orders is not None
         has_invoices = found.invoices is not None
         has_helpdesk = found.tickets is not None
+        has_appointments = found.appointments is not None
         return {
             "get_order": has_orders,
             "get_customer_orders": has_orders,
             "get_customer": has_orders,
             "get_invoice": has_invoices,
             "get_customer_invoices": has_invoices,
+            "get_appointment": has_appointments,
+            "get_customer_appointments": has_appointments,
             "get_customer_tickets": has_helpdesk,
             "create_support_ticket": has_helpdesk,
         }
@@ -219,6 +273,32 @@ def present_invoice(invoice: Invoice) -> dict[str, Any]:
         "currency": invoice.currency,
         "status": invoice.status,
         "status_label": INVOICE_LABELS.get(invoice.status, invoice.status),
+    }
+
+
+def present_appointment(appointment: Appointment, now: datetime) -> dict[str, Any]:
+    """Lo que necesita la IA (sin el email). `upcoming` = programada y aún no
+    ha empezado: así no tiene que comparar fechas por su cuenta."""
+    try:
+        upcoming = (
+            appointment.status == "scheduled"
+            and datetime.fromisoformat(appointment.starts_at) > now
+        )
+    except ValueError:
+        upcoming = False
+    return {
+        "appointment_id": appointment.id,
+        "status": appointment.status,
+        "status_label": APPOINTMENT_LABELS.get(appointment.status, appointment.status),
+        "upcoming": upcoming,
+        "starts_at": appointment.starts_at,
+        "ends_at": appointment.ends_at,
+        "service": appointment.service,
+        "professional": appointment.professional,
+        "location": appointment.location,
+        "instructions": appointment.instructions,
+        "price": appointment.price,
+        "currency": appointment.currency,
     }
 
 

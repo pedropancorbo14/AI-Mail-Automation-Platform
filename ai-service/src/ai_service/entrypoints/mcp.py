@@ -15,7 +15,12 @@ from ai_service.mcp_server.tools import BusinessTools
 def build_resolver(settings: McpSettings) -> IntegrationResolver:
     """Laravel (lo que importó o conectó cada empresa) y, si una empresa no
     tiene nada, los datos de demostración."""
-    demo = DemoIntegrations.load(settings.orders_file, settings.tickets_file, settings.demo_tenants)
+    demo = DemoIntegrations.load(
+        settings.orders_file,
+        settings.tickets_file,
+        settings.demo_tenants,
+        appointments_file=settings.appointments_file,
+    )
     if not settings.laravel_url:
         return demo
     token = settings.laravel_token.get_secret_value() if settings.laravel_token else ""

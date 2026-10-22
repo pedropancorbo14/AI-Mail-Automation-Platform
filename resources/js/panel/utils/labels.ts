@@ -64,6 +64,14 @@ export const toolLabels: Record<string, { label: string; description: string }> 
         label: 'Datos del cliente',
         description: 'Nombre, número de pedidos y fechas del cliente que escribe.',
     },
+    get_appointment: {
+        label: 'Consultar cita',
+        description: 'Fecha, hora, servicio, profesional y lugar de una cita. Solo de las citas del cliente que escribe.',
+    },
+    get_customer_appointments: {
+        label: 'Citas del cliente',
+        description: 'Citas del cliente que escribe, las próximas primero.',
+    },
     get_customer_tickets: {
         label: 'Tickets del cliente',
         description: 'Tickets de soporte del cliente que escribe, con su estado.',
@@ -93,6 +101,7 @@ export const specialistLabels: Record<string, string> = {
     orders: 'Pedidos',
     billing: 'Facturación',
     support: 'Soporte',
+    appointments: 'Citas',
     general: 'General',
 };
 

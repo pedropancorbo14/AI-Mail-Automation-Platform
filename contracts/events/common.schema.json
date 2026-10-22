@@ -116,9 +116,9 @@
       "enum": ["live", "shadow"]
     },
     "specialist": {
-      "description": "Especialista de ai-service que intervino (Fase 5): orders = pedidos, devoluciones y cancelaciones; billing = facturas y cobros; support = soporte técnico y quejas; general = el resto.",
+      "description": "Especialista de ai-service que intervino (Fase 5): orders = pedidos, devoluciones y cancelaciones; billing = facturas y cobros; support = soporte técnico y quejas; appointments = citas (Fase 14); general = el resto.",
       "type": "string",
-      "enum": ["orders", "billing", "support", "general"]
+      "enum": ["orders", "billing", "support", "appointments", "general"]
     },
     "tool_name": {
       "description": "Nombre de una herramienta de la IA (ver contracts/tools/catalog.json).",

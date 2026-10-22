@@ -36,6 +36,8 @@ READ_ONLY_TOOLS = frozenset(
         "get_invoice",
         "get_customer_invoices",
         "get_customer_tickets",
+        "get_appointment",
+        "get_customer_appointments",
     }
 )
 WRITE_TOOLS = frozenset({"create_support_ticket"})

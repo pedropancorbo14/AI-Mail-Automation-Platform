@@ -148,6 +148,7 @@ SPECIALIST_LABELS: dict[Specialist, str] = {
     Specialist.ORDERS: "pedidos",
     Specialist.BILLING: "facturación",
     Specialist.SUPPORT: "soporte",
+    Specialist.APPOINTMENTS: "citas",
     Specialist.GENERAL: "general",
 }
 

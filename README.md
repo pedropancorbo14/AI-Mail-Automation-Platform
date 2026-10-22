@@ -661,6 +661,7 @@ comparten Laravel y ai-service:
 | `get_order` / `get_customer_orders` | Un pedido del cliente o sus últimos pedidos |
 | `get_invoice` / `get_customer_invoices` | Una factura del cliente o sus facturas |
 | `get_customer_tickets` | Tickets de soporte del cliente |
+| `get_appointment` / `get_customer_appointments` | Una cita del cliente o sus citas, las próximas primero (negocios con agenda: clínicas, talleres…) |
 | `create_support_ticket` | **Escribe**: solo tras aprobarlo una persona en el panel |
 
 - **Por empresa:** cada empresa activa las que le sirven (una clínica no

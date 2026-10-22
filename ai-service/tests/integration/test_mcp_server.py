@@ -32,6 +32,8 @@ async def test_lists_the_business_tools_with_read_only_annotations() -> None:
         "get_invoice",
         "get_customer_invoices",
         "get_customer_tickets",
+        "get_appointment",
+        "get_customer_appointments",
         "create_support_ticket",
     }
     assert tools["get_order"].annotations is not None

@@ -67,6 +67,18 @@ SPECS: dict[str, ToolSpec] = {
         "Tickets de soporte del cliente que escribe, con su estado y última novedad.",
         _schema(_LIMIT),
     ),
+    "get_appointment": ToolSpec(
+        "get_appointment",
+        "Detalle de una cita del cliente que escribe: fecha y hora, servicio, profesional, "
+        "lugar e indicaciones. Una cita de otro cliente no se encuentra.",
+        _schema({"appointment_id": {"type": "string", "description": "Identificador de la cita."}}),
+    ),
+    "get_customer_appointments": ToolSpec(
+        "get_customer_appointments",
+        "Citas del cliente que escribe, las próximas primero (upcoming = aún no ha "
+        "llegado). Úsalo para saber a qué cita se refiere si no da el identificador.",
+        _schema(_LIMIT),
+    ),
     "get_customer": ToolSpec(
         "get_customer",
         "Datos del cliente que escribe: nombre, número de pedidos y fechas.",

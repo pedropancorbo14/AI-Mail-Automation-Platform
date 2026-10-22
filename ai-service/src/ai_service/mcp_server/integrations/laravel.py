@@ -27,6 +27,7 @@ from ai_service.mcp_server.integrations.contracts import (
 )
 from ai_service.mcp_server.integrations.standard_api import (
     HostGuard,
+    StandardApiAppointments,
     StandardApiClient,
     StandardApiInvoices,
     StandardApiOrders,
@@ -57,6 +58,7 @@ class _Config(BaseModel):
     orders: _Source | None = None
     invoices: _Source | None = None
     tickets: _Source | None = None
+    appointments: _Source | None = None
 
 
 class LaravelIntegrations:
@@ -90,6 +92,7 @@ class LaravelIntegrations:
         integrations = TenantIntegrations(
             orders=self._orders(tenant_id, config.orders),
             invoices=self._invoices(tenant_id, config.invoices),
+            appointments=self._appointments(tenant_id, config.appointments),
         )
         if integrations == TenantIntegrations() and self._fallback is not None:
             return await self._fallback.for_tenant(tenant_id)
@@ -172,3 +175,12 @@ class LaravelIntegrations:
             return None
         client = self._client(tenant_id, source)
         return StandardApiInvoices(client) if client else None
+
+    def _appointments(
+        self, tenant_id: int, source: _Source | None
+    ) -> StandardApiAppointments | None:
+        # Las citas solo vienen del sistema propio de la empresa (su agenda).
+        if source is None or source.type != STANDARD_API:
+            return None
+        client = self._client(tenant_id, source)
+        return StandardApiAppointments(client) if client else None

@@ -1,6 +1,7 @@
-"""Proveedor de demostración: pedidos y tickets de ficheros JSON.
+"""Proveedor de demostración: pedidos, citas y tickets de ficheros JSON.
 
 Los pedidos son los de "Empresa Demo", coherentes con los emails de prueba;
+las citas, las de "Clínica Demo" (un negocio sin pedidos);
 las facturas se derivan de ellos (una `FAC-<pedido>` por pedido facturado) y
 los tickets creados se guardan en memoria (se pierden al reiniciar).
 """
@@ -13,6 +14,7 @@ from typing import Any
 
 from ai_service.mcp_server.integrations.contracts import NO_INTEGRATIONS, TenantIntegrations
 from ai_service.mcp_server.integrations.models import (
+    Appointment,
     CreatedTicket,
     Invoice,
     NewTicket,
@@ -52,6 +54,23 @@ def _order(row: dict[str, Any]) -> Order:
         shipment=Shipment(**shipment) if shipment else None,
         shipping_city=row.get("shipping_city"),
         shipping_country=row.get("shipping_country"),
+    )
+
+
+def _appointment(row: dict[str, Any]) -> Appointment:
+    return Appointment(
+        id=str(row["id"]),
+        customer_email=str(row.get("customer_email", "")),
+        status=str(row["status"]),
+        starts_at=str(row["starts_at"]),
+        ends_at=row.get("ends_at"),
+        customer_name=row.get("customer_name"),
+        service=row.get("service"),
+        professional=row.get("professional"),
+        location=row.get("location"),
+        instructions=row.get("instructions"),
+        price=row.get("price"),
+        currency=row.get("currency"),
     )
 
 
@@ -110,6 +129,25 @@ class DemoInvoices:
         return self._invoices(customer_email)[:limit]
 
 
+@dataclass(frozen=True, slots=True)
+class DemoAppointments:
+    appointments: tuple[Appointment, ...]
+
+    async def find_appointment(
+        self, appointment_id: str, customer_email: str
+    ) -> Appointment | None:
+        return next((a for a in self.appointments if a.id.upper() == appointment_id), None)
+
+    async def customer_appointments(self, customer_email: str, limit: int) -> list[Appointment]:
+        mine = [a for a in self.appointments if _same(a.customer_email, customer_email)]
+        return sorted(mine, key=lambda a: _instant(a.starts_at), reverse=True)[:limit]
+
+
+def _instant(value: str) -> datetime:
+    # Las fechas llevan zona horaria: se ordenan por el instante, no por el texto.
+    return datetime.fromisoformat(value)
+
+
 @dataclass(slots=True)
 class DemoTickets:
     tickets: list[Ticket]
@@ -144,25 +182,30 @@ class DemoTickets:
 class DemoIntegrations:
     """`IntegrationResolver` de demostración. `tenants` = empresa → clave en
     los ficheros. Una empresa conocida tiene helpdesk; pedidos y facturas,
-    solo si tiene pedidos en el fichero."""
+    solo si tiene pedidos en el fichero; citas, solo si tiene citas."""
 
     tenants: dict[int, str]
     orders: dict[str, tuple[Order, ...]]
     tickets: dict[str, list[Ticket]]
+    appointments: dict[str, tuple[Appointment, ...]] = field(default_factory=dict)
     created: dict[str, Ticket] = field(default_factory=dict)
 
     @classmethod
     def load(
-        cls, orders_file: Path, tickets_file: Path, tenants: dict[int, str]
+        cls,
+        orders_file: Path,
+        tickets_file: Path,
+        tenants: dict[int, str],
+        appointments_file: Path | None = None,
     ) -> "DemoIntegrations":
-        orders = json.loads(orders_file.read_text(encoding="utf-8")) if orders_file.exists() else {}
-        tickets = (
-            json.loads(tickets_file.read_text(encoding="utf-8")) if tickets_file.exists() else {}
-        )
         return cls(
             tenants=dict(tenants),
-            orders={slug: tuple(_order(r) for r in rows) for slug, rows in orders.items()},
-            tickets={slug: [_ticket(r) for r in rows] for slug, rows in tickets.items()},
+            orders={slug: tuple(_order(r) for r in rows) for slug, rows in _read(orders_file)},
+            tickets={slug: [_ticket(r) for r in rows] for slug, rows in _read(tickets_file)},
+            appointments={
+                slug: tuple(_appointment(r) for r in rows)
+                for slug, rows in _read(appointments_file)
+            },
         )
 
     async def for_tenant(self, tenant_id: int) -> TenantIntegrations:
@@ -170,7 +213,20 @@ class DemoIntegrations:
         if slug is None:
             return NO_INTEGRATIONS
         tickets = DemoTickets(self.tickets.setdefault(slug, []), self.created, tenant_id)
-        if not self.orders.get(slug):
-            return TenantIntegrations(tickets=tickets)
-        orders = DemoOrders(self.orders[slug])
-        return TenantIntegrations(orders=orders, invoices=DemoInvoices(orders), tickets=tickets)
+        orders = DemoOrders(self.orders[slug]) if self.orders.get(slug) else None
+        return TenantIntegrations(
+            orders=orders,
+            invoices=DemoInvoices(orders) if orders else None,
+            tickets=tickets,
+            appointments=(
+                DemoAppointments(self.appointments[slug]) if self.appointments.get(slug) else None
+            ),
+        )
+
+
+def _read(path: Path | None) -> list[tuple[str, list[dict[str, Any]]]]:
+    """Fichero `{empresa: [filas]}`; ausente = sin datos."""
+    if path is None or not path.exists():
+        return []
+    data: dict[str, list[dict[str, Any]]] = json.loads(path.read_text(encoding="utf-8"))
+    return list(data.items())

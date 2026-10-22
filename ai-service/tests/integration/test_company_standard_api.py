@@ -22,6 +22,7 @@ ERP_KEY = "clave-secreta-del-erp"
 EXAMPLES = CONTRACTS.parent / "integrations" / "examples" / "valid"
 ORDER: dict[str, Any] = load(EXAMPLES / "order--full.json")
 INVOICE: dict[str, Any] = load(EXAMPLES / "invoice--paid.json")
+APPOINTMENT: dict[str, Any] = load(EXAMPLES / "appointment--full.json")
 CLIENTE = "cliente@cliente.test"
 
 
@@ -36,6 +37,8 @@ def laravel_and_erp(config: dict[str, Any], seen: list[httpx.Request]) -> httpx.
             return httpx.Response(200, json=ORDER)
         if request.url.path == "/aimail/v1/invoices/F2026-0042":
             return httpx.Response(200, json=INVOICE)
+        if request.url.path == "/aimail/v1/appointments/C-2031":
+            return httpx.Response(200, json=APPOINTMENT)
         return httpx.Response(404)
 
     return httpx.MockTransport(handler)
@@ -83,6 +86,30 @@ async def test_only_what_the_company_system_implements_is_available() -> None:
 
     assert availability["get_order"] is True
     assert availability["get_invoice"] is False
+
+
+async def test_a_clinic_reads_its_appointments_from_its_own_agenda() -> None:
+    seen: list[httpx.Request] = []
+    tools = BusinessTools(resolver({"appointments": OWN}, seen, HostGuard(allow_private=True)))
+
+    appointment = await tools.get_appointment(8, "maria@cliente.test", "C-2031")
+    availability = await tools.availability(8)
+
+    assert appointment["service"] == "Limpieza dental"
+    assert availability["get_appointment"] is True
+    assert availability["get_order"] is False
+    erp = [r for r in seen if r.url.host == "erp.empresa.test"]
+    assert {r.headers["Authorization"] for r in erp} == {f"Bearer {ERP_KEY}"}
+
+
+async def test_appointments_only_come_from_the_company_system() -> None:
+    # El CSV es de pedidos: unas "citas" por CSV de una versión futura de
+    # Laravel se ignoran (y, sin nada más, se usan los datos de demostración).
+    tools = BusinessTools(
+        resolver({"appointments": {"type": "csv"}}, [], HostGuard(allow_private=True))
+    )
+
+    assert (await tools.availability(8))["get_appointment"] is False
 
 
 @pytest.mark.parametrize(

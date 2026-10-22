@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from ai_service.mcp_server.integrations.models import (
+    Appointment,
     CreatedTicket,
     Invoice,
     NewTicket,
@@ -47,6 +48,17 @@ class InvoiceSource(Protocol):
         ...
 
 
+class AppointmentSource(Protocol):
+    async def find_appointment(
+        self, appointment_id: str, customer_email: str
+    ) -> Appointment | None: ...
+
+    async def customer_appointments(self, customer_email: str, limit: int) -> list[Appointment]:
+        """Citas del cliente por `starts_at`, de la más lejana a la más antigua
+        (las próximas, primero)."""
+        ...
+
+
 class TicketSource(Protocol):
     async def customer_tickets(self, customer_email: str, limit: int) -> list[Ticket]:
         """Tickets del cliente, del más reciente al más antiguo."""
@@ -66,6 +78,7 @@ class TenantIntegrations:
     orders: OrderSource | None = None
     invoices: InvoiceSource | None = None
     tickets: TicketSource | None = None
+    appointments: AppointmentSource | None = None
 
 
 NO_INTEGRATIONS = TenantIntegrations()

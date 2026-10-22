@@ -30,7 +30,13 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ai_service.mcp_server.integrations.contracts import IntegrationError, TenantIntegrations
-from ai_service.mcp_server.integrations.models import Invoice, Order, OrderItem, Shipment
+from ai_service.mcp_server.integrations.models import (
+    Appointment,
+    Invoice,
+    Order,
+    OrderItem,
+    Shipment,
+)
 
 log = logging.getLogger(__name__)
 
@@ -159,6 +165,23 @@ def to_invoice(p: InvoicePayload) -> Invoice:
     )
 
 
+def to_appointment(p: AppointmentPayload) -> Appointment:
+    return Appointment(
+        id=p.id,
+        customer_email=p.customer_email,
+        status=p.status,
+        starts_at=p.starts_at.isoformat(),
+        ends_at=_iso(p.ends_at),
+        customer_name=p.customer_name,
+        service=p.service,
+        professional=p.professional,
+        location=p.location,
+        instructions=p.instructions,
+        price=p.price,
+        currency=p.currency,
+    )
+
+
 _LINK_LOCAL = (ipaddress.ip_network("169.254.0.0/16"), ipaddress.ip_network("fe80::/10"))
 _ZERO = ipaddress.ip_network("0.0.0.0/8")
 
@@ -196,7 +219,7 @@ class HostGuard:
 
 
 class StandardApiClient:
-    """GET a la API de una empresa. `system` = "pedidos" / "facturación" (mensajes)."""
+    """GET a la API de una empresa. `system` = "pedidos" / "citas"… (mensajes)."""
 
     def __init__(
         self,
@@ -220,7 +243,7 @@ class StandardApiClient:
         self._guard = guard
 
     async def get_one(self, path: str, params: dict[str, str | int], system: str) -> bytes | None:
-        """Un pedido o factura concretos: None si es un 404 (no existe o es de otro)."""
+        """Un pedido, factura o cita concretos: None si es un 404 (no existe o es de otro)."""
         return await self._get(path, params, system, single=True)
 
     async def get_list(self, path: str, params: dict[str, str | int], system: str) -> bytes:
@@ -351,12 +374,47 @@ class StandardApiInvoices:
         return [to_invoice(i) for i in _parse(InvoiceListPayload, body, self.SYSTEM).data]
 
 
+class StandardApiAppointments:
+    """`AppointmentSource` sobre la API estándar."""
+
+    SYSTEM = "citas"
+
+    def __init__(self, client: StandardApiClient) -> None:
+        self._client = client
+
+    async def find_appointment(
+        self, appointment_id: str, customer_email: str
+    ) -> Appointment | None:
+        body = await self._client.get_one(
+            f"/v1/appointments/{quote(appointment_id, safe='')}",
+            {"customer_email": customer_email},
+            self.SYSTEM,
+        )
+        return (
+            None if body is None else to_appointment(_parse(AppointmentPayload, body, self.SYSTEM))
+        )
+
+    async def customer_appointments(self, customer_email: str, limit: int) -> list[Appointment]:
+        body = await self._client.get_list(
+            "/v1/appointments",
+            {"customer_email": customer_email, "limit": _limit(limit)},
+            self.SYSTEM,
+        )
+        return [to_appointment(a) for a in _parse(AppointmentListPayload, body, self.SYSTEM).data]
+
+
 def standard_api_integrations(
-    client: StandardApiClient, *, orders: bool = True, invoices: bool = True
+    client: StandardApiClient,
+    *,
+    orders: bool = True,
+    invoices: bool = True,
+    appointments: bool = False,
 ) -> TenantIntegrations:
-    """Lo que ofrece una empresa con la API estándar (puede implementar solo
-    los pedidos). Sin helpdesk: los tickets van por otro proveedor."""
+    """Lo que ofrece una empresa con la API estándar: solo las partes que
+    implementa (una tienda, pedidos y facturas; una clínica, citas). Sin
+    helpdesk: los tickets van por otro proveedor."""
     return TenantIntegrations(
         orders=StandardApiOrders(client) if orders else None,
         invoices=StandardApiInvoices(client) if invoices else None,
+        appointments=StandardApiAppointments(client) if appointments else None,
     )

@@ -17,6 +17,7 @@ class Specialist(StrEnum):
     ORDERS = "orders"  # pedidos, devoluciones y cancelaciones (ERP)
     BILLING = "billing"  # facturas y cobros
     SUPPORT = "support"  # soporte técnico y quejas (tickets)
+    APPOINTMENTS = "appointments"  # citas (clínicas, talleres, academias…)
     GENERAL = "general"  # el resto: preguntas de producto, ventas, cuenta...
 
 

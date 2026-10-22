@@ -36,7 +36,7 @@ ThreadId = Annotated[str, Field(pattern=r"^[A-Za-z0-9._:-]{8,128}$")]
 ToolName = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
 # live: el resultado se aplica al email; shadow: solo se compara (sin efectos).
 Mode = Literal["live", "shadow"]
-Specialist = Literal["orders", "billing", "support", "general"]
+Specialist = Literal["orders", "billing", "support", "appointments", "general"]
 ToolOrigin = Literal["plan", "model", "approval"]
 
 

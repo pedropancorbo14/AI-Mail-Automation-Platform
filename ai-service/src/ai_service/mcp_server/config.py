@@ -18,10 +18,13 @@ class McpSettings(BaseSettings):
     host: str = "0.0.0.0"  # noqa: S104 - dentro del contenedor; el compose no lo publica
     port: int = Field(default=8100, ge=1, le=65535)
     # Datos de demostración (pedidos y facturas de "Empresa Demo", coherentes
-    # con los emails de prueba). En la Fase 14, integraciones reales.
+    # con los emails de prueba; citas de "Clínica Demo"). Las empresas con
+    # integraciones reales los sustituyen (Fase 14).
     orders_file: Path = _DATA / "orders.json"
     tickets_file: Path = _DATA / "tickets.json"
-    # Empresa (tenant_id de los eventos) → clave de los ficheros de demostración.
+    appointments_file: Path = _DATA / "appointments.json"
+    # Empresa (tenant_id de los eventos) → clave de los ficheros de demostración
+    # (p. ej. {"1": "empresa-demo", "2": "clinica-demo"}).
     demo_tenants: dict[int, str] = Field(default_factory=lambda: {1: "empresa-demo"})
     # Laravel: qué tiene conectado cada empresa y los pedidos importados por CSV
     # (Fase 14). Sin URL, solo los datos de demostración. Con URL, el token es

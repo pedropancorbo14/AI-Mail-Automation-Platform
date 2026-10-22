@@ -57,6 +57,24 @@
       "requires_customer": true
     },
     {
+      "name": "get_appointment",
+      "label": "Consultar una cita",
+      "description": "Fecha, hora, servicio, profesional y lugar de una cita del cliente que escribe. Una cita de otro cliente se trata como inexistente.",
+      "kind": "read",
+      "specialist": "appointments",
+      "default_enabled": false,
+      "requires_customer": true
+    },
+    {
+      "name": "get_customer_appointments",
+      "label": "Consultar las citas del cliente",
+      "description": "Citas del cliente que escribe, las próximas primero.",
+      "kind": "read",
+      "specialist": "appointments",
+      "default_enabled": false,
+      "requires_customer": true
+    },
+    {
       "name": "get_customer_tickets",
       "label": "Consultar los tickets de soporte",
       "description": "Tickets de soporte abiertos y cerrados del cliente que escribe.",

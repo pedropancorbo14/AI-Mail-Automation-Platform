@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import pytest
 
@@ -8,6 +9,7 @@ from ai_service.mcp_server.integrations.contracts import (
     TenantIntegrations,
 )
 from ai_service.mcp_server.integrations.models import (
+    Appointment,
     CreatedTicket,
     Invoice,
     NewTicket,
@@ -15,6 +17,7 @@ from ai_service.mcp_server.integrations.models import (
     Ticket,
 )
 from ai_service.mcp_server.tools import (
+    APPOINTMENT_NOT_FOUND,
     INVOICE_NOT_FOUND,
     NO_HELPDESK,
     NOT_FOUND,
@@ -22,7 +25,7 @@ from ai_service.mcp_server.tools import (
     ToolInputError,
     normalize_order_number,
 )
-from tests.support.mcp import demo_tools
+from tests.support.mcp import CLINIC, demo_integrations, demo_tools
 
 CLIENTE = "cliente@cliente.test"
 
@@ -173,12 +176,17 @@ async def test_customer_invoices_are_only_theirs_newest_first() -> None:
 async def test_availability_follows_what_each_tenant_has_connected() -> None:
     tools = demo_tools()
 
-    assert set((await tools.availability(1)).values()) == {True}
+    shop = await tools.availability(1)
+    assert {k for k, v in shop.items() if not v} == {"get_appointment", "get_customer_appointments"}
     only_helpdesk = await tools.availability(2)
     assert only_helpdesk["get_customer_tickets"] is True
     assert only_helpdesk["get_order"] is False
     assert only_helpdesk["get_invoice"] is False
+    assert only_helpdesk["get_appointment"] is False
     assert set((await tools.availability(3)).values()) == {False}
+    clinic = await tools.availability(CLINIC)
+    assert clinic["get_appointment"] is clinic["get_customer_appointments"] is True
+    assert clinic["get_order"] is clinic["get_invoice"] is False
 
 
 # Un proveedor con un fallo de filtrado (devuelve datos de otra persona) no
@@ -202,6 +210,21 @@ class LeakyInvoices:
         return [Invoice(number="FAC-1", customer_email=AJENO, status="paid")]
 
 
+class LeakyAppointments:
+    async def find_appointment(
+        self, appointment_id: str, customer_email: str
+    ) -> Appointment | None:
+        return Appointment(
+            id=appointment_id, customer_email=AJENO, status="scheduled", starts_at=_FUTURE
+        )
+
+    async def customer_appointments(self, customer_email: str, limit: int) -> list[Appointment]:
+        return [Appointment(id="C-1", customer_email=AJENO, status="scheduled", starts_at=_FUTURE)]
+
+
+_FUTURE = "2026-11-05T17:00:00+01:00"
+
+
 class LeakyTickets:
     async def customer_tickets(self, customer_email: str, limit: int) -> list[Ticket]:
         return [Ticket(id="TCK-1", customer_email=AJENO, status="open")]
@@ -219,7 +242,11 @@ class Fixed:
 
 
 async def test_data_of_another_customer_from_a_buggy_provider_never_reaches_the_ai() -> None:
-    tools = BusinessTools(Fixed(TenantIntegrations(LeakyOrders(), LeakyInvoices(), LeakyTickets())))
+    tools = BusinessTools(
+        Fixed(
+            TenantIntegrations(LeakyOrders(), LeakyInvoices(), LeakyTickets(), LeakyAppointments())
+        )
+    )
 
     with pytest.raises(ToolInputError, match=NOT_FOUND):
         await tools.get_order(1, CLIENTE, "45821")
@@ -229,6 +256,9 @@ async def test_data_of_another_customer_from_a_buggy_provider_never_reaches_the_
     assert (await tools.get_customer_invoices(1, CLIENTE, 5))["invoices"] == []
     assert (await tools.get_customer_tickets(1, CLIENTE, 5))["tickets"] == []
     assert (await tools.get_customer(1, CLIENTE))["found"] is False
+    with pytest.raises(ToolInputError, match=APPOINTMENT_NOT_FOUND):
+        await tools.get_appointment(1, CLIENTE, "C-1")
+    assert (await tools.get_customer_appointments(1, CLIENTE, 5))["appointments"] == []
 
 
 class DownOrders:
@@ -253,3 +283,97 @@ async def test_a_tenant_without_integrations_has_nothing() -> None:
     assert (await tools.get_customer_orders(1, CLIENTE, 5))["orders"] == []
     with pytest.raises(ToolInputError, match=NO_HELPDESK):
         await tools.create_ticket(1, CLIENTE, "Asunto", "D", "normal", "k")
+
+
+# Citas (Fase 14): un negocio sin pedidos, como una clínica.
+MARIA = "maria@cliente.test"
+NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
+
+
+def clinic_tools() -> BusinessTools:
+    return BusinessTools(demo_integrations(), clock=lambda: NOW)
+
+
+@pytest.mark.parametrize("raw", ["C-2031", "c-2031", "la cita C-2031"])
+async def test_returns_the_appointment_of_the_customer(raw: str) -> None:
+    appointment = await clinic_tools().get_appointment(CLINIC, " Maria@Cliente.TEST ", raw)
+
+    assert appointment == {
+        "appointment_id": "C-2031",
+        "status": "scheduled",
+        "status_label": "Programada",
+        "upcoming": True,
+        "starts_at": "2026-10-29T10:30:00+01:00",
+        "ends_at": "2026-10-29T11:00:00+01:00",
+        "service": "Limpieza dental",
+        "professional": "Dra. López",
+        "location": "Clínica Centro, consulta 2",
+        "instructions": "Si llevas aparato, trae la funda.",
+        "price": 45.0,
+        "currency": "EUR",
+    }  # sin el email ni el nombre: solo lo necesario para responder
+
+
+@pytest.mark.parametrize(
+    ("tenant", "customer", "appointment_id"),
+    [
+        (CLINIC, "javier@cliente.test", "C-2031"),  # cita de María
+        (CLINIC, MARIA, "C-9999"),  # no existe
+        (CLINIC, MARIA, "sin identificador"),
+        (1, MARIA, "C-2031"),  # otra empresa (sin citas)
+        (3, MARIA, "C-2031"),  # empresa desconocida
+    ],
+)
+async def test_other_customers_or_tenants_get_the_same_appointment_not_found(
+    tenant: int, customer: str, appointment_id: str
+) -> None:
+    with pytest.raises(ToolInputError, match=APPOINTMENT_NOT_FOUND):
+        await clinic_tools().get_appointment(tenant, customer, appointment_id)
+
+
+async def test_customer_appointments_are_only_theirs_upcoming_first() -> None:
+    result = await clinic_tools().get_customer_appointments(CLINIC, MARIA, 5)
+
+    assert [(a["appointment_id"], a["upcoming"]) for a in result["appointments"]] == [
+        ("C-2031", True),
+        ("C-1877", False),
+    ]
+    assert "note" not in result
+
+
+@pytest.mark.parametrize(
+    ("customer", "status", "label"),
+    [
+        ("javier@cliente.test", "no_show", "El cliente no acudió"),
+        ("ana@cliente.test", "cancelled", "Cancelada"),
+    ],
+)
+async def test_only_scheduled_future_appointments_are_upcoming(
+    customer: str, status: str, label: str
+) -> None:
+    result = await clinic_tools().get_customer_appointments(CLINIC, customer, 5)
+    past_or_cancelled = [a for a in result["appointments"] if a["status"] == status]
+
+    assert past_or_cancelled[0]["status_label"] == label
+    assert past_or_cancelled[0]["upcoming"] is False
+
+
+async def test_a_scheduled_appointment_already_started_is_not_upcoming() -> None:
+    later = BusinessTools(demo_integrations(), clock=lambda: datetime(2026, 12, 1, tzinfo=UTC))
+
+    result = await later.get_customer_appointments(CLINIC, MARIA, 5)
+
+    assert [a["upcoming"] for a in result["appointments"]] == [False, False]
+
+
+async def test_customer_without_appointments_gets_a_note() -> None:
+    result = await clinic_tools().get_customer_appointments(CLINIC, "nadie@cliente.test", 5)
+
+    assert result["appointments"] == []
+    assert "No inventes" in result["note"]
+
+
+async def test_appointment_limit_is_bounded() -> None:
+    result = await clinic_tools().get_customer_appointments(CLINIC, MARIA, 1)
+
+    assert len(result["appointments"]) == 1

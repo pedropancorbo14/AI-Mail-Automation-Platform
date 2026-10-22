@@ -26,6 +26,7 @@ READ_TOOLS: dict[Specialist, frozenset[str]] = {
     Specialist.ORDERS: frozenset({"get_order", "get_customer_orders"}),
     Specialist.BILLING: frozenset({"get_invoice", "get_customer_invoices"}),
     Specialist.SUPPORT: frozenset({"get_customer_tickets"}),
+    Specialist.APPOINTMENTS: frozenset({"get_appointment", "get_customer_appointments"}),
     Specialist.GENERAL: frozenset({"get_customer"}),
 }
 

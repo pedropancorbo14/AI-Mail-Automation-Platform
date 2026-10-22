@@ -56,6 +56,24 @@ class Invoice:
 
 
 @dataclass(frozen=True, slots=True)
+class Appointment:
+    id: str
+    customer_email: str
+    status: str  # scheduled, cancelled, completed, no_show
+    starts_at: str  # ISO 8601 con zona horaria
+    ends_at: str | None = None
+    customer_name: str | None = None
+    service: str | None = None
+    professional: str | None = None
+    # Lugar de la empresa (centro, sala, "Videollamada"), nunca la dirección del cliente.
+    location: str | None = None
+    # Solo lo que el cliente puede leer: nunca notas internas ni clínicas.
+    instructions: str | None = None
+    price: float | None = None
+    currency: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Ticket:
     id: str
     customer_email: str

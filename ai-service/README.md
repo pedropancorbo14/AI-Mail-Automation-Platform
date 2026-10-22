@@ -455,6 +455,8 @@ constante; `/health` sin token). Sin token no arranca.
 | `get_invoice` | Facturación | lectura | Una factura del cliente (número, pedido, fecha, importe, estado de pago). Demostración: una por pedido facturado, `FAC-<pedido>`. Una de otro cliente = no existe (Fase 5) |
 | `get_customer_invoices` | Facturación | lectura | Facturas del cliente, de la más reciente a la más antigua (Fase 5) |
 | `get_customer_tickets` | Tickets | lectura | Tickets de soporte del cliente con su estado |
+| `get_appointment` | Agenda | lectura | Una cita del cliente: fecha y hora, servicio, profesional, lugar, indicaciones y `upcoming` (programada y aún no ha empezado). Demostración: "Clínica Demo" (`appointments.json`). Una de otro cliente = no existe (Fase 14) |
+| `get_customer_appointments` | Agenda | lectura | Citas del cliente, las próximas primero (máx. 10) (Fase 14) |
 | `create_support_ticket` | Tickets | **escritura** (`destructive_hint`) | No se ofrece al agente hasta la Fase 4 (aprobación humana con `interrupt`) |
 
 **Aislamiento:** cada herramienta recibe `tenant_id` y `customer_email`.
