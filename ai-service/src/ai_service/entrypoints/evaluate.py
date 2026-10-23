@@ -31,7 +31,7 @@ import socket
 import sys
 import time
 from collections.abc import AsyncIterator, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -114,6 +114,16 @@ class Options:
     report_only: bool = False
     compare: tuple[str, str] | None = None
     smoke: bool = False
+    # Un modelo por paso (None = el general).
+    classify_model: str | None = None
+    draft_model: str | None = None
+
+    @property
+    def models(self) -> str:
+        """Lo que se evalúa: el modelo, o "clasificar + redactar" si difieren."""
+        classify = self.classify_model or self.model
+        draft = self.draft_model or self.model
+        return self.model if classify == draft else f"{classify} + {draft}"
 
 
 def email_for(case: Case, index: int) -> Email:
@@ -238,7 +248,7 @@ async def evaluate(
                 key = fingerprint(
                     case,
                     provider=options.provider,
-                    model=options.model,
+                    model=options.models,
                     prompts=refs,
                     policy=policy_version(settings),
                 )
@@ -275,7 +285,7 @@ async def _run_case(
         "case_id": case.id,
         "fingerprint": key,
         "provider": options.provider,
-        "model": options.model,
+        "model": options.models,
     }
     try:
         outcome = await agent.run(email_for(case, index))
@@ -293,13 +303,21 @@ def _progress(index: int, total: int, run: CaseRun, cost: str) -> None:
     print(f"[{index:>2}/{total}] {run.case_id:<32} {run.category or '-':<18} {what:<14} {cost}")
 
 
-def settings_for(provider: str, model: str) -> Settings:
+def settings_for(
+    provider: str,
+    model: str,
+    *,
+    classify_model: str | None = None,
+    draft_model: str | None = None,
+) -> Settings:
     # La clave puede venir como AI_SERVICE_ANTHROPIC_API_KEY o como ANTHROPIC_API_KEY.
     key = os.environ.get("AI_SERVICE_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
     return Settings(
         environment=Environment.LOCAL,
         llm_provider=provider,  # type: ignore[arg-type]
         anthropic_model=model,
+        anthropic_classify_model=classify_model,
+        anthropic_draft_model=draft_model,
         anthropic_api_key=SecretStr(key) if key else None,
     )
 
@@ -309,6 +327,14 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
     parser.add_argument("--provider", choices=["simulated", "anthropic"], default="simulated")
     parser.add_argument(
         "--model", default=None, help="Modelo de Claude (por defecto, el de la configuración)."
+    )
+    parser.add_argument(
+        "--classify-model",
+        default=None,
+        help="Modelo solo para clasificar (p. ej. claude-haiku-5-5).",
+    )
+    parser.add_argument(
+        "--draft-model", default=None, help="Modelo solo para redactar (p. ej. claude-sonnet-5-5)."
     )
     parser.add_argument(
         "--run", default=None, help="Nombre de la ejecución (fichero en evals/runs/)."
@@ -338,13 +364,16 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
         help="Comparar dos ejecuciones guardadas caso a caso (sin llamar a la IA).",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
-    model = (
-        "simulated" if args.provider == "simulated" else (args.model or Settings().anthropic_model)
-    )
-    return Options(
+    simulated = args.provider == "simulated"
+    config = Settings()
+    options = Options(
         provider=args.provider,
-        model=model,
-        run=args.run or f"{args.provider}-{model}",
+        model="simulated" if simulated else (args.model or config.anthropic_model),
+        classify_model=None
+        if simulated
+        else (args.classify_model or config.anthropic_classify_model),
+        draft_model=None if simulated else (args.draft_model or config.anthropic_draft_model),
+        run=args.run or "",
         dataset=args.dataset,
         out=args.out,
         only=set(args.only.split(",")) if args.only else None,
@@ -355,6 +384,10 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
         compare=(args.compare[0], args.compare[1]) if args.compare else None,
         smoke=args.smoke,
     )
+    if not options.run:
+        name = options.models.replace(" + ", "+")
+        options = replace(options, run=f"{args.provider}-{name}")
+    return options
 
 
 def write_report(options: Options) -> Summary:
@@ -396,7 +429,12 @@ def main(argv: Iterable[str] | None = None) -> int:
     for name in ("uvicorn", "uvicorn.error", "httpx", "httpx2", "mcp"):
         logging.getLogger(name).setLevel(logging.WARNING)
     if not options.report_only:
-        settings = settings_for(options.provider, options.model)
+        settings = settings_for(
+            options.provider,
+            options.model,
+            classify_model=options.classify_model,
+            draft_model=options.draft_model,
+        )
         if options.provider == "anthropic" and settings.anthropic_api_key is None:
             print("Falta ANTHROPIC_API_KEY (o AI_SERVICE_ANTHROPIC_API_KEY).", file=sys.stderr)
             return 2

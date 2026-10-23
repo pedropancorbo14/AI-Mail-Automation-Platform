@@ -23,7 +23,7 @@ from ai_service.config import Settings
 from ai_service.domain.category import Category
 from ai_service.domain.draft import Draft
 from ai_service.infrastructure.llm import prompts
-from ai_service.infrastructure.llm.anthropic import AnthropicLLM, chat_model
+from ai_service.infrastructure.llm.anthropic import AnthropicLLM, chat_model, supports_fallbacks
 from tests.fakes import make_chunk
 from tests.unit.domain.factories import make_classification, make_email
 
@@ -68,11 +68,11 @@ def settings(**overrides: Any) -> Settings:
 def adapter(fake: FakeAnthropic, **overrides: Any) -> AnthropicLLM:
     config = settings(**overrides)
     models = []
-    for effort, max_tokens in (
-        (config.classify_effort, config.classify_max_tokens),
-        (config.draft_effort, config.draft_max_tokens),
+    for name, effort, max_tokens in (
+        (config.classify_model, config.classify_effort, config.classify_max_tokens),
+        (config.draft_model, config.draft_effort, config.draft_max_tokens),
     ):
-        model = chat_model(config, effort, max_tokens)
+        model = chat_model(config, name, effort, max_tokens)
         # Único punto "privado": el cliente async del SDK con un transporte simulado.
         model.__dict__["_async_client"] = anthropic.AsyncClient(
             api_key=API_KEY,
@@ -81,7 +81,11 @@ def adapter(fake: FakeAnthropic, **overrides: Any) -> AnthropicLLM:
         )
         models.append(model)
     return AnthropicLLM(
-        models[0], models[1], model=config.anthropic_model, max_body_chars=config.max_body_chars
+        models[0],
+        models[1],
+        classify_model=config.classify_model,
+        draft_model=config.draft_model,
+        max_body_chars=config.max_body_chars,
     )
 
 
@@ -195,6 +199,54 @@ async def test_without_fallbacks_neither_parameter_nor_beta_is_sent() -> None:
 
     assert "fallbacks" not in fake.body()
     assert "anthropic-beta" not in fake.requests[0].headers
+
+
+async def test_each_step_uses_its_own_model_and_haiku_has_no_fallbacks() -> None:
+    fake = FakeAnthropic()
+    fake.responses.append(message(classification_data(), model="claude-haiku-5-5"))
+    fake.responses.append(message(draft_data(), model="claude-sonnet-5-5"))
+    llm = adapter(
+        fake,
+        anthropic_classify_model="claude-haiku-5-5",
+        anthropic_draft_model="claude-sonnet-5-5",
+    )
+
+    classified = await llm.classify(make_email())
+    drafted = await llm.draft(make_email(), make_classification(), DraftContext())
+
+    classify, draft = fake.body(0), fake.body(1)
+    assert classify["model"] == "claude-haiku-5-5"
+    assert "fallbacks" not in classify  # Haiku no tiene fallback de servidor
+    assert "anthropic-beta" not in fake.requests[0].headers
+    assert classify["output_config"]["effort"] == "low"
+    assert draft["model"] == "claude-sonnet-5-5"
+    assert draft["fallbacks"] == "default"
+    assert draft["output_config"]["effort"] == "medium"
+    assert [c.requested_model for c in classified.calls] == ["claude-haiku-5-5"]
+    assert [c.requested_model for c in drafted.calls] == ["claude-sonnet-5-5"]
+
+
+async def test_a_failed_call_is_recorded_with_the_model_of_its_step() -> None:
+    fake = FakeAnthropic()
+    fake.responses.append(api_error(400, "invalid_request_error", "bad"))
+
+    llm = adapter(fake, anthropic_classify_model="claude-haiku-5-5")
+    with pytest.raises(LLMConfigurationError) as raised:
+        await llm.classify(make_email())
+
+    [call] = raised.value.calls
+    assert (call.requested_model, call.model, call.status) == (
+        "claude-haiku-5-5",
+        "claude-haiku-5-5",
+        "failed",
+    )
+
+
+def test_steps_without_their_own_model_use_the_general_one() -> None:
+    config = settings(anthropic_model="claude-sonnet-5-5")
+    assert (config.classify_model, config.draft_model) == ("claude-sonnet-5-5",) * 2
+    assert supports_fallbacks("claude-sonnet-5-5")
+    assert not supports_fallbacks("claude-haiku-5-5")
 
 
 async def test_the_email_cannot_close_its_block() -> None:

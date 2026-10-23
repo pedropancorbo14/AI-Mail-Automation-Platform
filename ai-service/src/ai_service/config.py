@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Sonnet 5.5: la evaluación de la Fase 15 (evals/reports/) le dio la misma
     # seguridad que Opus 5.5 a 2,5 veces menos coste por email.
     anthropic_model: str = "claude-sonnet-5-5"
+    # Un modelo por paso (vacío = anthropic_model): clasificar es sencillo y de
+    # mucho volumen (p. ej. claude-haiku-5-5). Medirlo antes con ai-service-eval.
+    anthropic_classify_model: str | None = None
+    anthropic_draft_model: str | None = None
     # Si los filtros de seguridad rechazan, Anthropic reintenta con otro modelo en
     # la misma llamada (fallbacks "default"); se sigue comprobando stop_reason.
     anthropic_fallbacks: bool = True
@@ -56,6 +60,14 @@ class Settings(BaseSettings):
     draft_max_tokens: int = Field(default=8000, ge=256)
     # Laravel ya recorta el cuerpo; esto es una segunda barrera (avisando al modelo).
     max_body_chars: int = Field(default=20_000, ge=1000)
+
+    @property
+    def classify_model(self) -> str:
+        return self.anthropic_classify_model or self.anthropic_model
+
+    @property
+    def draft_model(self) -> str:
+        return self.anthropic_draft_model or self.anthropic_model
 
     # --- RAG (documentación de la empresa: la indexa y la busca ai-service) ---
     # Rol propio de PostgreSQL (ai_service_checkpoints: solo su esquema

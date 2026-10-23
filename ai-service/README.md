@@ -349,6 +349,7 @@ Variables nuevas:
 |---|---|---|
 | `AI_SERVICE_ANTHROPIC_API_KEY` | — | Clave de Anthropic (sin ella el adaptador no arranca) |
 | `AI_SERVICE_ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Modelo (elegido con la evaluación: `evals/reports/`) |
+| `AI_SERVICE_ANTHROPIC_CLASSIFY_MODEL` / `AI_SERVICE_ANTHROPIC_DRAFT_MODEL` | — (= el anterior) | Un modelo por paso: p. ej. clasificar con `claude-haiku-5-5`. Haiku no tiene fallback de servidor: con él no se envía `fallbacks`. Compararlo antes con `ai-service-eval --classify-model … --draft-model …` |
 | `AI_SERVICE_ANTHROPIC_FALLBACKS` | `true` | Fallbacks de servidor ante rechazos |
 | `AI_SERVICE_CLASSIFY_EFFORT` / `AI_SERVICE_DRAFT_EFFORT` | `low` / `medium` | `effort` de cada operación |
 | `AI_SERVICE_CLASSIFY_MAX_TOKENS` / `AI_SERVICE_DRAFT_MAX_TOKENS` | `4096` / `8000` | Incluyen el razonamiento |

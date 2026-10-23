@@ -98,10 +98,19 @@ class AutomationController extends Controller
                 // Laravel solo sabe si puede hablar con ai-service; la clave del modelo la tiene él.
                 'ai_configured' => config('ai.remote.service_url') !== '' && config('ai.remote.internal_token') !== '',
                 'auto_send_enabled' => (bool) config('ai.automation.auto_send_enabled'),
-                'model' => config('ai.remote.model'),
+                'model' => $this->modelLabel(),
                 'min_confidence' => (float) config('ai.remote.min_confidence'),
                 'max_auto_replies_per_address' => (int) config('ai.automation.max_auto_replies_per_address'),
             ],
         ]]);
+    }
+
+    // Lo decide ai-service; con un modelo por paso se muestran los dos.
+    private function modelLabel(): string
+    {
+        $classify = config('ai.remote.classify_model');
+        $draft = config('ai.remote.draft_model');
+
+        return $classify === $draft ? $draft : "{$classify} (clasificar) + {$draft} (redactar)";
     }
 }

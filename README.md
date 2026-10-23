@@ -576,7 +576,8 @@ palabras clave, solo en local; ver [Observabilidad](#12-observabilidad-métricas
 | Variable | Para qué |
 |---|---|
 | `ANTHROPIC_API_KEY` | Clave de la API (solo la usa `ai-service`). |
-| `ANTHROPIC_MODEL` | Modelo (por defecto `claude-sonnet-5-5`, $2 / $10 por millón de tokens: en la evaluación de la Fase 15 igualó la seguridad de Opus a 2,5 veces menos coste). Alternativas: `claude-opus-5-5` ($4 / $20) o `claude-haiku-4-5` ($1 / $5). |
+| `ANTHROPIC_MODEL` | Modelo (por defecto `claude-sonnet-5-5`, $2 / $10 por millón de tokens: en la evaluación de la Fase 15 igualó la seguridad de Opus a 2,5 veces menos coste). Alternativas: `claude-opus-5-5` ($4 / $20) o `claude-haiku-5-5` ($0,10 / $0,50). |
+| `ANTHROPIC_CLASSIFY_MODEL` / `ANTHROPIC_DRAFT_MODEL` | Un modelo por paso (vacío = `ANTHROPIC_MODEL`), p. ej. clasificar con `claude-haiku-5-5` y redactar con Sonnet. Medirlo antes con la evaluación (`uv run ai-service-eval --provider anthropic --classify-model claude-haiku-5-5`). El panel muestra los dos. |
 | `AI_SERVICE_LLM_PROVIDER` | `anthropic` o `simulated` (IA de pruebas, prohibida fuera de `local`). |
 | `AI_PROCESS_ON_INGEST` | Procesar cada email al guardarlo (`true`). |
 | `AI_CLASSIFICATION_MAX_BODY_CHARS` | Caracteres del cuerpo que se mandan a ai-service (20 000); si se recorta, va marcado en el evento. |

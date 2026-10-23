@@ -5500,6 +5500,28 @@ automatización perdida, datos obligatorios y prohibidos.
   del servicio: sección "Evaluación de la IA (Fase 15)"; README raíz: fila
   15 en el estado y CI
 
+- [x] 15.7b **Un modelo por paso** (pedido por el usuario, 2026-10-23:
+  ahorrar sin perder calidad). `AI_SERVICE_ANTHROPIC_CLASSIFY_MODEL` /
+  `AI_SERVICE_ANTHROPIC_DRAFT_MODEL` (vacías = `anthropic_model`; propiedades
+  `Settings.classify_model`/`draft_model`); `chat_model(settings, modelo,
+  effort, max_tokens)` y cada `LLMCall` (también las fallidas) con el modelo de
+  su paso. **Haiku no tiene fallback de servidor** (`fallbacks: "default"` no
+  rescata y una lista da 400): `supports_fallbacks()` no envía ni el parámetro
+  ni la beta a `claude-haiku-*`. Compose/`.env.docker.example`:
+  `ANTHROPIC_CLASSIFY_MODEL`/`ANTHROPIC_DRAFT_MODEL`. Laravel: precio de
+  **`claude-haiku-5-5`** en `config/ai.php` (0,10/0,50 $, caché 0,125/0,01;
+  solo la tarifa de prompts ≤ 100K, que nunca se supera) —sin él el coste
+  sería null y `AiSpendGuard` no lo contaría—, `ai.remote.classify_model`/
+  `draft_model` y el panel muestra "X (clasificar) + Y (redactar)".
+  Evaluador: `--classify-model`/`--draft-model` (por defecto los de la
+  configuración); la huella y el nombre de la ejecución incluyen los dos
+  (`anthropic-claude-haiku-5-5+claude-sonnet-5-5`); con un solo modelo el
+  nombre no cambia (la caché sigue valiendo). **Los valores por defecto no
+  cambian** (Sonnet en los dos pasos) hasta medir Haiku clasificando
+  (tarea 15.10). **Descartado** escalar a Opus en los casos difíciles: ya van
+  a una persona (`DecisionPolicy`/`AutoSendPolicy`) y se pagaría dos veces en
+  los emails más caros
+
 ### Pendiente para la próxima sesión (en el equipo del usuario)
 
 Pedido por el usuario (2026-10-22): hacerlas la próxima vez que trabaje en
@@ -5582,6 +5604,20 @@ Linux; está en `.gitignore`. Si molesta, `-e UV_PROJECT_ENVIRONMENT=/tmp/venv`.
      aparece alguno, se queda en 0,85 y se anota por qué.
   5. Si se ajusta mirando `holdout-2.json`, deja de ser de comprobación:
      anotarlo en su descripción.
+
+- [ ] **15.10 Clasificar con Haiku 5.5.** Hecho el desarrollo (15.7b); falta
+  medirlo (no necesita Ollama: se puede hacer en la nube). `--provider
+  anthropic --run sonnet-haiku --classify-model claude-haiku-5-5
+  --max-cost-usd 1` y lo mismo con `--dataset evals/holdout.json --run
+  sonnet-haiku-holdout --max-cost-usd 0.3`; `--compare sonnet sonnet-haiku`
+  y `--compare sonnet-holdout sonnet-haiku-holdout`. Ojo: Haiku tiene
+  `effort` por defecto `medium` (se manda `low`, como ahora) y su confianza
+  puede ser distinta: mirar cuántos casos frena el umbral de clasificación
+  0,75. Solo si intención ≥ la de Sonnet, 0 envíos inseguros y 0 fugas,
+  poner `ANTHROPIC_CLASSIFY_MODEL=claude-haiku-5-5` por defecto (compose,
+  `.env.docker.example`, README); si no, anotarlo y dejarlo en Sonnet.
+  Ahorro esperado pequeño (la clasificación es ~1/5 del coste por email),
+  pero sin coste de desarrollo extra
 
 **Pasos de la evaluación con Claude (referencia):**
 1. `cd ai-service && uv sync` y comprobar que la clave está

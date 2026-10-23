@@ -43,6 +43,14 @@ it('shows the ai configuration of the company', function () {
         ->toBe(['tool' => 'search_company_documents', 'enabled' => true, 'available' => true, 'source' => 'default']);
 });
 
+it('shows both models when each step uses its own', function () {
+    config(['ai.remote.classify_model' => 'claude-haiku-5-5', 'ai.remote.draft_model' => 'claude-sonnet-5-5']);
+
+    asUser($this->agent)->getJson('/api/v1/automation')->assertOk()
+        ->assertJsonPath('data.platform.model', 'claude-haiku-5-5 (clasificar) + claude-sonnet-5-5 (redactar)');
+});
+
+
 it('lets an administrator change the mode and the intents', function () {
     asUser($this->admin)->patchJson('/api/v1/automation', ['mode' => 'auto', 'auto_send_intents' => ['order_status', 'invoice_request']])
         ->assertOk()

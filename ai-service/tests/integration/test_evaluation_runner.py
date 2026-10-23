@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from ai_service.application.evaluation.costs import parse_pricing
-from ai_service.entrypoints.evaluate import Options, evaluate, main, settings_for
+from ai_service.entrypoints.evaluate import Options, evaluate, main, parse_args, settings_for
 from ai_service.infrastructure.llm.simulated import SimulatedLLM
 
 REPO = Path(__file__).parents[3]
@@ -101,3 +101,36 @@ def test_smoke_mode_only_fails_on_errors_and_compare_reads_saved_runs(tmp_path: 
     assert main(["--compare", "a", "b", "--out", out]) == 0
     assert (tmp_path / "compare-a-vs-b.md").exists()
     assert main(["--compare", "a", "no-existe", "--out", out]) == 2
+
+
+def test_each_step_can_use_its_own_model() -> None:
+    parsed = parse_args(
+        [
+            "--provider",
+            "anthropic",
+            "--model",
+            "claude-opus-5-5",
+            "--classify-model",
+            "claude-haiku-5-5",
+            "--draft-model",
+            "claude-sonnet-5-5",
+        ]
+    )
+
+    assert parsed.models == "claude-haiku-5-5 + claude-sonnet-5-5"
+    assert parsed.run == "anthropic-claude-haiku-5-5+claude-sonnet-5-5"
+    settings = settings_for(
+        "anthropic",
+        parsed.model,
+        classify_model=parsed.classify_model,
+        draft_model=parsed.draft_model,
+    )
+    assert (settings.classify_model, settings.draft_model) == (
+        "claude-haiku-5-5",
+        "claude-sonnet-5-5",
+    )
+    # Con un solo modelo la ejecución se llama como siempre (la caché sigue valiendo).
+    single = parse_args(["--provider", "anthropic", "--model", "claude-opus-5-5"])
+    assert (single.models, single.run) == ("claude-opus-5-5", "anthropic-claude-opus-5-5")
+    # La IA simulada no tiene modelos por paso.
+    assert parse_args(["--classify-model", "claude-haiku-5-5"]).models == "simulated"

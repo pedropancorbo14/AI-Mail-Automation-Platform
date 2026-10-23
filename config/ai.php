@@ -25,6 +25,10 @@ return [
         'claude-opus-4-8' => ['input' => 5.00, 'output' => 25.00, 'cache_write' => 6.25, 'cache_read' => 0.50],
         'claude-sonnet-5-5' => ['input' => 2.00, 'output' => 10.00, 'cache_write' => 2.50, 'cache_read' => 0.20],
         'claude-sonnet-5' => ['input' => 2.00, 'output' => 10.00, 'cache_write' => 2.50, 'cache_read' => 0.20],
+        // Haiku 5.5: tarifa de prompts de hasta 100K tokens (encima, 0,50/2,50 $).
+        // Aquí nunca se llega: el cuerpo del email va recortado y cada email
+        // tiene un límite de tokens en ai-service.
+        'claude-haiku-5-5' => ['input' => 0.10, 'output' => 0.50, 'cache_write' => 0.125, 'cache_read' => 0.01],
         'claude-haiku-4-5' => ['input' => 1.00, 'output' => 5.00, 'cache_write' => 1.25, 'cache_read' => 0.10],
         // IA simulada de ai-service (AI_SERVICE_LLM_PROVIDER=simulated): precio FICTICIO (el de Opus 5.5) para ver costes en las métricas.
         // Su modelo se llama "simulated": nunca se confunde con gasto real.
@@ -112,6 +116,8 @@ return [
         // ai-service (mismas variables del .env que lee su contenedor).
         'llm_provider' => env('AI_SERVICE_LLM_PROVIDER', 'anthropic'),
         'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
+        'classify_model' => env('ANTHROPIC_CLASSIFY_MODEL') ?: env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
+        'draft_model' => env('ANTHROPIC_DRAFT_MODEL') ?: env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
         'min_confidence' => (float) env('AI_SERVICE_MIN_CONFIDENCE', 0.85),
     ],
 

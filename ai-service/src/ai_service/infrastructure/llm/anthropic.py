@@ -69,7 +69,8 @@ class AnthropicLLM:
         classifier: ChatAnthropic,
         drafter: ChatAnthropic,
         *,
-        model: str,
+        classify_model: str,
+        draft_model: str,
         max_body_chars: int,
     ) -> None:
         self._classifier = classifier.with_structured_output(
@@ -80,7 +81,8 @@ class AnthropicLLM:
         )
         # Para redactar con herramientas (structured outputs + tools en la misma petición).
         self._drafter_chat = drafter
-        self._model = model
+        self._classify_model = classify_model
+        self._draft_model = draft_model
         self._max_body_chars = max_body_chars
 
     @classmethod
@@ -90,15 +92,25 @@ class AnthropicLLM:
                 "Falta la clave de Anthropic: define AI_SERVICE_ANTHROPIC_API_KEY."
             )
         return cls(
-            chat_model(settings, settings.classify_effort, settings.classify_max_tokens),
-            chat_model(settings, settings.draft_effort, settings.draft_max_tokens),
-            model=settings.anthropic_model,
+            chat_model(
+                settings,
+                settings.classify_model,
+                settings.classify_effort,
+                settings.classify_max_tokens,
+            ),
+            chat_model(
+                settings, settings.draft_model, settings.draft_effort, settings.draft_max_tokens
+            ),
+            classify_model=settings.classify_model,
+            draft_model=settings.draft_model,
             max_body_chars=settings.max_body_chars,
         )
 
     async def classify(self, email: Email) -> ClassificationResult:
         content = prompts.email_block(email, self._max_body_chars)
-        data, calls = await self._invoke(self._classifier, prompts.CLASSIFICATION, content)
+        data, calls = await self._invoke(
+            self._classifier, prompts.CLASSIFICATION, content, self._classify_model
+        )
         try:
             classification = _classification(data)
         except (KeyError, ValueError, TypeError) as error:
@@ -122,7 +134,7 @@ class AnthropicLLM:
                 email, classification, context, tools, conversation, answers
             )
         content = prompts.draft_context(email, classification, context, self._max_body_chars)
-        data, calls = await self._invoke(self._drafter, prompts.DRAFT, content)
+        data, calls = await self._invoke(self._drafter, prompts.DRAFT, content, self._draft_model)
         try:
             draft = _draft(data)
         except (KeyError, ValueError, TypeError) as error:
@@ -164,10 +176,12 @@ class AnthropicLLM:
         try:
             raw: AIMessage = await runnable.ainvoke(messages)
         except anthropic.APIError as error:
-            failed = (self._failed_call(purpose, prompt, _ms(started), _error_text(error)),)
+            failed = (
+                _failed_call(purpose, prompt, self._draft_model, _ms(started), _error_text(error)),
+            )
             raise _translate(error, failed) from error
 
-        calls = _calls(raw, purpose, prompt, self._model, _ms(started))
+        calls = _calls(raw, purpose, prompt, self._draft_model, _ms(started))
         _check_stop_reason(raw, calls)
         if raw.tool_calls:
             requests = tuple(
@@ -190,7 +204,7 @@ class AnthropicLLM:
         return DraftResult(draft, calls)
 
     async def _invoke(
-        self, runnable: Any, prompt: Prompt, content: str
+        self, runnable: Any, prompt: Prompt, content: str, model: str
     ) -> tuple[Mapping[str, Any], tuple[LLMCall, ...]]:
         purpose = f"ai_service.{prompt.key.removeprefix('email_')}"
         started = time.perf_counter()
@@ -198,41 +212,47 @@ class AnthropicLLM:
             result = await runnable.ainvoke([("system", prompt.system), ("user", content)])
         except anthropic.APIError as error:
             latency = _ms(started)
-            failed = (self._failed_call(purpose, prompt, latency, _error_text(error)),)
+            failed = (_failed_call(purpose, prompt, model, latency, _error_text(error)),)
             raise _translate(error, failed) from error
 
         latency = _ms(started)
         raw: AIMessage = result["raw"]
-        calls = _calls(raw, purpose, prompt, self._model, latency)
+        calls = _calls(raw, purpose, prompt, model, latency)
         _check_stop_reason(raw, calls)
         parsed = result.get("parsed")
         if result.get("parsing_error") is not None or not isinstance(parsed, Mapping):
             raise LLMInvalidOutputError("La respuesta del modelo no es el JSON esperado.", calls)
         return parsed, calls
 
-    def _failed_call(self, purpose: str, prompt: Prompt, latency: int, error: str) -> LLMCall:
-        return LLMCall(
-            purpose=purpose,
-            provider=PROVIDER,
-            requested_model=self._model,
-            model=self._model,
-            status="failed",
-            latency_ms=latency,
-            error=error,
-            prompt=prompt.ref,
-        )
+
+def _failed_call(purpose: str, prompt: Prompt, model: str, latency: int, error: str) -> LLMCall:
+    return LLMCall(
+        purpose=purpose,
+        provider=PROVIDER,
+        requested_model=model,
+        model=model,
+        status="failed",
+        latency_ms=latency,
+        error=error,
+        prompt=prompt.ref,
+    )
 
 
-def chat_model(settings: Settings, effort: Effort, max_tokens: int) -> ChatAnthropic:
-    """ChatAnthropic configurado para una operación (cada una con su effort)."""
+def supports_fallbacks(model: str) -> bool:
+    """Haiku no tiene fallback de servidor (con una lista de modelos daría 400)."""
+    return not model.startswith("claude-haiku-")
+
+
+def chat_model(settings: Settings, model: str, effort: Effort, max_tokens: int) -> ChatAnthropic:
+    """ChatAnthropic configurado para una operación (cada una con su modelo y effort)."""
     key = settings.anthropic_api_key or SecretStr("")
     kwargs: dict[str, Any] = {}
     betas: list[str] = []
-    if settings.anthropic_fallbacks:
+    if settings.anthropic_fallbacks and supports_fallbacks(model):
         kwargs["fallbacks"] = "default"
         betas.append(FALLBACK_BETA)
     return ChatAnthropic(  # type: ignore[call-arg]
-        model=settings.anthropic_model,
+        model=model,
         api_key=key,
         max_tokens=max_tokens,
         reasoning_effort=effort,
