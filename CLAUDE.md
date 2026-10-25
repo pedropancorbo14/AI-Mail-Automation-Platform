@@ -697,8 +697,8 @@ sin configurar → 422 claro. Conexión demo en la BD de desarrollo:
   adjuntos (`fileAttachment` base64) y `/send`; devuelve el
   `internetMessageId` del borrador. Sin campo `from` (Graph envía como el
   dueño del buzón). HTML → `contentType HTML`, si no `Text`.
-  **Pendiente:** adjuntos > 3 MB (requieren upload session): se rechazan
-  con error claro antes de crear nada (`38b0ad6`)
+  **Pendiente (hecho en "Mejoras pendientes", M3):** adjuntos > 3 MB
+  (requieren upload session): se rechazaban con error claro antes de crear nada (`38b0ad6`)
 - [x] 21. Gmail API: `GmailClient` (base `OAuthApiClient`, URL
   `gmail.googleapis.com/gmail/v1/users/me`, detalle de error =
   `error.status` de Google). `GmailProvider` registrado en la factory
@@ -5704,8 +5704,29 @@ grupo `greenmail` (1102 tests al empezar).
   (`uv lock --upgrade-package ...==3.1.3`; sin ese `==`, uv subía a 3.2.0) y
   mínimo `>=3.1.3` en `pyproject.toml`. 618 tests de Python en verde con
   PostgreSQL y Redis reales
-- [ ] M3. Microsoft: adjuntos de más de 3 MB (upload session) y correos
-  movidos entre carpetas
+- [x] M3. **Microsoft: adjuntos de más de 3 MB.** `MicrosoftGraphProvider::
+  send()`: hasta 3 MB, `fileAttachment` como antes; más grandes,
+  `POST .../attachments/createUploadSession` (`AttachmentItem`: file,
+  nombre, tamaño, tipo) y `GraphClient::upload()` sube por trozos de
+  3.200 KiB (múltiplo de 320 KiB, como pide Graph) con `Content-Range`,
+  **sin el token** (la URL ya va autenticada; Graph lo rechaza) y **solo a
+  URLs https de Microsoft** (`office.com`, `office365.com`, `outlook.com`,
+  `microsoft.com`: una URL rara nunca recibe el fichero). Errores de red,
+  429 y 5xx → `MailConnectionException`; resto → `MailProviderException`.
+  El límite pasa a ser `mail_connections.max_attachment_mb` (25), comprobado
+  **antes** de crear el borrador. Tests (con Graph simulado): subida en dos
+  trozos con sus rangos, sin `Authorization` y el fichero intacto; URL de
+  subida que no es de Microsoft → error sin enviarle nada; tamaño máximo.
+  **Sin probar con una cuenta real** (como el resto de Microsoft).
+  **Correos movidos entre carpetas: NO se hace, a propósito.** Filtrar por
+  `lastModifiedDateTime` los detectaría, pero también reimportaría correos
+  antiguos solo por marcarlos como leídos (si eran de antes del punto de
+  partida, la IA respondería a conversaciones viejas), y el delta query
+  obliga a recorrer el buzón entero al empezar. Documentado en el código y
+  el README. Relacionado, para valorar: en IMAP un correo antiguo movido a
+  la bandeja sí se importa (UID nuevo) y la IA lo procesaría; un freno por
+  antigüedad (`Date` de hace más de N días → revisión humana) lo cubriría
+  en todos los proveedores
 - [ ] M4. Copia en "Enviados" de las respuestas enviadas por SMTP (opción
   por buzón)
 - [ ] M5. Página "Integraciones" en el panel
@@ -5745,8 +5766,8 @@ grupo `greenmail` (1102 tests al empezar).
   auditoría CASA anual por `gmail.readonly`). Mientras tanto, Gmail puede
   conectarse por IMAP con contraseña de aplicación; Microsoft 365 no
   (Microsoft desactivó usuario/contraseña en IMAP/SMTP de empresa).
-- Microsoft: envío de adjuntos > 3 MB (upload session) y detección de
-  correos movidos entre carpetas (delta query) si hace falta.
+- ~~Microsoft: envío de adjuntos > 3 MB~~: **hecho en "Mejoras
+  pendientes", M3**; la detección de correos movidos se descartó (ver M3).
 - Copia en "Enviados" de lo enviado por SMTP: **aplazada en la Fase 9**
   (las respuestas ya quedan en `email_replies`; hay servidores SMTP que la
   guardan solos, como Gmail, y saldría duplicada). Valorar una opción por

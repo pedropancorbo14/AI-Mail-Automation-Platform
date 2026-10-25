@@ -22,7 +22,7 @@ use Throwable;
  */
 class MicrosoftGraphProvider implements MailProvider
 {
-    /** Graph admite adjuntos de hasta 3 MB en una sola petición. */
+    /** Graph admite adjuntos de hasta 3 MB en una sola petición; más grandes, con upload session. */
     private const int MAX_SIMPLE_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 
     /** Nombres conocidos de Graph → rol normalizado. */
@@ -146,8 +146,11 @@ class MicrosoftGraphProvider implements MailProvider
      * entregados con esa misma fecha (Graph filtra con precisión de segundo:
      * "ge" + ids vistos evita perder o repetir mensajes del mismo segundo).
      *
-     * Limitación: un mensaje movido a la carpeta desde otra conserva su fecha
-     * de recepción antigua y no se detecta (el delta query de Graph sí lo haría).
+     * Limitación deliberada: un mensaje movido a la carpeta desde otra conserva
+     * su fecha de recepción antigua y no se detecta. Filtrar por
+     * lastModifiedDateTime lo detectaría, pero también traería correos antiguos
+     * solo por marcarlos como leídos (y la IA respondería a conversaciones
+     * viejas); el delta query obliga a recorrer el buzón entero al empezar.
      */
     public function newMessages(string $folder, ?string $cursor): NewMessages
     {
@@ -204,11 +207,13 @@ class MicrosoftGraphProvider implements MailProvider
     public function send(OutgoingMessage $message): SentMessage
     {
         foreach ($message->attachments as $attachment) {
-            if (strlen($attachment->content) > self::MAX_SIMPLE_ATTACHMENT_BYTES) {
-                // Por encima de 3 MB Graph exige una "upload session" (pendiente).
-                throw new MailProviderException(
-                    "El adjunto {$attachment->filename} supera los 3 MB que admite por ahora el envío con Microsoft.",
-                );
+            // Se comprueba antes de crear el borrador: nada a medias en el buzón.
+            if (strlen($attachment->content) > $this->maxAttachmentBytes) {
+                throw new MailProviderException(sprintf(
+                    'El adjunto %s supera el tamaño máximo de %d MB.',
+                    $attachment->filename,
+                    intdiv($this->maxAttachmentBytes, 1024 * 1024),
+                ));
             }
         }
 
@@ -232,12 +237,30 @@ class MicrosoftGraphProvider implements MailProvider
         }
 
         foreach ($message->attachments as $attachment) {
-            $this->graph->post('/me/messages/' . rawurlencode($draft['id']) . '/attachments', [
-                '@odata.type' => '#microsoft.graph.fileAttachment',
-                'name' => $attachment->filename,
-                'contentType' => $attachment->contentType,
-                'contentBytes' => base64_encode($attachment->content),
+            $path = '/me/messages/' . rawurlencode($draft['id']) . '/attachments';
+
+            if (strlen($attachment->content) <= self::MAX_SIMPLE_ATTACHMENT_BYTES) {
+                $this->graph->post($path, [
+                    '@odata.type' => '#microsoft.graph.fileAttachment',
+                    'name' => $attachment->filename,
+                    'contentType' => $attachment->contentType,
+                    'contentBytes' => base64_encode($attachment->content),
+                ]);
+
+                continue;
+            }
+
+            // Más de 3 MB: Graph exige una "upload session" y subirlo por trozos.
+            $session = $this->graph->post($path . '/createUploadSession', [
+                'AttachmentItem' => [
+                    'attachmentType' => 'file',
+                    'name' => $attachment->filename,
+                    'size' => strlen($attachment->content),
+                    'contentType' => $attachment->contentType,
+                ],
             ]);
+
+            $this->graph->upload((string) ($session['uploadUrl'] ?? ''), $attachment->content);
         }
 
         $this->graph->post('/me/messages/' . rawurlencode($draft['id']) . '/send');

@@ -409,9 +409,11 @@ locales). El ejemplo usa la cuenta demo de GreenMail.
 - Microsoft y Google están probados con sus APIs **simuladas** (con el
   formato real de sus respuestas), **no con cuentas reales**: hace falta
   registrar las apps (paso 1) para probarlos de verdad.
-- Microsoft: los adjuntos de más de 3 MB no se pueden enviar todavía
-  (requieren "upload session"). Un correo **movido** a una carpeta desde
-  otra no se detecta como nuevo (conserva su fecha de recepción).
+- Microsoft: los adjuntos de más de 3 MB se suben por trozos con una
+  "upload session" (hasta `MAIL_CONNECTIONS_MAX_ATTACHMENT_MB`). Un correo
+  **movido** a una carpeta desde otra no se detecta como nuevo (conserva su
+  fecha de recepción): es a propósito, detectarlo por fecha de modificación
+  importaría también correos antiguos con solo marcarlos como leídos.
 - Google: `gmail.readonly` es un scope restringido; para usarlo con cuentas
   de otras organizaciones hay que pasar la verificación de la app en Google.
 - No se guarda copia de lo enviado por SMTP en "Enviados" (Gmail/Microsoft

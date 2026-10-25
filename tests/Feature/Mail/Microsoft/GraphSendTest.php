@@ -121,15 +121,75 @@ it('uploads attachments to the draft before sending', function () {
         ->toBeLessThan(array_search(collect($urls)->first(fn ($u) => str_ends_with($u, '/send')), $urls));
 });
 
-it('rejects attachments over 3 MB before creating anything', function () {
-    Http::fake();
+it('uploads attachments over 3 MB in chunks through an upload session', function () {
+    $uploads = [];
+    Http::fake(function (Request $request) use (&$uploads) {
+        $url = urldecode($request->url());
+
+        return match (true) {
+            str_ends_with($url, '/createUploadSession') => Http::response(['uploadUrl' => 'https://outlook.office.com/api/v2.0/upload/abc?authtoken=xyz']),
+            str_starts_with($url, 'https://outlook.office.com/') => (function () use ($request, &$uploads) {
+                $uploads[] = ['range' => $request->header('Content-Range')[0], 'auth' => $request->hasHeader('Authorization'), 'bytes' => $request->body()];
+
+                return Http::response(['nextExpectedRanges' => []], 200);
+            })(),
+            str_ends_with($url, '/send') => Http::response(null, 202),
+            $request->method() === 'POST' && str_ends_with($url, '/me/messages') => Http::response(['id' => 'draft-new', 'internetMessageId' => '<new-456@contoso.test>'], 201),
+            default => Http::response(['error' => ['code' => 'Unexpected']], 400),
+        };
+    });
+    $video = random_bytes(4 * 1024 * 1024);
+
+    $this->provider->send(new OutgoingMessage(
+        to: [new MailAddress('c@c.test')],
+        subject: 'Grande',
+        textBody: 'x',
+        attachments: [new OutgoingAttachment('video.mp4', $video, 'video/mp4')],
+    ));
+
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/me/messages/draft-new/attachments/createUploadSession')
+        && $request['AttachmentItem'] === ['attachmentType' => 'file', 'name' => 'video.mp4', 'size' => strlen($video), 'contentType' => 'video/mp4']);
+
+    // Trozos de 3.200 KiB con su rango, sin el token (la URL ya va autenticada), y el fichero entero.
+    $total = strlen($video);
+    expect(array_column($uploads, 'range'))->toBe(["bytes 0-3276799/{$total}", 'bytes 3276800-' . ($total - 1) . "/{$total}"])
+        ->and(array_unique(array_column($uploads, 'auth')))->toBe([false])
+        ->and(implode('', array_column($uploads, 'bytes')))->toBe($video);
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/me/messages/draft-new/send'));
+});
+
+it('never uploads to an address that is not from Microsoft', function () {
+    Http::fake(function (Request $request) {
+        $url = $request->url();
+
+        return match (true) {
+            str_ends_with($url, '/createUploadSession') => Http::response(['uploadUrl' => 'https://169.254.169.254/latest/meta-data']),
+            $request->method() === 'POST' && str_ends_with($url, '/me/messages') => Http::response(['id' => 'draft-new'], 201),
+            default => Http::response(['error' => ['code' => 'Unexpected']], 400),
+        };
+    });
 
     expect(fn () => $this->provider->send(new OutgoingMessage(
         to: [new MailAddress('c@c.test')],
         subject: 'Grande',
         textBody: 'x',
         attachments: [new OutgoingAttachment('video.mp4', str_repeat('x', 3 * 1024 * 1024 + 1))],
-    )))->toThrow(MailProviderException::class, 'supera los 3 MB');
+    )))->toThrow(MailProviderException::class, 'dirección de subida de adjuntos no válida');
+
+    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '169.254.169.254'));
+});
+
+it('rejects attachments over the size limit before creating anything', function () {
+    Http::fake();
+    $token = new StaticTokenSource(new OAuthCredentials('token', 'refresh', CarbonImmutable::now()->addHour(), ['Mail.Send']));
+    $provider = new MicrosoftGraphProvider(new GraphClient($token), ['Mail.Send'], maxAttachmentBytes: 4 * 1024 * 1024);
+
+    expect(fn () => $provider->send(new OutgoingMessage(
+        to: [new MailAddress('c@c.test')],
+        subject: 'Grande',
+        textBody: 'x',
+        attachments: [new OutgoingAttachment('video.mp4', str_repeat('x', 4 * 1024 * 1024 + 1))],
+    )))->toThrow(MailProviderException::class, 'supera el tamaño máximo de 4 MB');
 
     Http::assertNothingSent();
 });
