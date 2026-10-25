@@ -21,6 +21,7 @@ const connection: MailConnection = {
     },
     last_tested_at: '2026-10-14T10:00:00Z',
     last_error: 'El servidor rechazó el usuario o la contraseña.',
+    save_sent_copy: false,
     created_at: '2026-10-01T10:00:00Z',
 };
 
@@ -143,6 +144,16 @@ describe('formulario de buzón IMAP', () => {
         await flushPromises();
 
         expect(wrapper.text()).toContain('El servidor apunta a una dirección interna no permitida.');
+    });
+
+    it('envía si hay que guardar una copia en Enviados', async () => {
+        loginAs(['mail_connections.view', 'mail_connections.manage']);
+        const wrapper = mount(defineComponent(() => () => h(NMessageProvider, () => h(ImapConnectionForm, { connection: { ...connection, save_sent_copy: true } }))));
+        const form = wrapper.findComponent(ImapConnectionForm).vm as unknown as { form: { save_sent_copy: boolean } };
+
+        expect(form.form.save_sent_copy).toBe(true);
+        await wrapper.find('[data-test="save-sent-copy"]').trigger('click');
+        expect(form.form.save_sent_copy).toBe(false);
     });
 
     it('al editar no envía las contraseñas vacías (se conservan las guardadas)', () => {

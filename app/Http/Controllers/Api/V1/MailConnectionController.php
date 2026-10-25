@@ -43,7 +43,7 @@ class MailConnectionController extends Controller
 
     public function store(StoreMailConnectionRequest $request): MailConnectionResource
     {
-        $connection = new MailConnection($request->safe()->only(['name', 'email']));
+        $connection = new MailConnection($request->safe()->only(['name', 'email', 'save_sent_copy']));
         $connection->provider = MailProviderType::Imap;
         $connection->credentials = $request->credentials();
         $connection->created_by = $request->user()->id;
@@ -66,7 +66,7 @@ class MailConnectionController extends Controller
 
     public function update(UpdateMailConnectionRequest $request, MailConnection $mailConnection): MailConnectionResource
     {
-        $mailConnection->fill($request->safe()->only(['name', 'email']));
+        $mailConnection->fill($request->safe()->only(['name', 'email', 'save_sent_copy']));
 
         if ($request->changesCredentials()) {
             $mailConnection->credentials = $request->credentials($mailConnection->credentials);
@@ -81,7 +81,7 @@ class MailConnectionController extends Controller
 
         $mailConnection->save();
 
-        $changes = AuditLogger::changesOf($mailConnection, ['name', 'email', 'status']);
+        $changes = AuditLogger::changesOf($mailConnection, ['name', 'email', 'status', 'save_sent_copy']);
 
         if ($request->changesCredentials()) {
             // Solo consta que cambiaron (sale "[oculto]"), nunca su contenido.

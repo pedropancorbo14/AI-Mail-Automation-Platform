@@ -62,7 +62,7 @@ class GreenMail
     }
 
     /** Proveedor IMAP/SMTP completo para una cuenta de GreenMail. */
-    public static function provider(string $email, string $password = 'secret', ?string $name = null, int $newMessagesBatch = 100, int $maxAttachmentBytes = 25 * 1024 * 1024): ImapSmtpProvider
+    public static function provider(string $email, string $password = 'secret', ?string $name = null, int $newMessagesBatch = 100, int $maxAttachmentBytes = 25 * 1024 * 1024, bool $saveSentCopy = false): ImapSmtpProvider
     {
         return new ImapSmtpProvider(
             self::imapClient($email, $password),
@@ -70,6 +70,7 @@ class GreenMail
             new MailAddress($email, $name),
             maxAttachmentBytes: $maxAttachmentBytes,
             newMessagesBatch: $newMessagesBatch,
+            saveSentCopy: $saveSentCopy,
         );
     }
 

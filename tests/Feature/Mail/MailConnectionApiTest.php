@@ -111,6 +111,26 @@ it('lists the connections of the company without secrets', function () {
         ->not->toContain('credentials');
 });
 
+it('saves whether to keep a copy of the replies in Sent (imap only)', function () {
+    $id = $this->actingAs($this->admin, 'sanctum')->postJson('/api/v1/mail-connections', imapPayload(['save_sent_copy' => true]))
+        ->assertCreated()
+        ->assertJsonPath('data.save_sent_copy', true)
+        ->json('data.id');
+
+    $this->actingAs($this->admin, 'sanctum')->patchJson("/api/v1/mail-connections/{$id}", ['save_sent_copy' => false])
+        ->assertOk()
+        ->assertJsonPath('data.save_sent_copy', false);
+
+    $log = inTenant($this->tenant, fn () => \App\Models\AuditLog::where('action', 'mail_connection.updated')->sole());
+    expect($log->changes)->toEqual(['save_sent_copy' => ['from' => true, 'to' => false]]);
+
+    // Microsoft y Gmail guardan la copia solos: el campo se ignora.
+    $oauth = inTenant($this->tenant, fn () => MailConnection::factory()->microsoft()->create());
+    $this->actingAs($this->admin, 'sanctum')->patchJson("/api/v1/mail-connections/{$oauth->id}", ['save_sent_copy' => true])->assertOk();
+
+    expect($oauth->fresh()->save_sent_copy)->toBeFalse();
+});
+
 it('tells how many emails the sync set aside', function () {
     $connection = connectionOf($this->tenant);
     inTenant($this->tenant, fn () => \App\Models\MailSkippedMessage::forceCreate([

@@ -19,6 +19,8 @@ export interface MailConnection {
     provider: MailProvider;
     status: MailConnectionStatus;
     settings: { imap?: ServerSettings; smtp?: ServerSettings; scopes?: string[] };
+    /** Guardar en «Enviados» lo que la plataforma envía por SMTP (solo IMAP). */
+    save_sent_copy: boolean;
     last_tested_at: string | null;
     last_error: string | null;
     /** Correos que la sincronización apartó porque fallan siempre al guardarlos. */
@@ -43,6 +45,7 @@ export interface ImapConnectionInput {
     email: string;
     imap: ServerSettings & { password?: string };
     smtp: ServerSettings & { password?: string };
+    save_sent_copy?: boolean;
 }
 
 export function listMailConnections(page = 1): Promise<Paginated<MailConnection>> {

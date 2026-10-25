@@ -5727,8 +5727,29 @@ grupo `greenmail` (1102 tests al empezar).
   la bandeja sí se importa (UID nuevo) y la IA lo procesaría; un freno por
   antigüedad (`Date` de hace más de N días → revisión humana) lo cubriría
   en todos los proveedores
-- [ ] M4. Copia en "Enviados" de las respuestas enviadas por SMTP (opción
-  por buzón)
+- [x] M4. **Copia en "Enviados" (IMAP).** Columna
+  `mail_connections.save_sent_copy` (false por defecto: hay servidores SMTP
+  que ya la guardan y saldría repetida; asignable en masa, en la API solo
+  para IMAP —en OAuth se ignora—, en `MailConnectionResource` y en la
+  auditoría de `mail_connection.updated`). `ImapSmtpProvider` (`saveSentCopy`
+  desde la factoría): tras el envío SMTP, IMAP APPEND del mensaje **tal como
+  salió** (`SentMessage::toString()` de Symfony, con su Message-ID; sin
+  Bcc, que Symfony quita de las cabeceras) con `\Seen` en la carpeta de
+  enviados. **Nunca falla el envío por la copia** (el correo ya salió: se
+  reintentaría y llegaría dos veces): sin carpeta de enviados o con el
+  servidor caído, solo un aviso en el log. `ImapSmtpProvider::role()` ahora
+  reconoce también las carpetas especiales **por su nombre habitual** (Sent,
+  Enviados, Elementos enviados, Drafts, Borradores, Trash, Papelera,
+  Deleted Items, Junk, Spam, Correo no deseado…) cuando el servidor no
+  anuncia los atributos RFC 6154 (GreenMail, servidores antiguos): así la
+  copia encuentra la carpeta y, de paso, M2 nunca deja sincronizar una
+  carpeta de enviados sin atributo (la IA leería las respuestas de la propia
+  empresa). Panel: casilla "Guardar una copia de las respuestas en
+  «Enviados»" en el formulario IMAP con la explicación. Tests: GreenMail
+  real (la copia llega a Sent leída, con el mismo Message-ID y el texto; sin
+  carpeta el envío sale igual; sin la opción no hay copia), roles por nombre
+  (7 casos), API (crear, editar con auditoría, ignorado en Microsoft) y
+  Vitest
 - [ ] M5. Página "Integraciones" en el panel
 
 ### Pendientes anotados para más adelante
@@ -5768,10 +5789,8 @@ grupo `greenmail` (1102 tests al empezar).
   (Microsoft desactivó usuario/contraseña en IMAP/SMTP de empresa).
 - ~~Microsoft: envío de adjuntos > 3 MB~~: **hecho en "Mejoras
   pendientes", M3**; la detección de correos movidos se descartó (ver M3).
-- Copia en "Enviados" de lo enviado por SMTP: **aplazada en la Fase 9**
-  (las respuestas ya quedan en `email_replies`; hay servidores SMTP que la
-  guardan solos, como Gmail, y saldría duplicada). Valorar una opción por
-  buzón (IMAP APPEND a la carpeta con rol Sent) cuando haya panel.
+- ~~Copia en "Enviados" de lo enviado por SMTP~~: **hecho en "Mejoras
+  pendientes", M4** (opción por buzón IMAP).
 - Clasificación de preguntas informativas sobre devoluciones: en la prueba
   real de la Fase 9, "¿cuántos días tengo para devolver…?" se clasificó
   `product_question` y se envió sola (respuesta exacta según la política).

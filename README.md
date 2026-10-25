@@ -416,10 +416,14 @@ locales). El ejemplo usa la cuenta demo de GreenMail.
   importaría también correos antiguos con solo marcarlos como leídos.
 - Google: `gmail.readonly` es un scope restringido; para usarlo con cuentas
   de otras organizaciones hay que pasar la verificación de la app en Google.
-- No se guarda copia de lo enviado por SMTP en "Enviados" (Gmail/Microsoft
-  sí lo hacen solos). Las respuestas quedan guardadas en la plataforma
-  (`email_replies`); la copia se valorará por buzón (algunos servidores
-  SMTP ya la guardan y saldría duplicada).
+- Copia en "Enviados" de lo enviado por SMTP: **opción de cada buzón IMAP**
+  ("Guardar una copia de las respuestas en «Enviados»", `save_sent_copy`,
+  desactivada por defecto: algunos servidores SMTP ya la guardan y saldría
+  repetida). Se guarda marcada como leída con IMAP APPEND en la carpeta de
+  enviados (por su atributo `\Sent` o, si el servidor no lo anuncia, por su
+  nombre: Sent, Enviados, Elementos enviados…). Si la copia falla, el correo
+  ya salió: solo se avisa en el log. Gmail y Microsoft la guardan siempre
+  solos.
 
 ### Añadir un proveedor nuevo
 

@@ -36,6 +36,18 @@ it('maps special-use folder attributes to normalized roles', function (array $fl
     'normal' => [['\\HasNoChildren'], null],
 ]);
 
+it('recognizes special folders by their usual name when the server does not flag them', function (string $path, ?string $role) {
+    expect(ImapSmtpProvider::role(new FakeFolder($path)))->toBe($role);
+})->with([
+    'Sent' => ['Sent', MailFolder::SENT],
+    'Enviados' => ['INBOX/Enviados', MailFolder::SENT],
+    'Elementos enviados' => ['Elementos enviados', MailFolder::SENT],
+    'Borradores' => ['Borradores', MailFolder::DRAFTS],
+    'Papelera' => ['Papelera', MailFolder::TRASH],
+    'Spam' => ['SPAM', MailFolder::JUNK],
+    'otra' => ['Pedidos enviados a mano', null],
+]);
+
 it('treats INBOX as the inbox regardless of case', function () {
     expect(ImapSmtpProvider::role(new FakeFolder('inbox')))->toBe(MailFolder::INBOX);
 });

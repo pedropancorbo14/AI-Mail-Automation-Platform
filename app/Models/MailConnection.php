@@ -25,7 +25,7 @@ use InvalidArgumentException;
  * @property MailConnectionStatus $status
  * @property MailCredentials $credentials
  */
-#[Fillable(['name', 'email'])]
+#[Fillable(['name', 'email', 'save_sent_copy'])]
 #[Hidden(['credentials'])]
 class MailConnection extends Model
 {
@@ -34,6 +34,7 @@ class MailConnection extends Model
 
     protected $attributes = [
         'status' => 'pending',
+        'save_sent_copy' => false,
     ];
 
     protected function casts(): array
@@ -43,6 +44,7 @@ class MailConnection extends Model
             'status' => MailConnectionStatus::class,
             'credentials' => EncryptedCredentials::class,
             'last_tested_at' => 'datetime',
+            'save_sent_copy' => 'boolean',
         ];
     }
 

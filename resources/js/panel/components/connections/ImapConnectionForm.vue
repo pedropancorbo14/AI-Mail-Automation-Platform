@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
-import { NAlert, NButton, NDivider, NForm, NFormItem, NGrid, NGridItem, NInput, NInputNumber, NSelect, NSpace } from 'naive-ui';
+import { NAlert, NButton, NCheckbox, NDivider, NForm, NFormItem, NGrid, NGridItem, NInput, NInputNumber, NSelect, NSpace, NText } from 'naive-ui';
 import { ApiError } from '@/api/http';
 import {
     autodetectSettings,
@@ -31,6 +31,7 @@ const form = reactive<ImapConnectionInput>({
     email: props.connection?.email ?? '',
     imap: server(props.connection?.settings.imap, 993),
     smtp: server(props.connection?.settings.smtp, 465),
+    save_sent_copy: props.connection?.save_sent_copy ?? false,
 });
 
 const saving = ref(false);
@@ -183,6 +184,13 @@ defineExpose({ form });
             </NGrid>
         </template>
 
+        <NFormItem :show-label="false" :show-feedback="false" class="form__copy">
+            <NCheckbox v-model:checked="form.save_sent_copy" data-test="save-sent-copy">Guardar una copia de las respuestas en «Enviados»</NCheckbox>
+        </NFormItem>
+        <NText depth="3" class="form__copy-hint">
+            Actívalo si tu servidor no guarda solo lo que se envía por SMTP (si ya lo hace, la copia saldría repetida).
+        </NText>
+
         <NSpace justify="end">
             <NButton @click="emit('cancel')">Cancelar</NButton>
             <NButton type="primary" attr-type="submit" :loading="saving">{{ editing ? 'Guardar cambios' : 'Añadir y probar' }}</NButton>
@@ -193,6 +201,12 @@ defineExpose({ form });
 <style scoped>
 .form__error {
     margin-bottom: 12px;
+}
+
+.form__copy-hint {
+    display: block;
+    font-size: 12px;
+    margin: 4px 0 16px 24px;
 }
 
 .form__detect {

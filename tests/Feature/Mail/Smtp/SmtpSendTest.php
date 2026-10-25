@@ -115,3 +115,36 @@ it('fails with an authentication error when the smtp password is wrong', functio
         textBody: 'x',
     ));
 })->group('greenmail')->throws(MailAuthenticationException::class);
+
+it('saves a read copy of what it sends in the Sent folder when the mailbox asks for it', function () {
+    GreenMail::append($this->support, (new Symfony\Component\Mime\Email())->from('x@x.test')->to($this->support)->subject('semilla')->text('x'), 'Sent');
+    $provider = GreenMail::provider($this->support, name: 'Soporte Acme', saveSentCopy: true);
+
+    $sent = $provider->send(new OutgoingMessage(
+        to: [new MailAddress($this->customer)],
+        subject: 'Re: Tu pedido',
+        textBody: 'Sale hoy.',
+        bcc: [new MailAddress($this->boss)],
+    ));
+
+    expect(receivedBy($this->customer))->toHaveCount(1);
+
+    $copies = array_values(array_filter(GreenMail::provider($this->support)->messages('Sent'), fn (MailMessage $m) => $m->subject === 'Re: Tu pedido'));
+    expect($copies)->toHaveCount(1)
+        ->and($copies[0]->messageId)->toBe($sent->messageId)
+        ->and($copies[0]->seen)->toBeTrue()
+        ->and($copies[0]->textBody)->toContain('Sale hoy.');
+})->group('greenmail');
+
+it('does not save a copy by default, and never fails the send because of the copy', function () {
+    // Sin carpeta de enviados: el correo sale igual y solo se avisa en el log.
+    $sent = GreenMail::provider($this->support, saveSentCopy: true)->send(new OutgoingMessage([new MailAddress($this->customer)], 'Hola', 'x'));
+
+    expect($sent->messageId)->not->toBeEmpty()
+        ->and(receivedBy($this->customer))->toHaveCount(1);
+
+    GreenMail::append($this->support, (new Symfony\Component\Mime\Email())->from('x@x.test')->to($this->support)->subject('semilla')->text('x'), 'Sent');
+    GreenMail::provider($this->support)->send(new OutgoingMessage([new MailAddress($this->customer)], 'Sin copia', 'x'));
+
+    expect(array_map(fn (MailMessage $m) => $m->subject, GreenMail::provider($this->support)->messages('Sent')))->toBe(['semilla']);
+})->group('greenmail');

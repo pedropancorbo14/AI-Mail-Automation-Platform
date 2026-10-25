@@ -31,10 +31,12 @@ class UpdateMailConnectionRequest extends FormRequest
             'enabled' => ['sometimes', 'boolean'],
         ];
 
-        // Credenciales editables solo en IMAP: en OAuth se renuevan con el flujo OAuth.
+        // Credenciales y copia en Enviados solo en IMAP: en OAuth se renuevan con
+        // el flujo OAuth, y Microsoft y Gmail guardan la copia solos.
         if (! $this->connection()->provider->usesOAuth()) {
             $rules = [
                 ...$rules,
+                'save_sent_copy' => ['sometimes', 'boolean'],
                 ...StoreMailConnectionRequest::serverRules('imap', required: false),
                 ...StoreMailConnectionRequest::serverRules('smtp', required: false),
             ];

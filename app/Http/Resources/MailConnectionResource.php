@@ -24,6 +24,7 @@ class MailConnectionResource extends JsonResource
             'provider' => $this->provider->value,
             'status' => $this->status->value,
             'settings' => $this->settings(),
+            'save_sent_copy' => $this->save_sent_copy,
             'last_tested_at' => $this->last_tested_at?->toIso8601String(),
             'last_error' => $this->last_error,
             // Correos que la sincronización apartó porque fallan siempre.

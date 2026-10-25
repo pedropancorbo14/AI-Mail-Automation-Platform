@@ -81,6 +81,7 @@ class MailProvidersServiceProvider extends ServiceProvider
                 new SmtpClient($connection->credentials, $guard, $timeout),
                 new MailAddress($connection->email, $connection->name),
                 config('mail_connections.max_attachment_mb') * 1024 * 1024,
+                saveSentCopy: $connection->save_sent_copy,
             );
         });
 

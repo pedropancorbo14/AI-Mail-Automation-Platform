@@ -17,6 +17,8 @@ use App\Mail\Exceptions\MailProviderException;
 use App\Mail\Support\MimeMessageBuilder;
 use App\Mail\Support\MimeMessageMapper;
 use Closure;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 use DirectoryTree\ImapEngine\Exceptions\Exception as ImapEngineException;
 use DirectoryTree\ImapEngine\Exceptions\ImapConnectionException;
 use DirectoryTree\ImapEngine\FolderInterface;
@@ -40,7 +42,24 @@ class ImapSmtpProvider implements MailProvider
     ];
 
     /**
+     * Nombres habituales de las carpetas especiales, para servidores que no
+     * anuncian los atributos de uso especial (RFC 6154). Sin distinguir
+     * mayúsculas, solo el último tramo de la ruta.
+     */
+    private const array COMMON_NAMES = [
+        'sent' => MailFolder::SENT, 'sent items' => MailFolder::SENT, 'sent messages' => MailFolder::SENT,
+        'sent mail' => MailFolder::SENT, 'enviados' => MailFolder::SENT, 'elementos enviados' => MailFolder::SENT,
+        'drafts' => MailFolder::DRAFTS, 'borradores' => MailFolder::DRAFTS,
+        'trash' => MailFolder::TRASH, 'deleted items' => MailFolder::TRASH, 'deleted messages' => MailFolder::TRASH,
+        'papelera' => MailFolder::TRASH, 'elementos eliminados' => MailFolder::TRASH,
+        'junk' => MailFolder::JUNK, 'spam' => MailFolder::JUNK, 'junk e-mail' => MailFolder::JUNK,
+        'junk email' => MailFolder::JUNK, 'correo no deseado' => MailFolder::JUNK,
+    ];
+
+    /**
      * @param  MailAddress  $from  La cuenta de la conexión: único remitente posible.
+     * @param  bool  $saveSentCopy  Guardar en "Enviados" (IMAP APPEND) lo enviado por SMTP:
+     *                              muchos servidores SMTP no lo hacen solos.
      */
     public function __construct(
         private readonly ImapClient $imap,
@@ -48,6 +67,7 @@ class ImapSmtpProvider implements MailProvider
         private readonly MailAddress $from,
         private readonly int $maxAttachmentBytes = 25 * 1024 * 1024,
         private readonly int $newMessagesBatch = 100,
+        private readonly bool $saveSentCopy = false,
     ) {
     }
 
@@ -211,7 +231,40 @@ class ImapSmtpProvider implements MailProvider
             );
         }
 
+        if ($this->saveSentCopy && $sent !== null) {
+            $this->saveCopy($sent->toString());
+        }
+
         return new SentMessage($sent?->getMessageId());
+    }
+
+    /**
+     * Copia lo enviado en "Enviados", marcado como leído. El correo ya salió:
+     * si la copia falla (sin carpeta, servidor caído) solo se avisa en el
+     * log, nunca se trata como un envío fallido (se reintentaría y llegaría
+     * dos veces).
+     */
+    private function saveCopy(string $raw): void
+    {
+        try {
+            $this->call(function () use ($raw) {
+                $sent = collect($this->imap->mailbox()->folders()->get())
+                    ->first(fn (FolderInterface $folder) => self::role($folder) === MailFolder::SENT);
+
+                if ($sent === null) {
+                    Log::warning('No se guardó la copia del correo enviado: el buzón no tiene carpeta de enviados', ['from' => $this->from->email]);
+
+                    return;
+                }
+
+                $sent->messages()->append($raw, ['\\Seen']);
+            });
+        } catch (Throwable $e) {
+            Log::warning('No se pudo guardar la copia del correo enviado en Enviados', [
+                'from' => $this->from->email,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -254,7 +307,10 @@ class ImapSmtpProvider implements MailProvider
         return [(int) $matches[1], (int) $matches[2]];
     }
 
-    /** INBOX es especial por nombre (RFC 9051); el resto por atributos de uso especial. */
+    /**
+     * INBOX es especial por nombre (RFC 9051); el resto por atributos de uso
+     * especial o, si el servidor no los anuncia, por su nombre habitual.
+     */
     public static function role(FolderInterface $folder): ?string
     {
         if (strcasecmp($folder->path(), 'INBOX') === 0) {
@@ -267,7 +323,8 @@ class ImapSmtpProvider implements MailProvider
             }
         }
 
-        return null;
+        // Sin atributos (GreenMail, servidores antiguos): por su nombre habitual.
+        return self::COMMON_NAMES[mb_strtolower(trim($folder->name()))] ?? null;
     }
 
     /** @return list<string> */

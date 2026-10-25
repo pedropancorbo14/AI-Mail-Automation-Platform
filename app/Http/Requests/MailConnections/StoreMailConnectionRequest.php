@@ -32,6 +32,7 @@ class StoreMailConnectionRequest extends FormRequest
                 Rule::unique('mail_connections', 'email')->where('tenant_id', $this->user()->tenant_id),
             ],
             'provider' => ['required', Rule::in([MailProviderType::Imap->value])],
+            'save_sent_copy' => ['sometimes', 'boolean'],
             ...self::serverRules('imap', required: true),
             ...self::serverRules('smtp', required: true),
         ];
