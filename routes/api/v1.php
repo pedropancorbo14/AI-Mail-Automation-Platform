@@ -53,6 +53,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         ->middleware('throttle:mail-connection-test');
     Route::post('/mail-connections/{mailConnection}/test', [MailConnectionController::class, 'test'])
         ->middleware('throttle:mail-connection-test');
+    // Leer y elegir carpetas también pregunta al servidor de correo.
+    Route::get('/mail-connections/{mailConnection}/folders', [MailConnectionController::class, 'folders'])
+        ->middleware('throttle:mail-connection-test');
+    Route::put('/mail-connections/{mailConnection}/folders', [MailConnectionController::class, 'updateFolders'])
+        ->middleware('throttle:mail-connection-test');
 
     // Configuración de la IA de la empresa (modo, intenciones, herramientas).
     Route::get('/automation', [AutomationController::class, 'show']);

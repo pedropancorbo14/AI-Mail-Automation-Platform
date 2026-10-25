@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\MailConnections\StoreMailConnectionRequest;
+use App\Http\Requests\MailConnections\UpdateMailConnectionFoldersRequest;
 use App\Http\Requests\MailConnections\UpdateMailConnectionRequest;
 use App\Http\Resources\MailConnectionResource;
 use App\Mail\Autodetect\MailAutodetector;
 use App\Mail\Enums\MailConnectionStatus;
 use App\Mail\Enums\MailProviderType;
+use App\Mail\Exceptions\MailProviderException;
+use App\Mail\Ingestion\MailFolderService;
 use App\Mail\MailConnectionService;
 use App\Models\MailConnection;
 use App\Security\Audit\AuditLogger;
@@ -90,6 +93,37 @@ class MailConnectionController extends Controller
         }
 
         return new MailConnectionResource($mailConnection);
+    }
+
+    /**
+     * Carpetas del buzón y cuáles se sincronizan. Pregunta al proveedor
+     * (throttle:mail-connection-test, como probar la conexión).
+     */
+    public function folders(MailConnection $mailConnection, MailFolderService $folders): JsonResponse
+    {
+        Gate::authorize('view', $mailConnection);
+
+        try {
+            return response()->json(['data' => $folders->list($mailConnection)]);
+        } catch (MailProviderException $e) {
+            return response()->json(['message' => 'No se pudieron leer las carpetas del buzón: ' . $e->getMessage()], 422);
+        }
+    }
+
+    /** Elige las carpetas que se sincronizan además de la bandeja de entrada. */
+    public function updateFolders(UpdateMailConnectionFoldersRequest $request, MailConnection $mailConnection, MailFolderService $folders): JsonResponse
+    {
+        try {
+            $changes = $folders->set($mailConnection, $request->folders());
+        } catch (MailProviderException $e) {
+            return response()->json(['message' => 'No se pudieron leer las carpetas del buzón: ' . $e->getMessage()], 422);
+        }
+
+        if ($changes['added'] !== [] || $changes['removed'] !== []) {
+            $this->audit->record('mail_connection.folders_changed', $mailConnection, $mailConnection->name, metadata: $changes);
+        }
+
+        return response()->json(['data' => $folders->list($mailConnection)]);
     }
 
     /**

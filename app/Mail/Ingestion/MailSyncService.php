@@ -30,7 +30,9 @@ use Throwable;
  * tras mail_connections.sync_skip_after_failures intentos seguidos: queda en
  * mail_skipped_messages y la sincronización sigue con el resto.
  *
- * De momento se sincroniza solo la bandeja de entrada.
+ * Se sincronizan la bandeja de entrada y las carpetas que elija la empresa
+ * (MailFolderService). Si falla una carpeta, se siguen las demás y al final
+ * se relanza el primer error (salvo credenciales rechazadas: se para ahí).
  */
 class MailSyncService
 {
@@ -64,9 +66,23 @@ class MailSyncService
             }
 
             $result = new SyncResult();
+            $error = null;
 
             foreach ($states as $state) {
-                $result = $result->merge($this->syncFolder($connection, $provider, $state));
+                try {
+                    $result = $result->merge($this->syncFolder($connection, $provider, $state));
+                } catch (MailAuthenticationException $e) {
+                    // La cuenta entera está rechazada: no tiene sentido seguir.
+                    throw $e;
+                } catch (Throwable $e) {
+                    // El fallo de una carpeta (borrada, renombrada...) no impide
+                    // sincronizar las demás; ya quedó registrado en la suya.
+                    $error ??= $e;
+                }
+            }
+
+            if ($error !== null) {
+                throw $error;
             }
 
             return $result;

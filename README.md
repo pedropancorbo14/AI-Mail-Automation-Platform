@@ -447,8 +447,15 @@ scheduler (cada minuto)
               └─ solo con todo el lote guardado: se avanza el cursor (mail_sync_states)
 ```
 
-- **Qué se sincroniza:** los buzones en estado `active` de empresas activas,
-  y por ahora solo su **bandeja de entrada**. Un buzón `pending` (sin
+- **Qué se sincroniza:** los buzones en estado `active` de empresas activas:
+  su **bandeja de entrada** y las **carpetas que elija la empresa** en
+  "Buzones" → "Carpetas" (`GET|PUT /mail-connections/{id}/folders`, máx.
+  `MAIL_SYNC_MAX_FOLDERS`, 10 con la bandeja). **Nunca** Enviados,
+  Borradores, Papelera ni Spam (en Enviados están las respuestas de la propia
+  empresa: la IA se contestaría a sí misma). Una carpeta nueva empieza sin
+  histórico; si una falla (borrada, renombrada), las demás se siguen
+  sincronizando. El mismo correo en dos carpetas (p. ej. dos etiquetas de
+  Gmail) se guarda una vez. Un buzón `pending` (sin
   probar) o `failing` (credenciales rechazadas) no se toca hasta que se
   prueba de nuevo con `POST /mail-connections/{id}/test`.
 - **Primera sincronización:** fija el punto de partida y **no importa el
@@ -1491,6 +1498,8 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | PATCH | `/mail-connections/{id}` | `mail_connections.manage` | Editar (la contraseña no enviada se conserva; `enabled` true/false) |
 | DELETE | `/mail-connections/{id}` | `mail_connections.manage` | Eliminar (409 si ya tiene correos guardados: desactívala) |
 | POST | `/mail-connections/{id}/test` | `mail_connections.manage` | Probar recepción y envío (máx. 10/min) |
+| GET | `/mail-connections/{id}/folders` | `mail_connections.view` | Carpetas del buzón y cuáles se revisan (pregunta al servidor; máx. 10/min) |
+| PUT | `/mail-connections/{id}/folders` | `mail_connections.manage` | Carpetas a revisar además de la bandeja de entrada (`folders`: ids; nunca enviados, borradores, papelera ni spam) |
 | POST | `/mail-connections/oauth/{microsoft\|google}/start` | `mail_connections.manage` | Iniciar la conexión OAuth: devuelve `authorization_url` |
 | GET | `/mail-connections/oauth/{microsoft\|google}/callback` | público | Vuelta desde Microsoft/Google (la llama el navegador) |
 | GET | `/documents` | `documents.view` | Documentación de tu empresa (paginado, con estado de indexado) |

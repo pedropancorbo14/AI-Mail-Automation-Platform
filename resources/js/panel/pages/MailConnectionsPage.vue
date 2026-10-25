@@ -29,6 +29,7 @@ import {
     type MailConnectionStatus,
 } from '@/api/mailConnections';
 import ImapConnectionForm from '@/components/connections/ImapConnectionForm.vue';
+import MailFoldersForm from '@/components/connections/MailFoldersForm.vue';
 import { formatDateTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
 
@@ -43,6 +44,7 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const testing = ref<number | null>(null);
 const drawer = ref<{ open: boolean; connection: MailConnection | null }>({ open: false, connection: null });
+const foldersOf = ref<MailConnection | null>(null);
 
 const canManage = computed(() => auth.can('mail_connections.manage'));
 
@@ -182,9 +184,12 @@ const columns = computed<DataTableColumns<MailConnection>>(() => [
     {
         title: '',
         key: 'actions',
-        width: 330,
-        render: (row) => !canManage.value ? null : h(NSpace, { size: 8, justify: 'end', align: 'center', wrap: false }, () => [
+        width: 420,
+        render: (row) => !canManage.value
+            ? h(NButton, { size: 'small', onClick: () => (foldersOf.value = row) }, () => 'Carpetas')
+            : h(NSpace, { size: 8, justify: 'end', align: 'center', wrap: false }, () => [
             h(NButton, { size: 'small', loading: testing.value === row.id, onClick: () => test(row) }, () => 'Probar'),
+            h(NButton, { size: 'small', onClick: () => (foldersOf.value = row) }, () => 'Carpetas'),
             row.provider === 'imap' ? h(NButton, { size: 'small', onClick: () => (drawer.value = { open: true, connection: row }) }, () => 'Editar') : null,
             h(NSwitch, { size: 'small', value: row.status !== 'disabled', 'onUpdate:value': (enabled: boolean) => toggle(row, enabled) }),
             h(NPopconfirm, { onPositiveClick: () => remove(row), positiveText: 'Eliminar', negativeText: 'Cancelar' }, {
@@ -220,6 +225,19 @@ const columns = computed<DataTableColumns<MailConnection>>(() => [
                     :connection="drawer.connection"
                     @saved="onSaved"
                     @cancel="drawer.open = false"
+                />
+            </NDrawerContent>
+        </NDrawer>
+
+        <NDrawer :show="foldersOf !== null" :width="480" placement="right" @update:show="(open: boolean) => { if (!open) foldersOf = null; }">
+            <NDrawerContent :title="foldersOf ? `Carpetas de ${foldersOf.name}` : ''" closable>
+                <MailFoldersForm
+                    v-if="foldersOf"
+                    :key="foldersOf.id"
+                    :connection="foldersOf"
+                    :can-manage="canManage"
+                    @saved="foldersOf = null"
+                    @cancel="foldersOf = null"
                 />
             </NDrawerContent>
         </NDrawer>

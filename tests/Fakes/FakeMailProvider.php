@@ -36,6 +36,9 @@ class FakeMailProvider implements MailProvider
     /** @var list<array{0: string, 1: string|null}> Llamadas a newMessages(): [carpeta, cursor]. */
     public array $newMessagesCalls = [];
 
+    /** @var array<string, string> Rol de cada carpeta (además de INBOX), p. ej. ['Enviados' => MailFolder::SENT]. */
+    public array $folderRoles = [];
+
     /** Mensajes por lote en newMessages() (hasMore si quedan más). */
     public int $batchSize = PHP_INT_MAX;
 
@@ -58,7 +61,7 @@ class FakeMailProvider implements MailProvider
     public function folders(): array
     {
         return array_map(
-            fn (string $folder) => new MailFolder($folder, $folder, $folder === 'INBOX' ? MailFolder::INBOX : null),
+            fn (string $folder) => new MailFolder($folder, $folder, $folder === 'INBOX' ? MailFolder::INBOX : ($this->folderRoles[$folder] ?? null)),
             array_keys($this->mailboxes),
         );
     }

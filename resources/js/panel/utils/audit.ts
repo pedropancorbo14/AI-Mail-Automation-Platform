@@ -34,6 +34,7 @@ const actionLabels: Record<string, string> = {
     'mail_connection.tested': 'Probó un buzón',
     'mail_connection.deleted': 'Eliminó un buzón',
     'mail_connection.oauth_connected': 'Conectó un buzón con Microsoft o Google',
+    'mail_connection.folders_changed': 'Cambió las carpetas que se revisan de un buzón',
     'automation.updated': 'Cambió el modo de automatización',
     'automation.tool_changed': 'Cambió una herramienta de la IA',
     'document.uploaded': 'Subió un documento',
@@ -140,6 +141,10 @@ export function describeMetadata(entry: AuditLogEntry): string[] {
         lines.push('Con una indicación para la IA');
     } else if (entry.action === 'automation.tool_changed' && typeof meta.tool === 'string') {
         lines.push(`${toolLabel(meta.tool)}: ${meta.enabled ? 'activada' : 'desactivada'}`);
+    } else if (entry.action === 'mail_connection.folders_changed') {
+        const names = (value: unknown) => (Array.isArray(value) ? value.join(', ') : '');
+        if (names(meta.added)) lines.push(`Añadidas: ${names(meta.added)}`);
+        if (names(meta.removed)) lines.push(`Quitadas: ${names(meta.removed)}`);
     } else if (entry.action === 'mail_connection.oauth_connected' && meta.reconnected) {
         lines.push('Reconexión de un buzón existente');
     } else if ((entry.action === 'auth.password_changed' || entry.action === 'auth.logout_other_devices') && Number(meta.revoked_count) > 0) {

@@ -83,6 +83,27 @@ export function withoutEmptyPasswords(input: ImapConnectionInput): ImapConnectio
     return { ...input, imap: clean(input.imap), smtp: clean(input.smtp) };
 }
 
+/** Carpeta del buzón y si se sincroniza. */
+export interface MailFolderInfo {
+    id: string;
+    name: string;
+    role: 'inbox' | 'sent' | 'drafts' | 'trash' | 'junk' | 'archive' | null;
+    /** La bandeja de entrada siempre se sincroniza; enviados, borradores, papelera y spam nunca. */
+    selectable: boolean;
+    synced: boolean;
+    last_success_at: string | null;
+    last_error: string | null;
+}
+
+export async function listMailFolders(id: number): Promise<MailFolderInfo[]> {
+    return (await api.get<{ data: MailFolderInfo[] }>(`/mail-connections/${id}/folders`)).data;
+}
+
+/** Carpetas a sincronizar además de la bandeja de entrada. */
+export async function updateMailFolders(id: number, folders: string[]): Promise<MailFolderInfo[]> {
+    return (await api.put<{ data: MailFolderInfo[] }>(`/mail-connections/${id}/folders`, { folders })).data;
+}
+
 export interface AutodetectResult {
     found: boolean;
     /** ispdb (Thunderbird) | domain (autoconfig del dominio) | srv (DNS) | guess (nombres habituales) */

@@ -28,6 +28,9 @@ return [
     // que no es de conexión ni de credenciales: un dato imposible, un bug)
     // antes de apartarlo y seguir con el resto. Sin esto el cursor no avanza
     // y el buzón se queda atascado para siempre. 0 = no apartar nunca.
+    // Carpetas que se pueden sincronizar por buzón (con la bandeja de entrada).
+    'sync_max_folders' => (int) env('MAIL_SYNC_MAX_FOLDERS', 10),
+
     'sync_skip_after_failures' => (int) env('MAIL_SYNC_SKIP_AFTER_FAILURES', 5),
 
     /*

@@ -5633,12 +5633,12 @@ Linux; está en `.gitignore`. Si molesta, `-e UV_PROJECT_ENVIRONMENT=/tmp/venv`.
    el informe elegido en git (p. ej. `evals/reports/`).
 5. Después: 15.4 (comparar ejecuciones y evaluación simulada en el CI).
 
-### Mejoras pendientes (rama `mejoras-pendientes`, desde `fase-15-evaluacion`): EN CURSO (2026-10-25)
+### Mejoras pendientes (rama `fase-mejoras`, desde `fase-15-evaluacion`): EN CURSO (2026-10-25)
 
 Pedido por el usuario (2026-10-25): sin equipo local ni gasto en IA o
 servidores, hacer en la nube las mejoras pequeñas anotadas en fases
 anteriores. Misma forma de trabajo: un commit por tarea, tests en verde,
-este archivo al día; los commits se suben a la rama `mejoras-pendientes`
+este archivo al día; los commits se suben a la rama `fase-mejoras` (así la lanza el CI; la rama remota `mejoras-pendientes` del primer push sobra: el proxy de la sesión no deja borrarla)
 (nunca a `main`), CI comprobado tras cada push.
 
 **Entorno de la sesión:** dockerd arrancado a mano; PostgreSQL + pgvector,
@@ -5676,7 +5676,28 @@ grupo `greenmail` (1102 tests al empezar).
   y seguir, ya apartado no se reintenta, conexión y credenciales nunca
   cuentan, otro correo reinicia el recuento, límite 0), API, retención y
   Vitest
-- [ ] M2. Sincronizar más carpetas que la bandeja de entrada
+- [x] M2. **Sincronizar más carpetas.** `App\Mail\Ingestion\MailFolderService`:
+  `list()` (carpetas del proveedor con `selectable`, `synced`, último éxito y
+  error de su `mail_sync_states`) y `set($ids)` (la bandeja de entrada
+  siempre; **nunca** roles sent/drafts/trash/junk —en Enviados están las
+  respuestas de la empresa y la IA se contestaría a sí misma—; carpeta
+  inexistente o excluida → 422; máx. `mail_connections.sync_max_folders`
+  (`MAIL_SYNC_MAX_FOLDERS`, 10, con la bandeja); una carpeta nueva = fila
+  nueva sin cursor → empieza sin histórico; quitarla borra su cursor).
+  `MailSyncService`: si falla una carpeta (borrada o renombrada en el
+  servidor), se siguen las demás y al final se relanza el primer error
+  (credenciales rechazadas: se para ahí). API `GET|PUT
+  /mail-connections/{id}/folders` (ver / `update`; throttle
+  `mail-connection-test`: preguntan al servidor; proveedor caído → 422 con el
+  motivo) y auditoría `mail_connection.folders_changed` (nombres añadidos y
+  quitados). Panel: botón **"Carpetas"** en "Buzones" (cajón
+  `MailFoldersForm.vue`: casillas, la bandeja marcada y fija, las excluidas
+  deshabilitadas con el motivo, última revisión o error por carpeta; solo
+  lectura sin `mail_connections.manage`) y la acción en la auditoría.
+  `FakeMailProvider::$folderRoles`. Tests: `MailFoldersTest` (9: lista,
+  añadir y quitar con auditoría, enviados/spam/inexistente → 422, máximo,
+  proveedor caído, permisos y aislamiento, sincronizar sin histórico y
+  seguir si una carpeta desaparece) y Vitest `MailFoldersForm.test.ts` (4)
 - [ ] M3. Microsoft: adjuntos de más de 3 MB (upload session) y correos
   movidos entre carpetas
 - [ ] M4. Copia en "Enviados" de las respuestas enviadas por SMTP (opción
@@ -5730,8 +5751,8 @@ grupo `greenmail` (1102 tests al empezar).
   Es razonable (solo informa), pero si una empresa no lo quiere, quitar
   `product_question` de sus intenciones o afinar el prompt (Fase 15).
 - Ingesta (Fase 4), límites conocidos:
-  - Solo se sincroniza la bandeja de entrada (añadir carpetas = más filas
-    en `mail_sync_states`; valorar cuando haga falta).
+  - ~~Solo se sincroniza la bandeja de entrada~~: **hecho en "Mejoras
+    pendientes", M2** (carpetas elegidas por la empresa).
   - ~~Mensaje "envenenado"~~: **hecho en "Mejoras pendientes", M1**
     (se aparta tras N fallos seguidos del mismo correo).
   - ~~Borrar un email no borraba los ficheros de adjuntos~~: **hecho en la
