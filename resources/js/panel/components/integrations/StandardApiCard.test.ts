@@ -3,7 +3,7 @@ import { defineComponent, h } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { NMessageProvider } from 'naive-ui';
-import StandardApiCard from '@/components/orders/StandardApiCard.vue';
+import StandardApiCard from '@/components/integrations/StandardApiCard.vue';
 import { saveStandardApi, type IntegrationConnection } from '@/api/integrations';
 import { useAuthStore } from '@/stores/auth';
 
@@ -39,7 +39,7 @@ describe('sistema propio de la empresa', () => {
     it('muestra la conexión, lo que tiene y por qué falla', async () => {
         stubApi(connection());
 
-        const wrapper = await mountCard(['orders.view', 'orders.manage']);
+        const wrapper = await mountCard(['integrations.view', 'integrations.manage']);
 
         expect(wrapper.text()).toContain('https://erp.acme.test/aimail');
         expect(wrapper.text()).toContain('Falla');
@@ -51,7 +51,7 @@ describe('sistema propio de la empresa', () => {
     it('sin permiso de gestión solo se ve', async () => {
         stubApi(connection({ status: 'active', last_error: null }));
 
-        const wrapper = await mountCard(['orders.view']);
+        const wrapper = await mountCard(['integrations.view']);
 
         expect(wrapper.text()).toContain('Conectado');
         expect(wrapper.text()).not.toContain('Probar conexión');
@@ -61,7 +61,7 @@ describe('sistema propio de la empresa', () => {
     it('sin conexión ofrece conectarla', async () => {
         stubApi(null);
 
-        const wrapper = await mountCard(['orders.view', 'orders.manage']);
+        const wrapper = await mountCard(['integrations.view', 'integrations.manage']);
 
         expect(wrapper.text()).toContain('Sin conectar.');
         expect(wrapper.text()).toContain('Conectar mi sistema');
@@ -79,7 +79,7 @@ describe('sistema propio de la empresa', () => {
     it('una clínica conecta solo su agenda: se ven las citas y se pueden marcar', async () => {
         stubApi(connection({ orders: false, invoices: false, appointments: true, status: 'active', last_error: null }));
 
-        const wrapper = await mountCard(['orders.view', 'orders.manage']);
+        const wrapper = await mountCard(['integrations.view', 'integrations.manage']);
         expect(wrapper.get('[data-test="connection"]').text()).toContain('Citas');
         expect(wrapper.get('[data-test="connection"]').text()).not.toContain('Pedidos');
 

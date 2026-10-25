@@ -31,7 +31,7 @@ class IntegrationController extends Controller
 
     public function show(string $type): JsonResponse
     {
-        Gate::authorize(Permission::ORDERS_VIEW);
+        Gate::authorize(Permission::INTEGRATIONS_VIEW);
         $connection = $this->connections->current(self::TYPES[$type]);
 
         return response()->json(['data' => $connection ? new TenantIntegrationResource($connection) : null]);
@@ -40,7 +40,7 @@ class IntegrationController extends Controller
     /** Crea o cambia la conexión y la prueba al momento. */
     public function update(Request $request, string $type): JsonResponse
     {
-        Gate::authorize(Permission::ORDERS_MANAGE);
+        Gate::authorize(Permission::INTEGRATIONS_MANAGE);
         $type = self::TYPES[$type];
         $creating = $this->connections->current($type) === null;
         $required = $creating ? 'required' : 'nullable';
@@ -72,7 +72,7 @@ class IntegrationController extends Controller
 
     public function test(string $type): JsonResponse
     {
-        Gate::authorize(Permission::ORDERS_MANAGE);
+        Gate::authorize(Permission::INTEGRATIONS_MANAGE);
         $connection = $this->connections->current(self::TYPES[$type]) ?? abort(404);
 
         ['result' => $result] = $this->connections->test($connection);
@@ -82,7 +82,7 @@ class IntegrationController extends Controller
 
     public function destroy(string $type): JsonResponse
     {
-        Gate::authorize(Permission::ORDERS_MANAGE);
+        Gate::authorize(Permission::INTEGRATIONS_MANAGE);
         $connection = $this->connections->current(self::TYPES[$type]) ?? abort(404);
 
         $this->connections->delete($connection);

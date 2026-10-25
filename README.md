@@ -718,9 +718,15 @@ los ven con `orders.view`), con plantilla descargable.
 
 ### Conectar el sistema propio de la empresa (Fase 14)
 
+Las conexiones con los sistemas de la empresa están en la página
+**Integraciones** del panel (permisos `integrations.view`, todos los roles,
+e `integrations.manage`, propietario y administrador; antes colgaban de
+"Pedidos" y de sus permisos, que no encajaban para una clínica). Tras
+actualizar: `php artisan db:seed --class=RolesAndPermissionsSeeder`.
+
 Si la empresa tiene un ERP o programa a medida, su informático publica la
 **API estándar** ([`contracts/integrations/`](contracts/integrations/README.md):
-consultas de solo lectura) y en **Pedidos → Tu propio sistema** se
+consultas de solo lectura) y en **Integraciones → Tu propio sistema** se
 guarda la dirección y la clave. Si está activada, **manda sobre los pedidos
 importados**; ofrece solo las partes que tiene: pedidos, facturas y/o
 **citas** (una clínica o un taller conecta solo su agenda).
@@ -755,7 +761,7 @@ o no tener citas, va a revisión humana.
 
 ### Conectar una tienda WooCommerce (Fase 14)
 
-**Pedidos → Tienda WooCommerce**: dirección de la tienda y unas claves de API
+**Integraciones → Tienda WooCommerce**: dirección de la tienda y unas claves de API
 de **solo lectura** (WooCommerce → Ajustes → Avanzado → API REST). La IA
 consulta los pedidos de quien escribe (estado, productos, importes y, con el
 plugin oficial *Shipment Tracking*, transportista y seguimiento). Solo
@@ -937,9 +943,10 @@ por Laravel en `/`. Cada empresa ve y gestiona **solo lo suyo**.
 | **Revisión** | Bandeja de lo que espera a una persona (con su número en el menú) e historial de decisiones ([Revisión humana](#14-revisión-humana-human-in-the-loop)) | `emails.view` / `emails.review` |
 | **Emails** | Listado con filtros (estado, intención, buzón, texto, fechas; guardados en la URL) | `emails.view` |
 | Detalle del email | Mensaje (texto o formato original aislado), adjuntos, clasificación, **respuesta propuesta** con los motivos de revisión, **historial de estados** y **lo que hizo la IA** (cada paso y cada herramienta con lo que consultó y lo que vio) | `emails.view` |
-| **Buzones** | Añadir IMAP (con **autodetección**), conectar Microsoft 365 / Gmail (OAuth), probar, editar, desactivar, eliminar | `mail_connections.view` / `.manage` |
+| **Buzones** | Añadir IMAP (con **autodetección** y la opción de copia en «Enviados»), conectar Microsoft 365 / Gmail (OAuth), probar, editar, desactivar, eliminar, elegir las **carpetas** que se revisan y avisos de correos que no se pudieron importar | `mail_connections.view` / `.manage` |
 | **Documentación** | Subir, reindexar y eliminar documentos (se refresca mientras indexa) y **probar la búsqueda**: lo que encontraría la IA, con su fuente | `documents.view` / `.manage` |
 | **Pedidos** | Importar pedidos por CSV (plantilla, errores por fila, todo o nada), buscar y borrarlos ([Pedidos por CSV](#pedidos-importados-por-csv-fase-14)) | `orders.view` / `.manage` |
+| **Integraciones** | Conectar el sistema propio de la empresa (pedidos, facturas, citas) y la tienda WooCommerce, probar y desconectar; qué fuente de pedidos gana | `integrations.view` / `.manage` |
 | **Ajustes de la IA** | Modo (`off` / `draft` / `auto`, con confirmación), intenciones que se responden solas, herramientas del agente | `tenant.view` / `automation.manage` |
 | **Empresa y usuarios** | Nombre de la empresa, usuarios y roles | `tenant.view`, `users.*` |
 
@@ -1542,11 +1549,11 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | GET | `/orders/template` | `orders.manage` | Plantilla CSV para rellenar en Excel |
 | POST | `/orders/import` | `orders.manage` | Importa un CSV (`file`): todo o nada; 422 con `rows` (errores por fila) |
 | DELETE | `/orders` | `orders.manage` | Borra todos los pedidos importados de la empresa |
-| GET | `/integrations/{standard-api\|woocommerce}` | `orders.view` | Conexión con el sistema propio o la tienda (sin credenciales) o `null` |
-| PUT | `/integrations/standard-api` | `orders.manage` | Crea o cambia la conexión (`base_url`, `token` —vacía = conservar—, `orders`, `invoices`, `enabled`) y la prueba |
-| PUT | `/integrations/woocommerce` | `orders.manage` | Igual para la tienda (`base_url`, `consumer_key` + `consumer_secret` —vacías = conservar—, `enabled`) |
-| POST | `/integrations/{tipo}/test` | `orders.manage` | Vuelve a probar la conexión |
-| DELETE | `/integrations/{tipo}` | `orders.manage` | Desconecta el sistema |
+| GET | `/integrations/{standard-api\|woocommerce}` | `integrations.view` | Conexión con el sistema propio o la tienda (sin credenciales) o `null` |
+| PUT | `/integrations/standard-api` | `integrations.manage` | Crea o cambia la conexión (`base_url`, `token` —vacía = conservar—, `orders`, `invoices`, `enabled`) y la prueba |
+| PUT | `/integrations/woocommerce` | `integrations.manage` | Igual para la tienda (`base_url`, `consumer_key` + `consumer_secret` —vacías = conservar—, `enabled`) |
+| POST | `/integrations/{tipo}/test` | `integrations.manage` | Vuelve a probar la conexión |
+| DELETE | `/integrations/{tipo}` | `integrations.manage` | Desconecta el sistema |
 
 ```bash
 # Login

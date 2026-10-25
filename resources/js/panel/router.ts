@@ -62,6 +62,12 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Pedidos importados', permission: 'orders.view' },
             },
             {
+                path: 'integraciones',
+                name: 'integrations',
+                component: () => import('@/pages/IntegrationsPage.vue'),
+                meta: { title: 'Integraciones', permission: 'integrations.view' },
+            },
+            {
                 path: 'configuracion/ia',
                 name: 'ai-settings',
                 component: () => import('@/pages/AiSettingsPage.vue'),

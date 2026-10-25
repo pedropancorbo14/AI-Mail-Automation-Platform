@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { NMessageProvider } from 'naive-ui';
 import OrdersPage from '@/pages/OrdersPage.vue';
 import { ApiError } from '@/api/http';
@@ -33,7 +34,9 @@ function stubApi(): ReturnType<typeof vi.fn> {
 
 async function mountPage(permissions: string[]) {
     useAuthStore().user = { id: 1, name: 'Ana', email: 'a@b.test', role: 'admin', permissions, tenant: { id: 1, name: 'Acme', slug: 'acme' } };
-    const wrapper = mount(defineComponent(() => () => h(NMessageProvider, () => h(OrdersPage))));
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/integraciones', name: 'integrations', component: { template: '<div />' } }] });
+    await router.push('/');
+    const wrapper = mount(defineComponent(() => () => h(NMessageProvider, () => h(OrdersPage))), { global: { plugins: [router] } });
     await flushPromises();
 
     return wrapper;

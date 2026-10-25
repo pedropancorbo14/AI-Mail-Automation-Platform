@@ -28,7 +28,7 @@ import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
 const message = useMessage();
-const canManage = computed(() => auth.can('orders.manage'));
+const canManage = computed(() => auth.can('integrations.manage'));
 
 const connection = ref<IntegrationConnection | null>(null);
 const editing = ref(false);

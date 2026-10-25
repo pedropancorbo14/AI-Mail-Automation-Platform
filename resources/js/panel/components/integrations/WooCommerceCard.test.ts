@@ -3,7 +3,7 @@ import { defineComponent, h } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { NMessageProvider } from 'naive-ui';
-import WooCommerceCard from '@/components/orders/WooCommerceCard.vue';
+import WooCommerceCard from '@/components/integrations/WooCommerceCard.vue';
 import { saveWooCommerce, type IntegrationConnection } from '@/api/integrations';
 import { useAuthStore } from '@/stores/auth';
 
@@ -38,7 +38,7 @@ describe('tienda WooCommerce', () => {
     it('muestra la tienda conectada con el final de la clave, nunca el secreto', async () => {
         stubApi(shop);
 
-        const wrapper = await mountCard(['orders.view', 'orders.manage']);
+        const wrapper = await mountCard(['integrations.view', 'integrations.manage']);
 
         expect(wrapper.text()).toContain('https://tienda.acme.test');
         expect(wrapper.text()).toContain('Conectada');
@@ -49,7 +49,7 @@ describe('tienda WooCommerce', () => {
     it('sin permiso de gestión solo se ve', async () => {
         stubApi(shop);
 
-        const wrapper = await mountCard(['orders.view']);
+        const wrapper = await mountCard(['integrations.view']);
 
         expect(wrapper.text()).not.toContain('Probar conexión');
         expect(wrapper.text()).not.toContain('Editar');

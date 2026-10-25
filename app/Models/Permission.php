@@ -56,6 +56,12 @@ class Permission extends Model
     /** Importar pedidos por CSV y borrar los importados. */
     public const string ORDERS_MANAGE = 'orders.manage';
 
+    /** Ver qué sistemas de la empresa tiene conectados la IA (ERP propio, tienda...). */
+    public const string INTEGRATIONS_VIEW = 'integrations.view';
+
+    /** Conectar, probar y desconectar los sistemas de la empresa. */
+    public const string INTEGRATIONS_MANAGE = 'integrations.manage';
+
     /**
      * Catálogo completo (nombre => descripción). Cada permiso se registra
      * como Gate en AppServiceProvider y se guarda en BD con el seeder.
@@ -78,6 +84,8 @@ class Permission extends Model
         self::EMAILS_REVIEW => 'Revisar, aprobar y responder emails',
         self::ORDERS_VIEW => 'Ver los pedidos importados',
         self::ORDERS_MANAGE => 'Importar pedidos por CSV y borrarlos',
+        self::INTEGRATIONS_VIEW => 'Ver los sistemas de la empresa conectados a la IA',
+        self::INTEGRATIONS_MANAGE => 'Conectar y desconectar los sistemas de la empresa',
     ];
 
     /** @return BelongsToMany<Role, $this> */

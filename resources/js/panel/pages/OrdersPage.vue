@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import {
     NAlert,
     NButton,
@@ -26,8 +27,6 @@ import {
     type CustomerOrder,
     type RowError,
 } from '@/api/orders';
-import StandardApiCard from '@/components/orders/StandardApiCard.vue';
-import WooCommerceCard from '@/components/orders/WooCommerceCard.vue';
 import { formatDateTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
 
@@ -151,6 +150,8 @@ const pagination = computed(() => ({
                 Si tu empresa no usa una tienda online conectada, sube aquí tus pedidos en un CSV (por ejemplo, exportado desde Excel).
                 La IA los consultará para responder a los clientes, siempre solo los pedidos de quien escribe.
                 Volver a subir el fichero actualiza los pedidos por su número.
+                Si tienes una tienda online o tu propio sistema, conéctalos en
+                <RouterLink :to="{ name: 'integrations' }">Integraciones</RouterLink>: tienen prioridad sobre el CSV.
             </NText>
 
             <NSpace v-if="canManage" align="center" class="orders__upload">
@@ -193,9 +194,6 @@ const pagination = computed(() => ({
                 :row-key="(row: CustomerOrder) => row.id"
             />
         </NCard>
-
-        <WooCommerceCard />
-        <StandardApiCard />
     </NSpace>
 </template>
 

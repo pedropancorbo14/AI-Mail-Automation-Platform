@@ -5633,7 +5633,7 @@ Linux; está en `.gitignore`. Si molesta, `-e UV_PROJECT_ENVIRONMENT=/tmp/venv`.
    el informe elegido en git (p. ej. `evals/reports/`).
 5. Después: 15.4 (comparar ejecuciones y evaluación simulada en el CI).
 
-### Mejoras pendientes (rama `fase-mejoras`, desde `fase-15-evaluacion`): EN CURSO (2026-10-25)
+### Mejoras pendientes (rama `fase-mejoras`, desde `fase-15-evaluacion`): COMPLETADAS (2026-10-25), pendiente de que las revise el usuario
 
 Pedido por el usuario (2026-10-25): sin equipo local ni gasto en IA o
 servidores, hacer en la nube las mejoras pequeñas anotadas en fases
@@ -5750,7 +5750,32 @@ grupo `greenmail` (1102 tests al empezar).
   carpeta el envío sale igual; sin la opción no hay copia), roles por nombre
   (7 casos), API (crear, editar con auditoría, ignorado en Microsoft) y
   Vitest
-- [ ] M5. Página "Integraciones" en el panel
+- [x] M5. **Página "Integraciones".** Las tarjetas "Tu propio sistema" y
+  "Tienda WooCommerce" salen de "Pedidos" (una clínica no tiene pedidos) a
+  la página nueva **`IntegrationsPage`** (`/integraciones`, menú
+  "Integraciones" con icono de red): explica qué datos consulta la IA, que
+  solo lee y solo los del cliente que escribe, que sin integraciones todo
+  funciona igual, y qué fuente de pedidos gana (sistema propio > WooCommerce
+  > CSV, con enlace a "Pedidos" si se puede ver). Componentes movidos a
+  `components/integrations/`. "Pedidos" queda solo con el CSV y enlaza a
+  Integraciones. **Permisos nuevos** `integrations.view` (los tres roles:
+  el agente sabe de dónde saca datos la IA) e `integrations.manage`
+  (propietario y administrador), usados por `IntegrationController` en vez
+  de `orders.*`. **Al actualizar:** `php artisan db:seed
+  --class=RolesAndPermissionsSeeder`. Tests: Pest (permisos del agente,
+  agente ve pero no cambia) y Vitest (`IntegrationsPage.test.ts`, tarjetas
+  con los permisos nuevos, `OrdersPage` con router)
+
+**Resumen:** 5 mejoras + 1 fix de CI (vulnerabilidad nueva en una
+dependencia de Python) en 6 commits. Laravel 1131 tests y Vitest 109 en
+verde (incluido el grupo `greenmail`), Python 618, alertas con `promtool`.
+**Pendiente:** que el usuario revise la rama `fase-mejoras`, el CI en verde
+y la fusione; en su equipo, `migrate` (tabla `mail_skipped_messages`,
+columnas de `mail_sync_states` y `mail_connections.save_sent_copy`),
+`RolesAndPermissionsSeeder` (permisos `integrations.*`), `docker compose
+restart prometheus` (alerta `CorreoApartado`) y reconstruir `ai-service`
+(dependencia actualizada). Ideas que salieron: freno por antigüedad del
+correo (un correo antiguo movido a la bandeja no debería ir a la IA, ver M3)
 
 ### Pendientes anotados para más adelante
 

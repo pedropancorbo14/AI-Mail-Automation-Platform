@@ -43,6 +43,8 @@ class Role extends Model
             Permission::EMAILS_REVIEW,
             Permission::ORDERS_VIEW,
             Permission::ORDERS_MANAGE,
+            Permission::INTEGRATIONS_VIEW,
+            Permission::INTEGRATIONS_MANAGE,
         ],
         self::ADMIN => [
             Permission::USERS_VIEW,
@@ -61,6 +63,8 @@ class Role extends Model
             Permission::EMAILS_REVIEW,
             Permission::ORDERS_VIEW,
             Permission::ORDERS_MANAGE,
+            Permission::INTEGRATIONS_VIEW,
+            Permission::INTEGRATIONS_MANAGE,
         ],
         self::AGENT => [
             Permission::USERS_VIEW,
@@ -72,6 +76,8 @@ class Role extends Model
             Permission::EMAILS_REVIEW,
             // Consultar el pedido del cliente que escribe.
             Permission::ORDERS_VIEW,
+            // Saber de qué sistemas saca datos la IA (sin poder cambiarlos).
+            Permission::INTEGRATIONS_VIEW,
         ],
     ];
 
