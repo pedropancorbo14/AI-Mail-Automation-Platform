@@ -122,6 +122,10 @@ onMounted(async () => {
                             Solo en modo automático, y solo si la respuesta es segura: confianza de al menos
                             {{ formatPercent(settings.platform.min_confidence) }}, sin acciones pendientes ni dudas de la IA, y como máximo
                             {{ settings.platform.max_auto_replies_per_address }} respuestas automáticas al día a la misma dirección.
+                            <template v-if="settings.platform.max_email_age_days > 0">
+                                Un correo de hace más de {{ settings.platform.max_email_age_days }} días (por ejemplo, uno antiguo movido a la bandeja)
+                                no pasa por la IA: lo revisa una persona.
+                            </template>
                         </NText>
                         <div class="settings__intents">
                             <NCheckbox

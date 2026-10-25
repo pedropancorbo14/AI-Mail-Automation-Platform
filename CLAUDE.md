@@ -5766,16 +5766,30 @@ grupo `greenmail` (1102 tests al empezar).
   agente ve pero no cambia) y Vitest (`IntegrationsPage.test.ts`, tarjetas
   con los permisos nuevos, `OrdersPage` con router)
 
-**Resumen:** 5 mejoras + 1 fix de CI (vulnerabilidad nueva en una
-dependencia de Python) en 6 commits. Laravel 1131 tests y Vitest 109 en
+- [x] M6. **Freno por antigüedad** (pedido por el usuario tras M3): un
+  correo cuya fecha (`emails.sent_at`, cabecera Date) tiene más de
+  `ai.automation.max_email_age_days` (`AI_MAX_EMAIL_AGE_DAYS`, 7; 0 = sin
+  límite) va a **revisión humana sin llamar a la IA**
+  (`EmailProcessor::staleReason()`, tras el modo off y antes del freno del
+  gasto), con el motivo "El correo es del 15/09/2026 (hace 40 días): un
+  correo antiguo (p. ej. movido a la bandeja) no se responde con la IA…".
+  Cubre el caso de M3 en todos los proveedores (en IMAP un correo antiguo
+  movido a una carpeta revisada recibe un UID nuevo y se importa como
+  nuevo). Sin fecha no frena; los automáticos siguen ignorándose; si una
+  persona lo **reprocesa a mano** sí va a la IA. Visible en "Ajustes de la
+  IA" (`platform.max_email_age_days`). Una fecha falsa en el pasado solo
+  manda el correo a una persona (inofensivo). Tests: 5 en
+  `EmailProcessorTest`, API y Vitest
+
+**Resumen:** 6 mejoras + 1 fix de CI (vulnerabilidad nueva en una
+dependencia de Python) en 7 commits. Laravel 1131 tests y Vitest 109 en
 verde (incluido el grupo `greenmail`), Python 618, alertas con `promtool`.
 **Pendiente:** que el usuario revise la rama `fase-mejoras`, el CI en verde
 y la fusione; en su equipo, `migrate` (tabla `mail_skipped_messages`,
 columnas de `mail_sync_states` y `mail_connections.save_sent_copy`),
 `RolesAndPermissionsSeeder` (permisos `integrations.*`), `docker compose
 restart prometheus` (alerta `CorreoApartado`) y reconstruir `ai-service`
-(dependencia actualizada). Ideas que salieron: freno por antigüedad del
-correo (un correo antiguo movido a la bandeja no debería ir a la IA, ver M3)
+(dependencia actualizada)
 
 ### Pendientes anotados para más adelante
 

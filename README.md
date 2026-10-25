@@ -853,6 +853,7 @@ email nuevo (mail:sync, cada minuto) ── EmailIngested ──► ProcessEmail
   received ─► processing
      ├─ ¿correo automático? (rebote, lista, boletín, fuera de oficina...) ─► ignored   (sin gastar IA)
      ├─ ¿empresa en modo "off"? ─────────────────────────────────────────► human_review
+     ├─ ¿correo de hace más de AI_MAX_EMAIL_AGE_DAYS días (7)? ───────────► human_review (sin IA)
      ├─ ¿presupuesto diario agotado o remitente que inunda? ─────────────► human_review (sin IA)
      └─ email.received.v1 ─► ai-service ─► email.processed.v1 ─► ai:consume-results
             ├─ spam / respuesta automática con confianza ≥ 0,8 ─► ignored
@@ -861,6 +862,13 @@ email nuevo (mail:sync, cada minuto) ── EmailIngested ──► ProcessEmail
                  ├─ todo correcto ─► approved ─► SendReplyJob (cola "mail") ─► sent
                  └─ cualquier motivo ─► human_review (con todos los motivos)
 ```
+
+**Correos antiguos:** un correo cuya fecha (cabecera `Date`) tiene más de
+`AI_MAX_EMAIL_AGE_DAYS` días (7; `0` = sin límite) no pasa por la IA: lo
+revisa una persona. Ocurre al mover un correo antiguo a una carpeta que se
+revisa (en IMAP recibe un UID nuevo y se importa como nuevo) y la IA
+respondería a una conversación vieja. Si una persona lo reprocesa a mano, sí
+va a la IA.
 
 Cada cambio de estado se guarda en **`email_status_changes`** con su motivo
 y quién lo decidió (null = la plataforma). Un email no puede saltarse

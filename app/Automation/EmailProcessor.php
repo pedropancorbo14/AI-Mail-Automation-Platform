@@ -19,7 +19,7 @@ use Throwable;
  * filtros baratos y la IA la hace ai-service:
  *
  *   received → processing → [automático] → ignored
- *                         → [modo off / freno del gasto] → human_review
+ *                         → [modo off / correo antiguo / freno del gasto] → human_review
  *                         → email.received.v1 → (ai-service) → RemoteResultHandler
  *                              → ignored | human_review | ai_review → reglas → approved → sent
  *
@@ -113,6 +113,14 @@ class EmailProcessor
             return;
         }
 
+        // Un correo antiguo (p. ej. movido a la bandeja) no se responde con la IA,
+        // salvo que una persona lo reprocese a mano.
+        if (! $reprocess && ($reason = self::staleReason($email))) {
+            $email->transitionTo(EmailStatus::HumanReview, $reason);
+
+            return;
+        }
+
         if ($reason = $this->spendGuard->blockReason($email)) {
             $email->transitionTo(EmailStatus::HumanReview, $reason);
 
@@ -141,6 +149,26 @@ class EmailProcessor
             // P. ej. sin remitente válido: la IA no puede procesarlo.
             $email->transitionTo(EmailStatus::HumanReview, "No se pudo enviar al servicio de IA ({$e->getMessage()}): lo atiende una persona.");
         }
+    }
+
+    /**
+     * Motivo para no mandar a la IA un correo cuya fecha (cabecera Date) es
+     * más antigua que ai.automation.max_email_age_days, o null. Sin fecha no
+     * se frena: el resto de reglas siguen aplicando.
+     */
+    public static function staleReason(Email $email): ?string
+    {
+        $maxDays = (int) config('ai.automation.max_email_age_days');
+
+        if ($maxDays <= 0 || $email->sent_at === null || $email->sent_at->gte(now()->subDays($maxDays))) {
+            return null;
+        }
+
+        return sprintf(
+            'El correo es del %s (hace %d días): un correo antiguo (p. ej. movido a la bandeja) no se responde con la IA, lo revisa una persona.',
+            $email->sent_at->format('d/m/Y'),
+            (int) $email->sent_at->diffInDays(now()),
+        );
     }
 
     /**

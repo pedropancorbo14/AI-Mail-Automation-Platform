@@ -136,6 +136,37 @@ it('does not touch emails that are already being answered', function (EmailStatu
         ->and(publishedEmails())->toBe([]);
 })->with([EmailStatus::AiReview, EmailStatus::Approved, EmailStatus::Sent]);
 
+it('sends old emails to a person without the ai, unless a person reprocesses them', function () {
+    $this->travelTo(now()->setDate(2026, 10, 25));
+    inTenant($this->tenant, fn () => $this->email->forceFill(['sent_at' => now()->subDays(40)])->save());
+
+    expect(processEmail())->toBe(EmailStatus::HumanReview)
+        ->and(publishedEmails())->toBe([])
+        ->and(lastStatusReason())->toBe('El correo es del 15/09/2026 (hace 40 días): un correo antiguo (p. ej. movido a la bandeja) no se responde con la IA, lo revisa una persona.');
+
+    // Una persona decide que sí: reprocesarlo lo manda a la IA.
+    expect(processEmail(reprocess: true))->toBe(EmailStatus::Processing)
+        ->and(publishedEmails())->toHaveCount(1);
+});
+
+it('lets recent, undated and any email through when the age limit is off', function (?int $daysAgo, int $limit) {
+    config(['ai.automation.max_email_age_days' => $limit]);
+    inTenant($this->tenant, fn () => $this->email->forceFill(['sent_at' => $daysAgo === null ? null : now()->subDays($daysAgo)])->save());
+
+    expect(processEmail())->toBe(EmailStatus::Processing)
+        ->and(publishedEmails())->toHaveCount(1);
+})->with([
+    'de hace 6 días' => [6, 7],
+    'sin fecha' => [null, 7],
+    'antiguo con el límite desactivado' => [400, 0],
+]);
+
+it('still ignores old automated emails without a person', function () {
+    inTenant($this->tenant, fn () => $this->email->forceFill(['sent_at' => now()->subDays(40), 'automated_reason' => 'Auto-Submitted: auto-replied'])->save());
+
+    expect(processEmail())->toBe(EmailStatus::Ignored);
+});
+
 it('must run inside the email company', function () {
     app(EmailProcessor::class)->process($this->email);
 })->throws(LogicException::class);

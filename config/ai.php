@@ -76,6 +76,13 @@ return [
         // Una respuesta más larga no sale sola (ReplyContentGuard): las
         // respuestas seguras son cortas; un texto enorme suele ser un error.
         'max_auto_reply_chars' => (int) env('AI_MAX_AUTO_REPLY_CHARS', 3000),
+
+        // Un correo cuya fecha (cabecera Date) tiene más de estos días no va a
+        // la IA: lo revisa una persona. Pasa al mover un correo antiguo a una
+        // carpeta que se sincroniza (en IMAP recibe un UID nuevo y se importa
+        // como nuevo): la IA respondería a una conversación vieja. Reprocesarlo
+        // a mano sí lo manda a la IA. 0 = sin límite.
+        'max_email_age_days' => (int) env('AI_MAX_EMAIL_AGE_DAYS', 7),
     ],
 
     // Comunicación con ai-service (eventos en Redis Streams, ver

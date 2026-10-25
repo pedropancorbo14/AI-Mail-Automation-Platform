@@ -16,6 +16,8 @@ export interface AutomationSettings {
         model: string;
         min_confidence: number;
         max_auto_replies_per_address: number;
+        /** Correos más antiguos (por su fecha) no van a la IA: los revisa una persona. 0 = sin límite. */
+        max_email_age_days: number;
     };
 }
 

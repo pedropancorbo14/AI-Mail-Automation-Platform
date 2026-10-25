@@ -101,6 +101,8 @@ class AutomationController extends Controller
                 'model' => $this->modelLabel(),
                 'min_confidence' => (float) config('ai.remote.min_confidence'),
                 'max_auto_replies_per_address' => (int) config('ai.automation.max_auto_replies_per_address'),
+                // 0 = sin límite.
+                'max_email_age_days' => (int) config('ai.automation.max_email_age_days'),
             ],
         ]]);
     }

@@ -26,7 +26,7 @@ const settings: AutomationSettings = {
         { tool: 'get_invoice', enabled: false, available: false, source: 'default' },
         { tool: 'get_customer_tickets', enabled: true, available: null, source: 'company' },
     ],
-    platform: { ai_configured: true, auto_send_enabled: true, model: 'claude-opus-5-5', min_confidence: 0.75, max_auto_replies_per_address: 3 },
+    platform: { ai_configured: true, auto_send_enabled: true, model: 'claude-opus-5-5', min_confidence: 0.75, max_auto_replies_per_address: 3, max_email_age_days: 7 },
 };
 
 // La página usa diálogos y mensajes de Naive UI: necesita sus proveedores.
@@ -59,6 +59,7 @@ describe('configuración de la IA', () => {
         expect(wrapper.text()).toContain('Borradores');
         expect(wrapper.get('[data-test="tool-get_order"]').classes()).toContain('n-switch--disabled');
         expect(wrapper.text()).not.toContain('Guardar intenciones');
+        expect(wrapper.text()).toContain('Un correo de hace más de 7 días');
     });
 
     it('activa una herramienta para la empresa', async () => {
