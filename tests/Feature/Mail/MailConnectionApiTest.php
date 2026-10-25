@@ -111,6 +111,21 @@ it('lists the connections of the company without secrets', function () {
         ->not->toContain('credentials');
 });
 
+it('tells how many emails the sync set aside', function () {
+    $connection = connectionOf($this->tenant);
+    inTenant($this->tenant, fn () => \App\Models\MailSkippedMessage::forceCreate([
+        'mail_connection_id' => $connection->id, 'folder' => 'INBOX', 'provider_message_id' => '7',
+        'subject' => 'Imposible', 'error' => 'Error interno al guardar el correo.', 'attempts' => 5,
+    ]));
+
+    $this->actingAs($this->agent, 'sanctum')->getJson('/api/v1/mail-connections')
+        ->assertOk()
+        ->assertJsonPath('data.0.skipped_messages', 1);
+
+    $this->actingAs($this->agent, 'sanctum')->getJson("/api/v1/mail-connections/{$connection->id}")
+        ->assertJsonPath('data.skipped_messages', 1);
+});
+
 it('shows a connection', function () {
     $connection = connectionOf($this->tenant);
 

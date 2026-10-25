@@ -157,6 +157,23 @@ it('forgets every email of an address, as sender or recipient, only in that comp
         ->and(json_encode($log->getAttributes()))->not->toContain('ana@');
 });
 
+it('also forgets and prunes the emails the sync set aside', function () {
+    $connection = inTenant($this->tenant, fn () => \App\Models\MailConnection::factory()->create());
+    $skip = fn (string $from, string $id) => inTenant($this->tenant, fn () => \App\Models\MailSkippedMessage::forceCreate([
+        'mail_connection_id' => $connection->id, 'folder' => 'INBOX', 'provider_message_id' => $id,
+        'from_email' => $from, 'subject' => 'x', 'error' => 'Error interno al guardar el correo.', 'attempts' => 5,
+    ]));
+    $skip('Ana@Cliente.test', '1');
+    $skip('otro@cliente.test', '2');
+    $old = $skip('viejo@cliente.test', '3');
+    DB::table('mail_skipped_messages')->where('id', $old->id)->update(['created_at' => now()->subDays(400)]);
+
+    app(RetentionService::class)->forgetAddress($this->tenant, 'ana@cliente.test');
+    app(RetentionService::class)->pruneEmails($this->tenant);
+
+    expect(inTenant($this->tenant, fn () => \App\Models\MailSkippedMessage::pluck('from_email')->all()))->toBe(['otro@cliente.test']);
+});
+
 // --- API ---------------------------------------------------------------------------
 
 it('lets owners and admins delete an email through the api, leaving no personal data in the audit', function () {

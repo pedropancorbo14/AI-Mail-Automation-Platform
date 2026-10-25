@@ -21,6 +21,8 @@ export interface MailConnection {
     settings: { imap?: ServerSettings; smtp?: ServerSettings; scopes?: string[] };
     last_tested_at: string | null;
     last_error: string | null;
+    /** Correos que la sincronización apartó porque fallan siempre al guardarlos. */
+    skipped_messages?: number;
     created_at: string | null;
 }
 

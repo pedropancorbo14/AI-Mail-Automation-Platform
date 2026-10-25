@@ -5633,6 +5633,56 @@ Linux; está en `.gitignore`. Si molesta, `-e UV_PROJECT_ENVIRONMENT=/tmp/venv`.
    el informe elegido en git (p. ej. `evals/reports/`).
 5. Después: 15.4 (comparar ejecuciones y evaluación simulada en el CI).
 
+### Mejoras pendientes (rama `mejoras-pendientes`, desde `fase-15-evaluacion`): EN CURSO (2026-10-25)
+
+Pedido por el usuario (2026-10-25): sin equipo local ni gasto en IA o
+servidores, hacer en la nube las mejoras pequeñas anotadas en fases
+anteriores. Misma forma de trabajo: un commit por tarea, tests en verde,
+este archivo al día; los commits se suben a la rama `mejoras-pendientes`
+(nunca a `main`), CI comprobado tras cada push.
+
+**Entorno de la sesión:** dockerd arrancado a mano; PostgreSQL + pgvector,
+Redis, GreenMail y Prometheus (promtool) desde `mirror.gcr.io` con
+`--network host`; Composer con `--prefer-source --ignore-platform-req=php`
+(PHP 8.3 del sistema) y Pest en `mirror.gcr.io/serversideup/php:8.4-cli-alpine`
+(`-u 0`, `DB_HOST/REDIS_HOST/GREENMAIL_HOST=127.0.0.1` como variables: no se
+toca `.env.testing`, que está en git). Así pasa la suite entera, también el
+grupo `greenmail` (1102 tests al empezar).
+
+**Tareas:**
+- [x] M1. **Apartar el "mensaje envenenado"** (anotado en la Fase 4). Si un
+  correo concreto falla al guardarlo con un error que **no** es de conexión
+  ni de credenciales (un bug, un dato imposible), `MailSyncState::
+  recordMessageFailure()` cuenta los fallos seguidos de **ese** correo
+  (`failing_message_id`/`failing_message_attempts`; otro correo empieza de
+  cero; un lote correcto los limpia) y, al llegar a
+  `mail_connections.sync_skip_after_failures` (`MAIL_SYNC_SKIP_AFTER_FAILURES`,
+  5; 0 = nunca), `MailSyncService` lo **aparta** en la tabla nueva
+  **`mail_skipped_messages`** (tenant, buzón cascade, carpeta, id en el
+  proveedor —único por buzón y carpeta—, Message-ID, remitente, asunto,
+  fecha, error sin detalles internos, intentos) y sigue con el resto del
+  lote, que avanza el cursor. En los lotes siguientes, un mensaje ya
+  apartado se salta sin volver a intentarlo (p. ej. si el proveedor
+  invalida el cursor). `SyncResult::$skipped`. Log de error "Correo
+  apartado" con el detalle. Métrica `mail_messages_skipped_total` {tenant,
+  provider} (observer) y alerta **`CorreoApartado`** (con prueba en
+  `alerts.test.yml`, primera aparición incluida); `BuzonAtascado` ya no
+  habla de mensajes envenenados. Retención: los apartados se borran con la
+  retención de emails y con `data:forget-address` (tienen remitente y
+  asunto). API de buzones: `skipped_messages` (recuento); panel "Buzones":
+  aviso "N correos no se pudieron importar (siguen en el buzón)". El email
+  que se llegó a guardar sin completar se queda con `ingested_at` null (no
+  se procesa). Tests: 5 en `MailSyncServiceTest` (apartar al tercer intento
+  y seguir, ya apartado no se reintenta, conexión y credenciales nunca
+  cuentan, otro correo reinicia el recuento, límite 0), API, retención y
+  Vitest
+- [ ] M2. Sincronizar más carpetas que la bandeja de entrada
+- [ ] M3. Microsoft: adjuntos de más de 3 MB (upload session) y correos
+  movidos entre carpetas
+- [ ] M4. Copia en "Enviados" de las respuestas enviadas por SMTP (opción
+  por buzón)
+- [ ] M5. Página "Integraciones" en el panel
+
 ### Pendientes anotados para más adelante
 
 - **Rutas `/internal` en producción (Fase 16):** hoy nginx las sirve a
@@ -5682,10 +5732,8 @@ Linux; está en `.gitignore`. Si molesta, `-e UV_PROJECT_ENVIRONMENT=/tmp/venv`.
 - Ingesta (Fase 4), límites conocidos:
   - Solo se sincroniza la bandeja de entrada (añadir carpetas = más filas
     en `mail_sync_states`; valorar cuando haga falta).
-  - **Mensaje "envenenado":** si un correo concreto falla siempre con un
-    error no temporal (bug, dato imposible de guardar), el cursor no
-    avanza y el buzón se queda atascado (`consecutive_failures` crece).
-    Alertar en Fase 11 y valorar saltarlo tras N intentos.
+  - ~~Mensaje "envenenado"~~: **hecho en "Mejoras pendientes", M1**
+    (se aparta tras N fallos seguidos del mismo correo).
   - ~~Borrar un email no borraba los ficheros de adjuntos~~: **hecho en la
     Fase 12, tarea 9** (`EmailEraser`).
   - IMAP: si UIDVALIDITY cambia entre guardar un email y descargar sus

@@ -34,7 +34,7 @@ class MailConnectionController extends Controller
         Gate::authorize('viewAny', MailConnection::class);
 
         return MailConnectionResource::collection(
-            MailConnection::orderBy('name')->paginate(25),
+            MailConnection::orderBy('name')->withCount('skippedMessages')->paginate(25),
         );
     }
 

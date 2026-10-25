@@ -26,6 +26,8 @@ class MailConnectionResource extends JsonResource
             'settings' => $this->settings(),
             'last_tested_at' => $this->last_tested_at?->toIso8601String(),
             'last_error' => $this->last_error,
+            // Correos que la sincronización apartó porque fallan siempre.
+            'skipped_messages' => $this->skipped_messages_count ?? $this->skippedMessages()->count(),
             'created_by' => $this->created_by,
             'created_at' => $this->created_at?->toIso8601String(),
         ];

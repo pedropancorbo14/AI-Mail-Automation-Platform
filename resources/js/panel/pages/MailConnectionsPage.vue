@@ -67,6 +67,13 @@ async function load(): Promise<void> {
     }
 }
 
+/** Aviso de correos apartados: siguen en el buzón, pero la plataforma no los importó. */
+function skippedText(count: number): string {
+    return count === 1
+        ? '1 correo no se pudo importar (sigue en el buzón): avisa al soporte de la plataforma.'
+        : `${count} correos no se pudieron importar (siguen en el buzón): avisa al soporte de la plataforma.`;
+}
+
 function replace(connection: MailConnection): void {
     const index = connections.value.findIndex((c) => c.id === connection.id);
     index === -1 ? connections.value.unshift(connection) : connections.value.splice(index, 1, connection);
@@ -168,6 +175,7 @@ const columns = computed<DataTableColumns<MailConnection>>(() => [
         render: (row) => h('div', [
             h(NTag, { type: statusInfo[row.status].type, size: 'small' }, () => statusInfo[row.status].label),
             row.last_error && row.status !== 'active' ? h(NText, { type: 'error', style: 'display:block;font-size:12px;margin-top:4px' }, () => row.last_error) : null,
+            row.skipped_messages ? h(NText, { type: 'warning', style: 'display:block;font-size:12px;margin-top:4px' }, () => skippedText(row.skipped_messages ?? 0)) : null,
         ]),
     },
     { title: 'Última prueba', key: 'last_tested_at', width: 140, render: (row) => formatDateTime(row.last_tested_at) },

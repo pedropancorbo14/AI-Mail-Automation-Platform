@@ -41,7 +41,7 @@ tests:
           - exp_labels: { severity: warning, tenant: empresa-demo, mailbox: "3" }
             exp_annotations:
               summary: "El buzón 3 de empresa-demo lleva 11 sincronizaciones fallidas seguidas"
-              description: "El cursor no avanza: puede haber un correo que siempre falla (mensaje envenenado) o el servidor no responde. Ver mail_sync_states.last_error."
+              description: "El cursor no avanza: el servidor no responde o rechaza la cuenta (un correo que falla siempre se aparta solo tras MAIL_SYNC_SKIP_AFTER_FAILURES intentos). Ver mail_sync_states.last_error."
 
   # Última sincronización correcta en t=0 (timestamp 0): a los 20 min, >15 min.
   - interval: 1m
@@ -223,6 +223,27 @@ tests:
             exp_annotations:
               summary: "3 emails de nueva han pasado a error en 15 min"
               description: "Revisar en el panel los emails con estado Error (motivo en su historial) y reprocesarlos con ai:process --failed."
+
+  # Un correo envenenado apartado (primera aparición de la serie): avisa al
+  # momento y deja de avisar 15 min después.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_mail_messages_skipped_total{job="laravel", instance="nginx:80", tenant="acme", provider="imap"}'
+        values: "_ _ 1 1 1x20"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: CorreoApartado
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: CorreoApartado
+        exp_alerts:
+          - exp_labels: { severity: warning, tenant: acme, provider: imap }
+            exp_annotations:
+              summary: "acme: un correo se ha apartado porque falla siempre al guardarlo"
+              description: "La sincronización lo saltó para no atascar el buzón. El correo sigue en el buzón del cliente: buscarlo en mail_skipped_messages (remitente, asunto, error) y ver el detalle en los logs (\"Correo apartado\")."
+      - eval_time: 25m
+        alertname: CorreoApartado
+        exp_alerts: []
 
   # Límites de gasto: una empresa agota el presupuesto (primera aparición de
   # la serie) y deja de alertar 15 min después del último bloqueo.

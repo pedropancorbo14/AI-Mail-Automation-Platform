@@ -69,6 +69,16 @@ describe('buzones de correo', () => {
         expect(wrapper.text()).toContain('Probar');
     });
 
+    it('avisa de los correos que la sincronización apartó', async () => {
+        loginAs(['mail_connections.view']);
+        vi.stubGlobal('fetch', vi.fn().mockImplementation(() =>
+            Promise.resolve(respond({ data: [{ ...connection, status: 'active', skipped_messages: 2 }], meta: { total: 1 } }))));
+
+        const wrapper = await mountPage();
+
+        expect(wrapper.text()).toContain('2 correos no se pudieron importar (siguen en el buzón)');
+    });
+
     it('sin permiso de gestión solo deja mirar', async () => {
         loginAs(['mail_connections.view']);
 

@@ -44,6 +44,8 @@ class Metrics
         'email_replies_sent_total' => ['type' => 'counter', 'help' => 'Respuestas enviadas al cliente.', 'labels' => ['tenant', 'automatic']],
         'email_replies_failed_total' => ['type' => 'counter', 'help' => 'Respuestas que no se pudieron enviar.', 'labels' => ['tenant']],
         'mail_syncs_total' => ['type' => 'counter', 'help' => 'Sincronizaciones de buzones (cada lote o fallo).', 'labels' => ['tenant', 'provider', 'result']],
+        'mail_messages_skipped_total' => ['type' => 'counter', 'help' => 'Correos apartados por la sincronización porque fallan siempre al guardarlos (mensaje envenenado).', 'labels' => ['tenant', 'provider']],
+        'mail_messages_skipped_total' => ['type' => 'counter', 'help' => 'Correos apartados por la sincronización porque fallan siempre al guardarlos (mensaje envenenado).', 'labels' => ['tenant', 'provider']],
 
         // --- Revisión humana (Fase 13) ---
         'email_reviews_total' => ['type' => 'counter', 'help' => 'Decisiones de las personas en la revisión humana (aprobar, descartar, responder, cerrar, reprocesar).', 'labels' => ['tenant', 'decision', 'edited']],

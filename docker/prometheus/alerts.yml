@@ -64,7 +64,17 @@ groups:
           severity: warning
         annotations:
           summary: "El buzón {{ $labels.mailbox }} de {{ $labels.tenant }} lleva {{ $value }} sincronizaciones fallidas seguidas"
-          description: "El cursor no avanza: puede haber un correo que siempre falla (mensaje envenenado) o el servidor no responde. Ver mail_sync_states.last_error."
+          description: "El cursor no avanza: el servidor no responde o rechaza la cuenta (un correo que falla siempre se aparta solo tras MAIL_SYNC_SKIP_AFTER_FAILURES intentos). Ver mail_sync_states.last_error."
+
+      - alert: CorreoApartado
+        expr: |
+          sum by (tenant, provider) (increase(aimail_mail_messages_skipped_total[15m])) > 0
+          or sum by (tenant, provider) (aimail_mail_messages_skipped_total unless aimail_mail_messages_skipped_total offset 15m) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.tenant }}: un correo se ha apartado porque falla siempre al guardarlo"
+          description: "La sincronización lo saltó para no atascar el buzón. El correo sigue en el buzón del cliente: buscarlo en mail_skipped_messages (remitente, asunto, error) y ver el detalle en los logs (\"Correo apartado\")."
 
       - alert: BuzonSinSincronizar
         expr: time() - aimail_mail_sync_last_success_timestamp_seconds > 900

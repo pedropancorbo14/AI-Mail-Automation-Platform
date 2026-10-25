@@ -77,4 +77,10 @@ class MailConnection extends Model
     {
         return $this->hasMany(MailSyncState::class);
     }
+
+    /** @return HasMany<MailSkippedMessage, $this> */
+    public function skippedMessages(): HasMany
+    {
+        return $this->hasMany(MailSkippedMessage::class);
+    }
 }

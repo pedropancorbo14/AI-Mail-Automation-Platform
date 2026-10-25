@@ -199,3 +199,107 @@ it('runs inside the connection tenant and restores the previous one', function (
 
     expect(inTenant($this->tenant, fn () => Email::sole()->tenant_id))->toBe($this->tenant->id);
 });
+
+it('sets aside an email that always fails and keeps syncing the rest', function () {
+    config(['mail_connections.sync_skip_after_failures' => 3]);
+    syncMailbox();
+    arriveInFake(1);
+    arriveInFake(2, [
+        'subject' => 'Correo imposible',
+        'attachments' => [new \App\Mail\Data\MailAttachment('1', 'a.pdf', 'application/pdf', 3)],
+    ]);
+    arriveInFake(3);
+    // Un error que no es de conexión ni de credenciales: un bug, un dato imposible.
+    $this->provider->failDownloadsWith = new RuntimeException('detalle interno del fallo');
+
+    // Los dos primeros intentos fallan y el cursor no se mueve.
+    foreach ([1, 2] as $attempt) {
+        expect(fn () => syncMailbox())->toThrow(RuntimeException::class);
+        expect(syncState()->cursor)->toBe('0')
+            ->and(syncState()->failing_message_id)->toBe('2')
+            ->and(syncState()->failing_message_attempts)->toBe($attempt);
+    }
+
+    // Al tercero se aparta y el buzón sigue.
+    $result = syncMailbox();
+
+    expect($result->skipped)->toBe(1)
+        ->and($result->stored)->toBe(1)
+        ->and(storedSubjects())->toBe(['Consulta 1', 'Correo imposible', 'Consulta 3'])
+        ->and(syncState()->cursor)->toBe('3')
+        ->and(syncState()->consecutive_failures)->toBe(0)
+        ->and(syncState()->failing_message_id)->toBeNull();
+
+    $skipped = inTenant($this->tenant, fn () => \App\Models\MailSkippedMessage::sole());
+    expect($skipped->provider_message_id)->toBe('2')
+        ->and($skipped->folder)->toBe('INBOX')
+        ->and($skipped->subject)->toBe('Correo imposible')
+        ->and($skipped->message_id)->toBe('msg-2@cliente.test')
+        ->and($skipped->attempts)->toBe(3)
+        // Sin detalles internos (solo van al log).
+        ->and($skipped->error)->toBe('Error interno al guardar el correo.');
+
+    expect(metricSample('mail_messages_skipped_total', ['tenant' => $this->tenant->slug, 'provider' => 'imap']))->toBe(1.0);
+});
+
+it('skips an email already set aside if the provider sends it again', function () {
+    config(['mail_connections.sync_skip_after_failures' => 1]);
+    syncMailbox();
+    arriveInFake(1, ['attachments' => [new \App\Mail\Data\MailAttachment('1', 'a.pdf', 'application/pdf', 3)]]);
+    $this->provider->failDownloadsWith = new RuntimeException('bug');
+
+    expect(syncMailbox()->skipped)->toBe(1);
+
+    // El proveedor invalida el cursor y lo vuelve a entregar: se salta sin reintentar.
+    inTenant($this->tenant, fn () => syncState()->recordSuccess('0'));
+    $downloads = count($this->provider->downloads);
+
+    expect(syncMailbox()->skipped)->toBe(1)
+        ->and(count($this->provider->downloads))->toBe($downloads)
+        ->and(inTenant($this->tenant, fn () => \App\Models\MailSkippedMessage::count()))->toBe(1);
+});
+
+it('never sets aside an email because of connection or credential errors', function (Throwable $error) {
+    config(['mail_connections.sync_skip_after_failures' => 1]);
+    syncMailbox();
+    arriveInFake(1, ['attachments' => [new \App\Mail\Data\MailAttachment('1', 'a.pdf', 'application/pdf', 3)]]);
+    $this->provider->failDownloadsWith = $error;
+
+    expect(fn () => syncMailbox())->toThrow($error::class);
+
+    expect(inTenant($this->tenant, fn () => \App\Models\MailSkippedMessage::count()))->toBe(0)
+        ->and(syncState()->cursor)->toBe('0')
+        ->and(syncState()->failing_message_attempts)->toBe(0);
+})->with([
+    'conexión' => [new MailConnectionException('Se perdió la conexión.')],
+    'credenciales' => [new MailAuthenticationException('Contraseña rechazada.')],
+]);
+
+it('starts counting again when a different email fails', function () {
+    config(['mail_connections.sync_skip_after_failures' => 2]);
+    syncMailbox();
+    arriveInFake(1, ['attachments' => [new \App\Mail\Data\MailAttachment('1', 'a.pdf', 'application/pdf', 3)]]);
+    $this->provider->failDownloadsWith = new RuntimeException('bug');
+
+    expect(fn () => syncMailbox())->toThrow(RuntimeException::class);
+    expect(syncState()->failing_message_attempts)->toBe(1);
+
+    inTenant($this->tenant, fn () => syncState()->recordMessageFailure('otro'));
+
+    expect(syncState()->failing_message_id)->toBe('otro')
+        ->and(syncState()->failing_message_attempts)->toBe(1);
+});
+
+it('does not set anything aside when the limit is 0', function () {
+    config(['mail_connections.sync_skip_after_failures' => 0]);
+    syncMailbox();
+    arriveInFake(1, ['attachments' => [new \App\Mail\Data\MailAttachment('1', 'a.pdf', 'application/pdf', 3)]]);
+    $this->provider->failDownloadsWith = new RuntimeException('bug');
+
+    foreach (range(1, 3) as $i) {
+        expect(fn () => syncMailbox())->toThrow(RuntimeException::class);
+    }
+
+    expect(inTenant($this->tenant, fn () => \App\Models\MailSkippedMessage::count()))->toBe(0)
+        ->and(syncState()->consecutive_failures)->toBe(3);
+});

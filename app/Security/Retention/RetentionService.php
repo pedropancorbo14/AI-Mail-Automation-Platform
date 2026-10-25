@@ -5,6 +5,7 @@ namespace App\Security\Retention;
 use App\Models\CustomerOrder;
 use App\Models\Email;
 use App\Models\EmailRecipient;
+use App\Models\MailSkippedMessage;
 use App\Models\Tenant;
 use App\Security\Audit\AuditLogger;
 use App\Tenancy\TenantService;
@@ -50,6 +51,9 @@ class RetentionService
                 }
             });
 
+            // Correos apartados por la sincronización: tienen remitente y asunto.
+            MailSkippedMessage::where('created_at', '<', now()->subDays($days))->delete();
+
             return $count;
         });
 
@@ -85,6 +89,7 @@ class RetentionService
             // Pedidos que la empresa importó por CSV (Fase 14): también son suyos.
             if (! $dryRun) {
                 $orders = CustomerOrder::where('customer_email', $address)->delete();
+                MailSkippedMessage::whereRaw('lower(from_email) = ?', [$address])->delete();
             }
 
             $ids = Email::whereRaw('lower(from_email) = ?', [$address])->pluck('id')

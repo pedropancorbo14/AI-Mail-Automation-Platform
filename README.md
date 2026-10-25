@@ -499,6 +499,7 @@ cada uno.
 | El servidor rechaza la contraseña / token revocado | El buzón pasa a `failing` con el motivo en `last_error` y **no se reintenta** (repetir logins fallidos puede bloquear la cuenta). Se reanuda al corregirlo y probarlo. |
 | Un adjunto que el proveedor no puede entregar | Se marca `failed` con el motivo y se sigue con el resto del correo. |
 | El proveedor invalida el cursor (p. ej. cambio de UIDVALIDITY en IMAP) | Nuevo punto de partida, se anota `resynced_at` y un aviso en el log (puede faltar correo intermedio). |
+| Un correo concreto falla **siempre** al guardarlo (un dato imposible, un bug: el "mensaje envenenado") | Tras `MAIL_SYNC_SKIP_AFTER_FAILURES` intentos seguidos del **mismo** correo (5; 0 = nunca) se **aparta** y el buzón sigue con el resto. Queda en `mail_skipped_messages` (remitente, asunto, Message-ID y error, sin detalles internos), en el log ("Correo apartado", con el detalle) y en la alerta `CorreoApartado`; el panel avisa en "Buzones". El correo sigue en el buzón del cliente. Los errores de conexión y de credenciales nunca cuentan. |
 
 Cada intento queda registrado en `mail_sync_states` (`last_error`,
 `consecutive_failures`) y en el log (`Buzón sincronizado`, `Error al
@@ -1086,7 +1087,8 @@ Se ven en http://localhost:9090/alerts y en el dashboard **Errores**.
 | `TrabajosDeColaFallando` | Un trabajo agota sus reintentos. |
 | `ColaAtascada` | Más de 100 trabajos esperando 10 min. |
 | `ErroresHttp5xx` | Más del 5 % de peticiones con error 5xx 10 min. |
-| `BuzonAtascado` | Un buzón activo lleva ≥ 5 sincronizaciones fallidas seguidas (servidor caído o un correo que siempre falla). |
+| `BuzonAtascado` | Un buzón activo lleva ≥ 5 sincronizaciones fallidas seguidas (servidor caído o credenciales rechazadas). |
+| `CorreoApartado` | La sincronización apartó un correo que falla siempre al guardarlo (mensaje envenenado): ver `mail_skipped_messages`. |
 | `BuzonSinSincronizar` | Un buzón activo lleva más de 15 min sin sincronizar. |
 | `EmailsConError` | ≥ 3 emails de una empresa pasan a error en 15 min. |
 | `RevisionHumanaAcumulada` (info) | Una empresa tiene más de 50 emails esperando a una persona durante 1 h. |

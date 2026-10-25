@@ -24,6 +24,12 @@ return [
     // Si quedan más, se siguen trayendo en la siguiente pasada del scheduler.
     'sync_max_batches' => (int) env('MAIL_SYNC_MAX_BATCHES', 5),
 
+    // Veces seguidas que puede fallar el MISMO correo al guardarlo (un error
+    // que no es de conexión ni de credenciales: un dato imposible, un bug)
+    // antes de apartarlo y seguir con el resto. Sin esto el cursor no avanza
+    // y el buzón se queda atascado para siempre. 0 = no apartar nunca.
+    'sync_skip_after_failures' => (int) env('MAIL_SYNC_SKIP_AFTER_FAILURES', 5),
+
     /*
     | OAuth (Microsoft/Google): URL del panel a la que volver tras autorizar
     | (se añade ?status=connected&connection_id=... o ?status=error&message=...).
