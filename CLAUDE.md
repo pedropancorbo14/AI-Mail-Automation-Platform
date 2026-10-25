@@ -5698,6 +5698,12 @@ grupo `greenmail` (1102 tests al empezar).
   añadir y quitar con auditoría, enviados/spam/inexistente → 422, máximo,
   proveedor caído, permisos y aislamiento, sincronizar sin histórico y
   seguir si una carpeta desaparece) y Vitest `MailFoldersForm.test.ts` (4)
+- [x] Fix (CI en rojo en M1): `pip-audit` encontró CVE-2026-115883 en
+  **langgraph-checkpoint-postgres** 3.1.2 (publicada después del último
+  push, no por el cambio) → 3.1.3, la versión mínima con el arreglo
+  (`uv lock --upgrade-package ...==3.1.3`; sin ese `==`, uv subía a 3.2.0) y
+  mínimo `>=3.1.3` en `pyproject.toml`. 618 tests de Python en verde con
+  PostgreSQL y Redis reales
 - [ ] M3. Microsoft: adjuntos de más de 3 MB (upload session) y correos
   movidos entre carpetas
 - [ ] M4. Copia en "Enviados" de las respuestas enviadas por SMTP (opción
