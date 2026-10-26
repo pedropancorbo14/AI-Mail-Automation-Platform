@@ -70,3 +70,15 @@ def test_the_holdout_set_loads_and_does_not_repeat_cases() -> None:
     assert len(holdout.cases) >= 10
     assert not main_ids & {c.id for c in holdout.cases}
     assert any("seguridad" in c.tags for c in holdout.cases)
+
+
+def test_the_second_holdout_set_has_new_cases_and_tools_that_exist() -> None:
+    second = load_dataset(DATASET.with_name("holdout-2.json"))
+    seen = {c.id for c in load_dataset(DATASET).cases} | {
+        c.id for c in load_dataset(DATASET.with_name("holdout.json")).cases
+    }
+
+    assert len(second.cases) >= 12
+    assert not seen & {c.id for c in second.cases}
+    assert sum("seguridad" in c.tags for c in second.cases) >= 3
+    assert all(t in SPECS for c in second.cases for t in c.expect.tools)
