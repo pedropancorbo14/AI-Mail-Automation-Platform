@@ -17,12 +17,12 @@ def test_a_clean_confident_reply_can_be_sent_automatically() -> None:
 
 def test_reply_confidence_below_threshold_goes_to_a_person() -> None:
     outcome = policy.decide(
-        make_email(), make_classification(), make_draft(confidence=Confidence(0.84))
+        make_email(), make_classification(), make_draft(confidence=Confidence(0.79))
     )
 
     assert outcome.decision is Decision.HUMAN_REVIEW
     assert outcome.reasons == (
-        "La confianza en la respuesta (0,84) es menor que el mínimo (0,85).",
+        "La confianza en la respuesta (0,79) es menor que el mínimo (0,80).",
     )
 
 
@@ -30,7 +30,7 @@ def test_exactly_the_threshold_is_enough() -> None:
     outcome = policy.decide(
         make_email(),
         make_classification(confidence=Confidence(0.85)),
-        make_draft(confidence=Confidence(0.85)),
+        make_draft(confidence=Confidence(0.80)),
     )
 
     assert outcome.decision is Decision.AUTO_SEND

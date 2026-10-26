@@ -819,7 +819,7 @@ entera, auditada:
 | `ai_tool_calls` | Cada herramienta: argumentos, resultado, estado y origen (plan, pedida por la IA, aprobada por una persona) |
 | `email_replies` | La propuesta: texto, confianza, `needs_human` + motivos, fuentes, estado |
 
-ai-service pide una persona si la confianza es baja (menos de 0,85), hay
+ai-service pide una persona si la confianza es baja (menos de 0,80), hay
 sospecha de prompt injection, una amenaza legal, una cita a algo que no
 consultó, una consulta fallida, una acción pendiente o el email era
 demasiado largo. Si propone una **acción que modifica datos** (abrir un

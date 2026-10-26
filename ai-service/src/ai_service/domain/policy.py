@@ -16,7 +16,9 @@ from ai_service.domain.decision import Decision, DecisionOutcome
 from ai_service.domain.draft import Draft
 from ai_service.domain.email import Email
 
-DEFAULT_MIN_CONFIDENCE = Confidence(0.85)
+# 0,80 desde la evaluación del 2026-10-26 (tarea 15.9): con 0,85 se frenaban
+# respuestas correctas de 0,80 y bajarlo no envió solo ningún caso inseguro.
+DEFAULT_MIN_CONFIDENCE = Confidence(0.80)
 # La clasificación tiene su propio umbral: que dude entre dos intenciones
 # parecidas (p. ej. product_question o sales_inquiry) no hace mala una respuesta;
 # lo que dice si la respuesta es buena es su propia confianza (umbral de arriba).

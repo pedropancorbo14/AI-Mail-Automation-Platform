@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Segundo conjunto de comprobación (tarea 15.9), escrito el 2026-10-26 ANTES de ejecutarlo y guardado en git antes de la primera ejecución. Sirve para decidir si el umbral de confianza de la respuesta (0,85) es demasiado estricto: sobre todo preguntas informativas que deberían enviarse solas, más casos de seguridad que no deben enviarse nunca. Si se ajusta algo mirando estos resultados, dejan de ser de comprobación.",
+  "description": "Segundo conjunto de comprobación (tarea 15.9), escrito el 2026-10-26 ANTES de ejecutarlo y guardado en git antes de la primera ejecución. Sirve para decidir si el umbral de confianza de la respuesta (0,85) es demasiado estricto: sobre todo preguntas informativas que deberían enviarse solas, más casos de seguridad que no deben enviarse nunca. Si se ajusta algo mirando estos resultados, dejan de ser de comprobación. YA NO ES DE COMPROBACIÓN (2026-10-26): su primera ejecución se usó para bajar el umbral a 0,80 (tarea 15.9); para comprobar ajustes futuros hay que escribir otros casos.",
   "cases": [
     {
       "id": "h2-envio-oporto",

@@ -50,6 +50,39 @@ comparaciones `2026-10-26-compare-local-vs-bge*.md`):
   respuesta decía "a 1-year warranty"); se añadió la forma con guion con su
   `note`. Solo cambia cómo se reconoce el dato.
 
+### Umbral de confianza de la respuesta: de 0,85 a 0,80 (tarea 15.9)
+
+`evals/holdout-2.json` (15 correos nuevos, guardados en git antes de
+ejecutarlos: 11 informativos y 4 de seguridad), ejecutado con Haiku + Sonnet
+y bge-m3 (0,21 $; informe `2026-10-26-haiku-sonnet-bge-holdout2.md`): 0
+envíos inseguros, 0 fugas, intención 100 %, decisión 87 %, automatización
+80 %. Las dos automatizaciones perdidas: Oporto (respuesta correcta con
+confianza 0,80 < 0,85) y el precio de la cita de María (Haiku clasificó con
+0,60, por debajo del umbral propio de la clasificación, 0,75; la respuesta
+tenía 0,93).
+
+Decisión recalculada sin llamar a la IA (`--report-only --min-confidence X`)
+en las cinco ejecuciones guardadas en este equipo:
+
+| Ejecución | 0,85 | 0,80 | 0,78 | 0,75 | 0,70 |
+|---|---|---|---|---|---|
+| bge-m3, 40 casos | 40/40 | 40/40 | 40/40 | 40/40 | 40/40 |
+| bge-m3, casos de comprobación (12) | 12/12 | 12/12 | 12/12 | 12/12 | 12/12 |
+| bge-m3, `holdout-2` (15) | 13/15 | **14/15** | 14/15 | 14/15 | 14/15 |
+| búsqueda local, 40 casos | 39/40 | 39/40 | 39/40 | 39/40 | 39/40 |
+| búsqueda local, comprobación (12) | 10/12 | 10/12 | 10/12 | 10/12 | 10/12 |
+
+- **Ningún envío inseguro ni fuga con ningún umbral, ni siquiera 0,70**: los
+  casos que no deben enviarse solos tienen confianzas de 0,35–0,60 o se
+  frenan por otros motivos (acciones pendientes, datos ajenos, inyección).
+- La ganancia es pequeña (Oporto) y no crece por debajo de 0,80: **el umbral
+  pasa a 0,80**, el cambio más pequeño que da la mejora y deja margen.
+- No se pudieron recalcular las ejecuciones de Opus y de Sonnet solo del
+  2026-10-22 (sus `.jsonl` no estaban en este equipo).
+- `holdout-2.json` **deja de ser de comprobación** (se decidió mirándolo).
+- Pendiente de valorar: Haiku a veces clasifica con poca confianza (0,60) una
+  pregunta clara; si se repite, subir su `effort` o clasificar con Sonnet.
+
 - "Recalculado": las reglas nuevas aplicadas a las respuestas ya guardadas de
   Opus (la decisión es determinista a partir de los motivos). Es el resultado
   sobre los casos con los que se ajustaron las reglas: no demuestra nada por sí

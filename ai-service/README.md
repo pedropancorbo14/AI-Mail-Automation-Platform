@@ -215,7 +215,7 @@ flowchart TB
 
 | Carpeta | Qué contiene | Puede depender de |
 |---|---|---|
-| `domain/` | `Email`, `Classification`, `Confidence`, `Decision` y las reglas de negocio (p. ej. confianza < 0,85 → revisión humana) | Nada: solo la biblioteca estándar |
+| `domain/` | `Email`, `Classification`, `Confidence`, `Decision` y las reglas de negocio (p. ej. confianza < 0,80 → revisión humana) | Nada: solo la biblioteca estándar |
 | `application/` | Casos de uso y **puertos** (`LLMPort`, `VectorStorePort`, `ToolPort`, `EventBusPort`) | `domain` |
 | `agents/` | Grafo de LangGraph; usa los puertos, nunca un adaptador concreto | `application`, `domain` |
 | `infrastructure/` | **Adaptadores**: Anthropic, Redis Streams, pgvector, cliente MCP, logs, métricas | `application`, `domain` |
@@ -276,7 +276,7 @@ deterministas, sin IA; se devuelven todos los motivos para la bandeja):
   OCU, *lawyer*, *lawsuit*…) · queja con urgencia alta.
 - **`human_review`**: categoría que no se contesta (spam, respuesta
   automática; Laravel decide si la ignora) · clasificación o respuesta con
-  confianza **< 0,85** (configurable) · la clasificación o la IA piden una
+  confianza **< 0,80** (configurable) · la clasificación o la IA piden una
   persona · acciones pendientes · email recortado · sin borrador · **el
   borrador promete un reembolso o confirma una cancelación**
   (`domain/commitments.py`, español e inglés; informar de la política no
@@ -356,7 +356,7 @@ Variables nuevas:
 | `AI_SERVICE_LLM_PROVIDER` | `anthropic` | `anthropic` o `simulated` (solo local/testing) |
 | `AI_SERVICE_LLM_TIMEOUT_SECONDS` / `AI_SERVICE_LLM_MAX_RETRIES` | `60` / `2` | Timeout y reintentos del SDK (429, 5xx, red) |
 | `AI_SERVICE_MAX_BODY_CHARS` | `20000` | Recorte del cuerpo (avisando al modelo) |
-| `AI_SERVICE_MIN_CONFIDENCE` | `0.85` | Confianza mínima de la respuesta para enviarla sola (`DecisionPolicy`) |
+| `AI_SERVICE_MIN_CONFIDENCE` | `0.80` | Confianza mínima de la respuesta para enviarla sola (`DecisionPolicy`). Era 0,85 hasta la evaluación del 2026-10-26 (bajarla no envió solo ningún caso inseguro) |
 | `AI_SERVICE_MIN_CLASSIFICATION_CONFIDENCE` | `0.75` | Confianza mínima de la clasificación (dudar entre dos intenciones parecidas no hace mala una respuesta) |
 | `AI_SERVICE_AGENT_TIMEOUT_SECONDS` | `240` | Tope del grafo entero |
 | `AI_SERVICE_MCP_URL` / `AI_SERVICE_MCP_TOKEN` | — | Servidor MCP (sin URL, el grafo no consulta los sistemas de la empresa; con URL, el token es obligatorio) |
@@ -1118,7 +1118,7 @@ un error (ejecutor, agente, servidor MCP o puntuación rotos).
 casos de comprobación; **Sonnet 5.5 es el modelo por defecto**: la misma
 seguridad a 2,5 veces menos coste (~0,02 $ por email) y el doble de rápido.
 Lo que se ajustó tras la primera ejecución: umbral propio para la
-clasificación (0,75; la respuesta sigue necesitando 0,85) y la regla de
+clasificación (0,75; la respuesta necesitaba 0,85, hoy 0,80) y la regla de
 promesas (explicar la política no es prometer).
 
 **Resultados del 2026-10-26** (Haiku clasifica, Sonnet redacta): con la

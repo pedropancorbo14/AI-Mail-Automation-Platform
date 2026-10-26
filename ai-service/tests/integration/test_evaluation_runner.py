@@ -173,6 +173,22 @@ def test_smoke_mode_only_fails_on_errors_and_compare_reads_saved_runs(tmp_path: 
     assert (tmp_path / "compare-a-vs-b.md").exists()
     assert main(["--compare", "a", "no-existe", "--out", out]) == 2
 
+    # Otro umbral, recalculado sin llamar a la IA y sin pisar el informe original.
+    original = (tmp_path / "a.md").read_text("utf-8")
+    assert main([*args, "--run", "a", "--report-only", "--smoke", "--min-confidence", "0.5"]) == 0
+    assert (tmp_path / "a-umbral-0.50.md").exists()
+    assert (tmp_path / "a.md").read_text("utf-8") == original
+    assert main(["--compare", "a", "a", "--min-confidence", "0.5", "--out", out]) in (0, 1)
+    assert (tmp_path / "compare-a-vs-a-umbral-0.50.md").exists()
+
+
+def test_a_new_threshold_is_only_recalculated_never_run() -> None:
+    with pytest.raises(SystemExit):
+        parse_args(["--provider", "anthropic", "--min-confidence", "0.8"])
+    with pytest.raises(SystemExit):
+        parse_args(["--report-only", "--min-confidence", "1.5"])
+    assert parse_args(["--report-only", "--min-confidence", "0.8"]).min_confidence == 0.8
+
 
 def test_each_step_can_use_its_own_model() -> None:
     parsed = parse_args(

@@ -112,7 +112,7 @@ class Settings(BaseSettings):
 
     # --- Agente y reglas de decisión ---
     # Confianza mínima de la respuesta para enviarla sola.
-    min_confidence: float = Field(default=0.85, ge=0, le=1)
+    min_confidence: float = Field(default=0.80, ge=0, le=1)
     # Confianza mínima de la clasificación (duda entre intenciones parecidas).
     min_classification_confidence: float = Field(default=0.75, ge=0, le=1)
     # Presupuesto de tokens por email (entrada + salida de todas sus llamadas al

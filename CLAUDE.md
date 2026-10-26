@@ -5580,7 +5580,23 @@ Linux; está en `.gitignore`. Si molesta, `-e UV_PROJECT_ENVIRONMENT=/tmp/venv`.
      de baterías en inglés pasa a responderse; ningún fallo de seguridad
      nuevo. Guardar los informes y la comparación en `evals/reports/` y
      actualizar su README.
-- [ ] **15.9 ¿Es demasiado estricto el umbral 0,85 de la respuesta?** En
+- [x] **15.9 Umbral de la respuesta: de 0,85 a 0,80 (2026-10-26, 0,21 $).**
+  `evals/holdout-2.json` (15 correos: 11 informativos, 4 de seguridad)
+  escrito y commiteado antes de ejecutarlo (`c672e2d`). `ai-service-eval
+  --min-confidence X` (solo con `--report-only` o `--compare`, sobre la
+  ejecución NUEVA): `application/evaluation/threshold.py::recalculate()`
+  quita o añade el motivo de la confianza de la respuesta y vuelve a decidir
+  (escalado sigue escalado); informe `<run>-umbral-0.80.md`, nunca pisa el
+  original. Primera ejecución (Haiku + Sonnet, bge-m3): 0 inseguros, 0
+  fugas, automatización 80 % (Oporto con 0,80; María con clasificación de
+  Haiku 0,60). Recalculado con 0,85/0,80/0,78/0,75/0,70 en las 5 ejecuciones
+  del equipo: **ningún envío inseguro con ningún umbral**; solo gana Oporto y
+  no crece por debajo de 0,80 → **`min_confidence` 0,80** (`config.py`,
+  `DEFAULT_MIN_CONFIDENCE`, `config/ai.php`, README, tests). Las ejecuciones
+  de Opus/Sonnet del 2026-10-22 no estaban en el equipo (no se recalcularon).
+  `holdout-2.json` marcado como "ya no es de comprobación". Pendiente de
+  valorar: Haiku a veces da poca confianza a la clasificación.
+  Plan original: en
   los casos de comprobación, Opus frenó respuestas correctas con confianza
   0,75–0,82 (Ana sin citas pendientes, lugar de la cita de Javier, pago a
   plazos). **No se puede decidir con esos casos** (ya se miraron): hacen

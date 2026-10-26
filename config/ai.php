@@ -125,7 +125,7 @@ return [
         'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
         'classify_model' => env('ANTHROPIC_CLASSIFY_MODEL') ?: 'claude-haiku-5-5',
         'draft_model' => env('ANTHROPIC_DRAFT_MODEL') ?: env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
-        'min_confidence' => (float) env('AI_SERVICE_MIN_CONFIDENCE', 0.85),
+        'min_confidence' => (float) env('AI_SERVICE_MIN_CONFIDENCE', 0.80),
     ],
 
     // Freno del gasto (App\Security\AiSpendGuard): superado un límite, el

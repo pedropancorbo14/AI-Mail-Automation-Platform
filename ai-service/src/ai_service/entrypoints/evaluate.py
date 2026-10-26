@@ -46,6 +46,7 @@ from ai_service.application.evaluation.dataset import Case, Tenant, load_dataset
 from ai_service.application.evaluation.report import render
 from ai_service.application.evaluation.results import CaseRun, fingerprint
 from ai_service.application.evaluation.scoring import Summary, summarize
+from ai_service.application.evaluation.threshold import recalculate
 from ai_service.application.ports import EmbeddingPort, LLMPort
 from ai_service.application.services.chunking import TextChunker
 from ai_service.application.services.knowledge import KnowledgeRetriever, RetrievalOptions
@@ -123,6 +124,9 @@ class Options:
     # "ollama" (bge-m3 de producción y su umbral).
     embeddings: str = "local"
     ollama_url: str = "http://ollama:11434"
+    # Otro umbral de confianza de la respuesta, recalculado sobre lo guardado
+    # (solo con --report-only o --compare: no llama a la IA).
+    min_confidence: float | None = None
 
     @property
     def models(self) -> str:
@@ -411,7 +415,18 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
         " en Ollama con el umbral de producción.",
     )
     parser.add_argument("--ollama-url", default="http://ollama:11434")
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=None,
+        help="Recalcular la decisión con otro umbral de confianza de la respuesta, sin llamar"
+        " a la IA (con --report-only, o con --compare sobre la ejecución NUEVA).",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
+    if args.min_confidence is not None and not (args.report_only or args.compare):
+        parser.error("--min-confidence solo vale con --report-only o --compare.")
+    if args.min_confidence is not None and not 0 <= args.min_confidence <= 1:
+        parser.error("--min-confidence va de 0 a 1.")
     simulated = args.provider == "simulated"
     config = Settings()
     options = Options(
@@ -433,6 +448,7 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
         smoke=args.smoke,
         embeddings=args.embeddings,
         ollama_url=args.ollama_url,
+        min_confidence=args.min_confidence,
     )
     if not options.run:
         name = options.models.replace(" + ", "+")
@@ -451,13 +467,26 @@ def ollama_embeddings(options: Options, settings: Settings) -> OllamaEmbeddings:
     )
 
 
+def with_threshold(
+    name: str, runs: dict[str, CaseRun], min_confidence: float | None
+) -> tuple[str, dict[str, CaseRun]]:
+    """La ejecución tal cual o, con `min_confidence`, recalculada con ese umbral
+    (se llama `<run>-umbral-0.80`: nunca sobrescribe la original)."""
+    if min_confidence is None:
+        return name, runs
+    recalculated = {k: recalculate(r, min_confidence) for k, r in runs.items()}
+    return f"{name}-umbral-{min_confidence:.2f}", recalculated
+
+
 def write_report(options: Options) -> Summary:
     """Puntúa lo guardado de la ejecución y escribe `<run>.md` y `<run>.summary.json`."""
     cases = load_dataset(options.dataset).select(options.only, options.limit)
-    runs = load_previous(options.out / f"{options.run}.jsonl")
-    summary = summarize(options.run, cases, runs)
-    (options.out / f"{options.run}.md").write_text(render(summary), "utf-8")
-    (options.out / f"{options.run}.summary.json").write_text(
+    name, runs = with_threshold(
+        options.run, load_previous(options.out / f"{options.run}.jsonl"), options.min_confidence
+    )
+    summary = summarize(name, cases, runs)
+    (options.out / f"{name}.md").write_text(render(summary), "utf-8")
+    (options.out / f"{name}.summary.json").write_text(
         json.dumps(summary.to_dict(), ensure_ascii=False, indent=2, default=list), "utf-8"
     )
     return summary
@@ -467,15 +496,19 @@ def write_comparison(options: Options, before: str, after: str) -> int:
     """Compara dos ejecuciones guardadas; sale con 1 si hay fallos de seguridad nuevos."""
     cases = load_dataset(options.dataset).select(options.only, options.limit)
     summaries = []
-    for run in (before, after):
+    for index, run in enumerate((before, after)):
         path = options.out / f"{run}.jsonl"
         if not path.exists():
             print(f"No existe la ejecución {run} ({path}).", file=sys.stderr)
             return 2
-        summaries.append(summarize(run, cases, load_previous(path)))
+        # El umbral nuevo se aplica solo a la ejecución NUEVA: `--compare A A
+        # --min-confidence 0.8` dice qué cambia en A con 0,80.
+        threshold = options.min_confidence if index == 1 else None
+        label, runs = with_threshold(run, load_previous(path), threshold)
+        summaries.append(summarize(label, cases, runs))
     comparison = compare(summaries[0], summaries[1])
     text = render_comparison(comparison)
-    out = options.out / f"compare-{before}-vs-{after}.md"
+    out = options.out / f"compare-{summaries[0].run}-vs-{summaries[1].run}.md"
     out.write_text(text, "utf-8")
     print(text)
     print(f"Comparación guardada en: {out}")
@@ -522,7 +555,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         )
     summary = write_report(options)
     print("\n" + render(summary).split("\n## ")[0])
-    print(f"Informe completo: {options.out / (options.run + '.md')}")
+    print(f"Informe completo: {options.out / (summary.run + '.md')}")
     if options.smoke:
         return 0 if summary.errors == 0 else 1
     return 0 if summary.ok else 1
