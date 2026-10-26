@@ -1,14 +1,28 @@
 """El ejecutor de la evaluación con la IA simulada: agente real, servidor MCP
 real en el proceso y documentación local. Sin red ni coste."""
 
+import json
 import logging
 from collections.abc import Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 
 from ai_service.application.evaluation.costs import parse_pricing
-from ai_service.entrypoints.evaluate import Options, evaluate, main, parse_args, settings_for
+from ai_service.domain.email import TenantId
+from ai_service.entrypoints.evaluate import (
+    EvaluationSetupError,
+    Options,
+    evaluate,
+    knowledge,
+    main,
+    parse_args,
+    settings_for,
+    write_report,
+)
+from ai_service.infrastructure.embeddings.ollama import OllamaEmbeddings
+from ai_service.infrastructure.knowledge.local import embed as local_embed
 from ai_service.infrastructure.llm.simulated import SimulatedLLM
 
 REPO = Path(__file__).parents[3]
@@ -75,6 +89,63 @@ async def test_cached_cases_are_not_run_again_and_the_budget_stops_the_run(tmp_p
     assert again == first
     assert (tmp_path / "prueba.jsonl").read_text().splitlines() == lines  # nada nuevo escrito
     assert len(capped) == 1  # el primero se paga; antes del segundo, el tope ya se alcanzó
+
+
+def fake_ollama(fail: bool = False) -> OllamaEmbeddings:
+    """bge-m3 simulado: vectores de la bolsa de palabras local (512 dimensiones)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if fail:
+            raise httpx.ConnectError("sin conexión", request=request)
+        texts = json.loads(request.content)["input"]
+        return httpx.Response(200, json={"embeddings": [list(local_embed(t)) for t in texts]})
+
+    client = httpx.AsyncClient(
+        base_url="http://ollama:11434", transport=httpx.MockTransport(handler)
+    )
+    return OllamaEmbeddings(client, model="bge-m3", dimensions=512)
+
+
+async def test_the_real_embeddings_use_production_threshold_and_their_own_cache(
+    tmp_path: Path,
+) -> None:
+    prices = parse_pricing((REPO / "config" / "ai.php").read_text("utf-8"))
+    settings = settings_for("simulated", "simulated")
+    only = {"envio-canarias"}
+
+    local = await evaluate(options(tmp_path, only=only), SimulatedLLM(), settings, prices)
+    bge = await evaluate(
+        options(tmp_path, only=only), SimulatedLLM(), settings, prices, fake_ollama()
+    )
+
+    assert (local[0].retrieval, bge[0].retrieval) == ("local-bow", "bge-m3")
+    # Misma ejecución, otra búsqueda: no se reutiliza lo de la bolsa de palabras.
+    assert bge[0].fingerprint != local[0].fingerprint
+    # Umbral de producción (0,45), no el de la bolsa de palabras (0,15).
+    retriever = await knowledge(settings, fake_ollama())
+    found = await retriever.search(TenantId(1), "plazo para devolver un producto y reembolso")
+    assert found.chunks
+    assert all(c.similarity >= settings.rag_min_similarity for c in found.chunks)
+    summary = write_report(options(tmp_path, only=only))
+    assert summary.retrieval == "bge-m3"
+
+
+async def test_ollama_down_stops_before_the_first_case(tmp_path: Path) -> None:
+    prices = parse_pricing((REPO / "config" / "ai.php").read_text("utf-8"))
+    settings = settings_for("simulated", "simulated")
+
+    with pytest.raises(EvaluationSetupError, match="bge-m3"):
+        await evaluate(options(tmp_path), SimulatedLLM(), settings, prices, fake_ollama(fail=True))
+
+    assert not (tmp_path / "prueba.jsonl").exists()
+
+
+def test_the_ollama_option_names_its_run() -> None:
+    parsed = parse_args(["--provider", "anthropic", "--embeddings", "ollama"])
+
+    assert (parsed.embeddings, parsed.ollama_url) == ("ollama", "http://ollama:11434")
+    assert parsed.run.endswith("-bge")
+    assert parse_args(["--embeddings", "ollama", "--run", "x"]).run == "x"
 
 
 @pytest.fixture

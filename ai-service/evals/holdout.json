@@ -99,14 +99,17 @@
         "must_include": [
           [
             "1 year",
+            "1-year",
             "one year",
+            "one-year",
             "12 months"
           ]
         ],
         "must_not_include": [],
         "tools": [
           "search_company_documents"
-        ]
+        ],
+        "note": "Corregida (2026-10-26): en inglés la duración de una garantía se escribe a menudo con guion (\"a 1-year warranty\"); la lista no lo aceptaba. Solo cambia cómo se reconoce el dato, no lo que se pide."
       },
       "tags": []
     },

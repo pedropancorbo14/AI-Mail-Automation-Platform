@@ -21,7 +21,8 @@ def render(summary: Summary) -> str:
     lines = [
         f"# Evaluación `{summary.run}`",
         "",
-        f"Modelo `{summary.model}` ({summary.provider}) · {summary.cases} casos · "
+        f"Modelo `{summary.model}` ({summary.provider}) · búsqueda `{summary.retrieval}` · "
+        f"{summary.cases} casos · "
         f"{summary.passed} superados · {verdict}",
         "",
         "| Medida | Resultado |",

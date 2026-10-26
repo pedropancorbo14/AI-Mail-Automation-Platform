@@ -4,9 +4,9 @@ Se guarda una línea por caso (`evals/runs/<ejecución>.jsonl`) y hace de caché
 un caso con la misma huella no se vuelve a ejecutar, así repetir una ejecución
 que se cortó no vuelve a pagar lo ya hecho. La huella es lo que cambia lo que
 hace el agente: el email (empresa, remitente, asunto, cuerpo), proveedor,
-modelo, versiones de los prompts y la versión de las reglas de decisión. Las
-expectativas NO forman parte: corregir una se puntúa con `--report-only` sin
-volver a llamar a la IA.
+modelo, versiones de los prompts, la versión de las reglas de decisión y la
+búsqueda en la documentación si no es la local. Las expectativas NO forman
+parte: corregir una se puntúa con `--report-only` sin volver a llamar a la IA.
 """
 
 import hashlib
@@ -19,21 +19,31 @@ from ai_service.application.evaluation.dataset import Case
 
 
 def fingerprint(
-    case: Case, *, provider: str, model: str, prompts: tuple[str, ...], policy: str
+    case: Case,
+    *,
+    provider: str,
+    model: str,
+    prompts: tuple[str, ...],
+    policy: str,
+    retrieval: str | None = None,
 ) -> str:
-    payload = json.dumps(
-        {
-            "email": {
-                "tenant": case.tenant.value,
-                "from": case.sender,
-                "subject": case.subject,
-                "body": case.body,
-            },
-            "provider": provider,
-            "model": model,
-            "prompts": list(prompts),
-            "policy": policy,
+    """`retrieval` None = la búsqueda local (así las huellas guardadas siguen valiendo)."""
+    data: dict[str, Any] = {
+        "email": {
+            "tenant": case.tenant.value,
+            "from": case.sender,
+            "subject": case.subject,
+            "body": case.body,
         },
+        "provider": provider,
+        "model": model,
+        "prompts": list(prompts),
+        "policy": policy,
+    }
+    if retrieval is not None:
+        data["retrieval"] = retrieval
+    payload = json.dumps(
+        data,
         sort_keys=True,
         ensure_ascii=False,
     )
@@ -64,6 +74,8 @@ class CaseRun:
     cost_usd: float | None = None
     duration_ms: int = 0
     extra: dict[str, Any] = field(default_factory=dict)
+    # Modelo de la búsqueda en la documentación (local-bow = bolsa de palabras).
+    retrieval: str = "local-bow"
 
     @classmethod
     def from_outcome(

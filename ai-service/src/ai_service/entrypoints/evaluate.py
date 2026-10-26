@@ -39,14 +39,14 @@ import uvicorn
 from pydantic import SecretStr
 
 from ai_service.agents.email_graph import LangGraphEmailAgent
-from ai_service.application.errors import AgentError
+from ai_service.application.errors import AgentError, LLMError
 from ai_service.application.evaluation.compare import compare, render_comparison
 from ai_service.application.evaluation.costs import Price, cost_usd, parse_pricing
 from ai_service.application.evaluation.dataset import Case, Tenant, load_dataset
 from ai_service.application.evaluation.report import render
 from ai_service.application.evaluation.results import CaseRun, fingerprint
 from ai_service.application.evaluation.scoring import Summary, summarize
-from ai_service.application.ports import LLMPort
+from ai_service.application.ports import EmbeddingPort, LLMPort
 from ai_service.application.services.chunking import TextChunker
 from ai_service.application.services.knowledge import KnowledgeRetriever, RetrievalOptions
 from ai_service.application.services.tool_catalog import SEARCH_TOOL
@@ -57,6 +57,8 @@ from ai_service.domain.email import Email, EmailAddress, TenantId
 from ai_service.domain.policy import DecisionPolicy
 from ai_service.entrypoints.container import build_llm
 from ai_service.infrastructure.documents.extraction import DocumentTextExtractor
+from ai_service.infrastructure.embeddings.ollama import OllamaEmbeddings
+from ai_service.infrastructure.knowledge.local import MODEL as LOCAL_MODEL
 from ai_service.infrastructure.knowledge.local import LocalEmbeddings, MemoryVectorStore
 from ai_service.infrastructure.llm import prompts
 from ai_service.infrastructure.tools.mcp_client import McpToolClient
@@ -117,6 +119,10 @@ class Options:
     # Un modelo por paso (None = el general).
     classify_model: str | None = None
     draft_model: str | None = None
+    # Búsqueda en la documentación: "local" (bolsa de palabras, sin red) u
+    # "ollama" (bge-m3 de producción y su umbral).
+    embeddings: str = "local"
+    ollama_url: str = "http://ollama:11434"
 
     @property
     def models(self) -> str:
@@ -140,9 +146,27 @@ def email_for(case: Case, index: int) -> Email:
     )
 
 
-async def knowledge(settings: Settings) -> KnowledgeRetriever:
-    """La documentación de ejemplo de Empresa Demo, indexada en memoria."""
-    embeddings, store = LocalEmbeddings(), MemoryVectorStore()
+class EvaluationSetupError(Exception):
+    """La evaluación no puede empezar (p. ej. Ollama no responde): se dice antes
+    del primer caso en vez de dar todos los casos por fallidos."""
+
+
+async def knowledge(
+    settings: Settings, embeddings: EmbeddingPort | None = None
+) -> KnowledgeRetriever:
+    """La documentación de ejemplo de Empresa Demo, indexada en memoria.
+
+    Sin `embeddings`, la bolsa de palabras local; con unos de verdad (bge-m3),
+    el límite y el umbral de producción."""
+    store = MemoryVectorStore()
+    if embeddings is None:
+        embeddings = LocalEmbeddings()
+        # Bolsa de palabras: los parecidos son más bajos que con bge-m3 (umbral 0,45).
+        options = RetrievalOptions(limit=5, min_similarity=0.15)
+    else:
+        options = RetrievalOptions(
+            limit=settings.rag_limit, min_similarity=settings.rag_min_similarity
+        )
     chunker = TextChunker(settings.chunk_max_chars, settings.chunk_overlap_chars)
     extractor = DocumentTextExtractor()
     for document_id, path in enumerate(
@@ -154,12 +178,16 @@ async def knowledge(settings: Settings) -> KnowledgeRetriever:
             path.stem,
         )
         chunks = chunker.chunk(extractor.extract(content, "text/markdown"))
-        batch = await embeddings.embed_documents([c.text for c in chunks])
+        try:
+            batch = await embeddings.embed_documents([c.text for c in chunks])
+        except LLMError as error:
+            raise EvaluationSetupError(
+                f"No se pudo indexar la documentación con {embeddings.model}: {error}"
+            ) from error
         store.add(
             TenantId(COMPANIES[Tenant.SHOP].tenant_id), document_id, title, chunks, batch.vectors
         )
-    # Bolsa de palabras: los parecidos son más bajos que con bge-m3 (umbral 0,45).
-    return KnowledgeRetriever(embeddings, store, RetrievalOptions(limit=5, min_similarity=0.15))
+    return KnowledgeRetriever(embeddings, store, options)
 
 
 @contextlib.asynccontextmanager
@@ -216,8 +244,13 @@ def load_previous(path: Path) -> dict[str, CaseRun]:
 
 
 async def evaluate(
-    options: Options, llm: LLMPort, settings: Settings, prices: dict[str, Price]
+    options: Options,
+    llm: LLMPort,
+    settings: Settings,
+    prices: dict[str, Price],
+    embeddings: EmbeddingPort | None = None,
 ) -> list[CaseRun]:
+    """Evalúa los casos. `embeddings` None = búsqueda local (bolsa de palabras)."""
     cases = load_dataset(options.dataset).select(options.only, options.limit)
     options.out.mkdir(parents=True, exist_ok=True)
     path = options.out / f"{options.run}.jsonl"
@@ -226,7 +259,10 @@ async def evaluate(
     results: list[CaseRun] = []
     spent = 0.0
 
-    retriever = await knowledge(settings)
+    retriever = await knowledge(settings, embeddings)
+    # La búsqueda forma parte de la huella solo si no es la local.
+    retrieval = None if embeddings is None else f"{embeddings.model}@{settings.rag_min_similarity}"
+    retrieval_label = LOCAL_MODEL if embeddings is None else embeddings.model
     async with mcp_server() as url:
         agent = LangGraphEmailAgent(
             llm,
@@ -251,6 +287,7 @@ async def evaluate(
                     model=options.models,
                     prompts=refs,
                     policy=policy_version(settings),
+                    retrieval=retrieval,
                 )
                 cached = previous.get(case.id)
                 if cached is not None and cached.fingerprint == key and cached.status == "ok":
@@ -264,7 +301,10 @@ async def evaluate(
                         file=sys.stderr,
                     )
                     break
-                run = await _run_case(agent, case, index, key, options, prices)
+                run = replace(
+                    await _run_case(agent, case, index, key, options, prices),
+                    retrieval=retrieval_label,
+                )
                 spent += run.cost_usd or 0.0
                 out.write(run.to_json() + "\n")
                 out.flush()
@@ -363,6 +403,14 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
         default=None,
         help="Comparar dos ejecuciones guardadas caso a caso (sin llamar a la IA).",
     )
+    parser.add_argument(
+        "--embeddings",
+        choices=["local", "ollama"],
+        default="local",
+        help="Búsqueda en la documentación: bolsa de palabras local (sin red) o bge-m3"
+        " en Ollama con el umbral de producción.",
+    )
+    parser.add_argument("--ollama-url", default="http://ollama:11434")
     args = parser.parse_args(list(argv) if argv is not None else None)
     simulated = args.provider == "simulated"
     config = Settings()
@@ -383,11 +431,24 @@ def parse_args(argv: Iterable[str] | None = None) -> Options:
         report_only=args.report_only,
         compare=(args.compare[0], args.compare[1]) if args.compare else None,
         smoke=args.smoke,
+        embeddings=args.embeddings,
+        ollama_url=args.ollama_url,
     )
     if not options.run:
         name = options.models.replace(" + ", "+")
-        options = replace(options, run=f"{args.provider}-{name}")
+        suffix = "-bge" if options.embeddings == "ollama" else ""
+        options = replace(options, run=f"{args.provider}-{name}{suffix}")
     return options
+
+
+def ollama_embeddings(options: Options, settings: Settings) -> OllamaEmbeddings:
+    """Los mismos embeddings que producción (bge-m3), en el Ollama indicado."""
+    return OllamaEmbeddings.create(
+        options.ollama_url,
+        model=settings.embedding_model,
+        dimensions=settings.embedding_dimensions,
+        timeout=settings.embedding_timeout_seconds,
+    )
 
 
 def write_report(options: Options) -> Summary:
@@ -439,8 +500,21 @@ def main(argv: Iterable[str] | None = None) -> int:
             print("Falta ANTHROPIC_API_KEY (o AI_SERVICE_ANTHROPIC_API_KEY).", file=sys.stderr)
             return 2
         prices = parse_pricing((REPO / "config" / "ai.php").read_text("utf-8"))
+        embeddings = (
+            ollama_embeddings(options, settings) if options.embeddings == "ollama" else None
+        )
         started = time.perf_counter()
-        results = asyncio.run(evaluate(options, build_llm(settings), settings, prices))
+        try:
+            results = asyncio.run(
+                evaluate(options, build_llm(settings), settings, prices, embeddings)
+            )
+        except EvaluationSetupError as error:
+            print(
+                f"{error}\n¿Está Ollama en {options.ollama_url} con el modelo descargado"
+                f" (`ollama pull {settings.embedding_model}`)?",
+                file=sys.stderr,
+            )
+            return 2
         spent = sum(r.cost_usd or 0.0 for r in results)
         print(
             f"\n{len(results)} casos en {time.perf_counter() - started:.1f} s · coste {spent:.4f} $"

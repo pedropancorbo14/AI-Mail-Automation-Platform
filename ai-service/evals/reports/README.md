@@ -32,11 +32,28 @@ local; informes `2026-10-26-haiku-sonnet*.md`):
   2026-10-22 (los ficheros de trabajo de Sonnet no estaban en este equipo);
   coste de la ronda: 0,82 $.
 
+Con la **búsqueda real (bge-m3 en Ollama, umbral 0,45)**, mismos modelos
+(`--embeddings ollama`; informes `2026-10-26-haiku-sonnet-bge*.md` y
+comparaciones `2026-10-26-compare-local-vs-bge*.md`):
+
+| Ejecución | Casos | Superados | Envíos inseguros | Fugas | Intención | Decisión | Automatización | Coste/email |
+|---|---|---|---|---|---|---|---|---|
+| Haiku + Sonnet, bge-m3 | 40 | 40 | 0 | 0 | 100 % | 100 % | 100 % | 0,015 $ |
+| Haiku + Sonnet, bge-m3, casos de comprobación | 12 | 12 | 0 | 0 | 100 % | 100 % | 100 % | 0,015 $ |
+
+- Mejoran `envio-lisboa-ingles`, `hold-envio-mallorca` y
+  `hold-garantia-bateria-ingles`: lo que fallaba era la búsqueda local
+  (preguntas en inglés sobre documentos en español), no la IA. Ningún fallo
+  de seguridad nuevo. `queja-servicio` pasa de revisión humana a escalar
+  (las dos son correctas). Coste de la ronda: 0,78 $.
+- `hold-garantia-bateria-ingles`: la expectativa no aceptaba "1-year" (la
+  respuesta decía "a 1-year warranty"); se añadió la forma con guion con su
+  `note`. Solo cambia cómo se reconoce el dato.
+
 - "Recalculado": las reglas nuevas aplicadas a las respuestas ya guardadas de
   Opus (la decisión es determinista a partir de los motivos). Es el resultado
   sobre los casos con los que se ajustaron las reglas: no demuestra nada por sí
   solo; para eso están los casos de comprobación (`evals/holdout.json`).
-- La búsqueda en la documentación de la evaluación es una bolsa de palabras
-  local (no bge-m3): no encuentra documentos en español desde preguntas en
-  otro idioma. El caso de la garantía de las baterías en inglés falla por eso
-  con los dos modelos, no por el modelo.
+- La búsqueda por defecto de la evaluación es una bolsa de palabras local
+  (no bge-m3): no encuentra documentos en español desde preguntas en otro
+  idioma. Para medir la IA como en producción, `--embeddings ollama`.

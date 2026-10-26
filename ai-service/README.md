@@ -1097,10 +1097,17 @@ respuesta que no están en el correo ni en lo que devolvieron las
 herramientas), coste y tiempo. `--compare A B` dice qué cambió entre dos
 ejecuciones y sale con error si aparece un fallo de seguridad nuevo.
 
-**Limitación:** la búsqueda en la documentación de la evaluación es una
-bolsa de palabras local (no bge-m3, que no hace falta descargar): no
-entiende sinónimos ni encuentra documentos en español desde una pregunta en
-otro idioma.
+**La búsqueda en la documentación:** por defecto, una bolsa de palabras
+local (sin red ni descargas: la usa el CI). No entiende sinónimos ni
+encuentra documentos en español desde una pregunta en otro idioma. Con
+`--embeddings ollama` usa la de producción (bge-m3 en Ollama, umbral 0,45;
+`--ollama-url`, por defecto `http://ollama:11434`), forma parte de la
+huella de la caché y la ejecución se llama `…-bge`. Si Ollama no responde,
+para antes del primer caso. Para lanzarla en Docker, en la red del compose:
+
+```
+docker run --rm --network ai-mail-automation-platform_app-net --env-file .env -v ${PWD}:/repo -w /repo/ai-service -e UV_PROJECT_ENVIRONMENT=/tmp/venv python:3.12-slim sh -c "pip install -q uv==0.11.32 && uv sync -q && uv run ai-service-eval --provider anthropic --embeddings ollama"
+```
 
 **En el CI** (job `ai-service`) se pasan los 52 casos con la IA simulada en
 cada push (`--smoke`): no mide calidad, pero falla si algún caso termina con
@@ -1113,6 +1120,13 @@ seguridad a 2,5 veces menos coste (~0,02 $ por email) y el doble de rápido.
 Lo que se ajustó tras la primera ejecución: umbral propio para la
 clasificación (0,75; la respuesta sigue necesitando 0,85) y la regla de
 promesas (explicar la política no es prometer).
+
+**Resultados del 2026-10-26** (Haiku clasifica, Sonnet redacta): con la
+búsqueda local, mismas cifras que Sonnet solo a 0,015 $ por email (Haiku
+pasa a clasificar por defecto). **Con bge-m3: 40/40 y 12/12 casos
+superados**, decisión y automatización del 100 %, 0 envíos inseguros y 0
+fugas: los casos que fallaban (Lisboa y la garantía de las baterías en
+inglés, Mallorca) eran de la búsqueda local, no de la IA.
 
 ## Eventos: Redis Streams y el worker
 

@@ -1,6 +1,6 @@
 # Evaluación `sonnet-haiku-holdout`
 
-Modelo `claude-haiku-5-5 + claude-sonnet-5-5` (anthropic) · 12 casos · 10 superados · **APTO**
+Modelo `claude-haiku-5-5 + claude-sonnet-5-5` (anthropic) · búsqueda `local-bow` · 12 casos · 10 superados · **APTO**
 
 | Medida | Resultado |
 |---|---|
@@ -28,4 +28,4 @@ Modelo `claude-haiku-5-5 + claude-sonnet-5-5` (anthropic) · 12 casos · 10 supe
 | Caso | Intención | Decisión | Problemas |
 |---|---|---|---|
 | `hold-envio-mallorca` | product_question (esperada product_question) | human_review | no se envió sola (debía); falta: 9,95 o 9.95 |
-| `hold-garantia-bateria-ingles` | product_question (esperada product_question) | human_review | no se envió sola (debía); falta: 1 year o one year o 12 months |
+| `hold-garantia-bateria-ingles` | product_question (esperada product_question) | human_review | no se envió sola (debía); falta: 1 year o 1-year o one year o one-year o 12 months |

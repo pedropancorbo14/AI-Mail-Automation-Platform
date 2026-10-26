@@ -57,6 +57,9 @@ def test_the_fingerprint_changes_with_what_the_agent_sees_or_decides_with() -> N
     assert fingerprint(case, **{**base, "policy": "0.85/0.75/def"}) != same  # type: ignore[arg-type]
     other_body = case.model_copy(update={"body": case.body + " ¿Me decís algo?"})
     assert fingerprint(other_body, **base) != same  # type: ignore[arg-type]
+    # Otra búsqueda en la documentación, otra huella; la local no cambia las guardadas.
+    assert fingerprint(case, **{**base, "retrieval": "bge-m3@0.45"}) != same  # type: ignore[arg-type]
+    assert fingerprint(case, **{**base, "retrieval": None}) == same  # type: ignore[arg-type]
 
 
 def test_correcting_an_expectation_does_not_repeat_the_case() -> None:

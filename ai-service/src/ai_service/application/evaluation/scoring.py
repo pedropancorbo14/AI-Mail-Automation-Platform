@@ -174,6 +174,7 @@ class Summary:
     avg_cost_usd: float | None
     median_duration_ms: int
     scores: tuple[CaseScore, ...] = field(repr=False)
+    retrieval: str = "local-bow"
 
     @property
     def ok(self) -> bool:
@@ -220,6 +221,7 @@ def summarize(run: str, cases: tuple[Case, ...], runs: dict[str, CaseRun]) -> Su
         avg_cost_usd=round(sum(known) / len(known), 6) if known else None,
         median_duration_ms=int(statistics.median(s.duration_ms for s in scored)),
         scores=scored,
+        retrieval=first.retrieval,
     )
 
 

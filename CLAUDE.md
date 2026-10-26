@@ -5544,8 +5544,21 @@ docker run --rm -it --network ai-mail-automation-platform_app-net -v ${PWD}:/rep
 `uv sync` crea `ai-service/.venv` dentro del repo montado, con binarios de
 Linux; está en `.gitignore`. Si molesta, `-e UV_PROJECT_ENVIRONMENT=/tmp/venv`.)
 
-- [ ] **15.8 Búsqueda real con bge-m3 en la evaluación.** Hoy el ejecutor
-  usa una bolsa de palabras local (`infrastructure/knowledge/local.py`,
+- [x] **15.8 Búsqueda real con bge-m3 en la evaluación (2026-10-26, 0,78 $).**
+  `ai-service-eval --embeddings local|ollama` (+ `--ollama-url`):
+  `OllamaEmbeddings` de producción + `MemoryVectorStore` + `rag_limit`/
+  `rag_min_similarity` (0,45); `fingerprint(..., retrieval=)` solo si no es
+  la local (las huellas guardadas siguen valiendo); `CaseRun.retrieval` y
+  `Summary.retrieval` (el informe dice "búsqueda `bge-m3`"); ejecución por
+  defecto `…-bge`; Ollama caído → `EvaluationSetupError` antes del primer
+  caso (sale con 2). Tests con `httpx.MockTransport`. Ejecutado con Haiku +
+  Sonnet (la combinación por defecto) en vez de solo Sonnet, para comparar
+  solo la búsqueda: **40/40 y 12/12 casos, decisión y automatización
+  100 %, 0 envíos inseguros, 0 fugas, 0,015 $/email**; mejoran Lisboa,
+  Mallorca y la garantía de las baterías en inglés (fallaban por la
+  búsqueda local). Expectativa de la garantía ampliada a "1-year" con `note`
+  (la respuesta era correcta). Informes `evals/reports/2026-10-26-*-bge*`.
+  Plan original: hoy el ejecutor usa una bolsa de palabras local (`infrastructure/knowledge/local.py`,
   umbral 0,15) que no entiende sinónimos ni otros idiomas: el caso
   `hold-garantia-bateria-ingles` falla por eso con los dos modelos.
   1. **Desarrollo:** opción `--embeddings local|ollama` en
