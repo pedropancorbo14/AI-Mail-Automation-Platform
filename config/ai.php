@@ -123,7 +123,7 @@ return [
         // ai-service (mismas variables del .env que lee su contenedor).
         'llm_provider' => env('AI_SERVICE_LLM_PROVIDER', 'anthropic'),
         'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
-        'classify_model' => env('ANTHROPIC_CLASSIFY_MODEL') ?: env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
+        'classify_model' => env('ANTHROPIC_CLASSIFY_MODEL') ?: 'claude-haiku-5-5',
         'draft_model' => env('ANTHROPIC_DRAFT_MODEL') ?: env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
         'min_confidence' => (float) env('AI_SERVICE_MIN_CONFIDENCE', 0.85),
     ],

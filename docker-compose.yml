@@ -146,8 +146,9 @@ services:
       AI_SERVICE_LLM_PROVIDER: ${AI_SERVICE_LLM_PROVIDER:-anthropic}
       AI_SERVICE_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       AI_SERVICE_ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
-      # Un modelo por paso (vacío = ANTHROPIC_MODEL).
-      AI_SERVICE_ANTHROPIC_CLASSIFY_MODEL: ${ANTHROPIC_CLASSIFY_MODEL:-}
+      # Un modelo por paso: clasificar con Haiku por defecto (evaluación del
+      # 2026-10-26); redactar vacío = ANTHROPIC_MODEL.
+      AI_SERVICE_ANTHROPIC_CLASSIFY_MODEL: ${ANTHROPIC_CLASSIFY_MODEL:-claude-haiku-5-5}
       AI_SERVICE_ANTHROPIC_DRAFT_MODEL: ${ANTHROPIC_DRAFT_MODEL:-}
       # Misma BD de Redis (sin prefijo) que la conexión "streams" de Laravel.
       AI_SERVICE_REDIS_URL: redis://:${REDIS_PASSWORD:-secret}@redis:6379/${REDIS_STREAMS_DB:-3}

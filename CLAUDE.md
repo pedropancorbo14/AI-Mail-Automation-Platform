@@ -5605,7 +5605,19 @@ Linux; está en `.gitignore`. Si molesta, `-e UV_PROJECT_ENVIRONMENT=/tmp/venv`.
   5. Si se ajusta mirando `holdout-2.json`, deja de ser de comprobación:
      anotarlo en su descripción.
 
-- [ ] **15.10 Clasificar con Haiku 5.5.** Hecho el desarrollo (15.7b); falta
+- [x] **15.10 Clasificar con Haiku 5.5 (2026-10-26, en el equipo del
+  usuario, 0,82 $).** Haiku clasifica y Sonnet redacta: 40 casos → 0 envíos
+  inseguros, 0 fugas, intención 100 %, decisión 98 %, automatización 90 %,
+  **0,015 $/email** (Sonnet solo: mismas cifras a 0,021 $); casos de
+  comprobación → 0/0, intención 100 %, decisión 83 %, automatización 67 %,
+  0,016 $ (Sonnet: 0,022 $). Los fallos son de la redacción (rondas de
+  consultas agotadas, búsqueda local), no de la clasificación. **Haiku pasa
+  a ser el modelo de clasificación por defecto** (compose,
+  `.env.docker.example`, `config/ai.php`, README; `config.py` de ai-service
+  sigue sin modelo propio fuera de Docker). Comparado contra los informes
+  del 2026-10-22: los `.jsonl` de Sonnet no estaban en el equipo (no se
+  pudo usar `--compare`). Informes en `evals/reports/2026-10-26-*`.
+  Plan original: hecho el desarrollo (15.7b); faltaba
   medirlo (no necesita Ollama: se puede hacer en la nube). `--provider
   anthropic --run sonnet-haiku --classify-model claude-haiku-5-5
   --max-cost-usd 1` y lo mismo con `--dataset evals/holdout.json --run

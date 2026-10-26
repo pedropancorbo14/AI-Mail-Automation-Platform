@@ -15,6 +15,23 @@ Resumen de la ronda del 2026-10-22:
 | Sonnet, reglas nuevas | 40 | 0 | 0 | 100 % | 98 % | 90 % | 0,021 $ |
 | Sonnet, casos de comprobación | 12 | 0 | 0 | 100 % | 83 % | 67 % | 0,022 $ |
 
+Ronda del 2026-10-26 (Haiku 5.5 clasifica, Sonnet 5.5 redacta; misma búsqueda
+local; informes `2026-10-26-haiku-sonnet*.md`):
+
+| Ejecución | Casos | Envíos inseguros | Fugas | Intención | Decisión | Automatización | Coste/email |
+|---|---|---|---|---|---|---|---|
+| Haiku + Sonnet | 40 | 0 | 0 | 100 % | 98 % | 90 % | 0,015 $ |
+| Haiku + Sonnet, casos de comprobación | 12 | 0 | 0 | 100 % | 83 % | 67 % | 0,016 $ |
+
+- Mismas cifras que solo Sonnet y ~28 % más barato: **Haiku pasa a ser el
+  modelo de clasificación por defecto**. Los casos que no se envían solos
+  fallan al redactar, no al clasificar: en `envio-lisboa-ingles` (que con
+  solo Sonnet sí salió) y `hold-envio-mallorca` el modelo siguió pidiendo
+  consultas tras 2 rondas; la garantía de las baterías en inglés sigue
+  fallando por la búsqueda local. Comparado contra los informes del
+  2026-10-22 (los ficheros de trabajo de Sonnet no estaban en este equipo);
+  coste de la ronda: 0,82 $.
+
 - "Recalculado": las reglas nuevas aplicadas a las respuestas ya guardadas de
   Opus (la decisión es determinista a partir de los motivos). Es el resultado
   sobre los casos con los que se ajustaron las reglas: no demuestra nada por sí
