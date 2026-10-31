@@ -1,0 +1,461 @@
+# Producción (y staging) — Fase 16.
+#
+# Diferencias con docker-compose.yml (desarrollo):
+#   - El código va DENTRO de las imágenes (sin volúmenes del código), con
+#     versión (APP_VERSION): se puede volver a la anterior (scripts/rollback.sh).
+#   - Solo Caddy publica puertos (80 y 443) y termina HTTPS. Prometheus,
+#     Alertmanager y Grafana se abren solo en 127.0.0.1 del servidor (entra
+#     con un túnel SSH). Nada de GreenMail ni Vite.
+#   - Secretos obligatorios: sin ellos el compose no arranca (${VAR:?}).
+#   - Valores que no se pueden equivocar (APP_ENV, hosts internos, HTTPS,
+#     anti-SSRF) fijados aquí, no en el .env.
+#
+# Uso (siempre con el fichero de variables .env.production, ver
+# .env.production.example):
+#   scripts/deploy.sh            construye, comprueba, hace copia, migra y arranca
+#   docker compose -f docker-compose.prod.yml --env-file .env.production ps
+
+name: aimail
+
+x-app-image: &app-image
+  image: ${IMAGE_PREFIX:-aimail}/app:${APP_VERSION:?Falta APP_VERSION (scripts/deploy.sh la pone)}
+  build:
+    context: .
+    dockerfile: docker/php/Dockerfile
+    target: production
+    args:
+      APP_VERSION: ${APP_VERSION}
+
+# Variables de Laravel: el resto sale de .env.production (env_file).
+x-app-env: &app-env
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_URL: https://${APP_DOMAIN:?Falta APP_DOMAIN}
+  APP_VERSION: ${APP_VERSION}
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: 5432
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  CACHE_STORE: redis
+  SESSION_DRIVER: redis
+  QUEUE_CONNECTION: redis
+  # HTTPS de punta a punta: cookie de sesión solo cifrada, panel en el dominio.
+  SESSION_SECURE_COOKIE: "true"
+  SESSION_DOMAIN: ${APP_DOMAIN}
+  SANCTUM_STATEFUL_DOMAINS: ${APP_DOMAIN}
+  # Caddy es el único proxy: solo de su IP (fija) se acepta X-Forwarded-For.
+  TRUSTED_PROXIES: ${CADDY_IP:-172.31.250.10}
+  MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS: "false"
+  MAIL_CONNECTIONS_OAUTH_REDIRECT_TO: https://${APP_DOMAIN}/buzones
+  AI_SERVICE_URL: http://ai-service:8000
+  # Hora de la última copia correcta (la escribe el contenedor backup).
+  BACKUP_STATUS_FILE: /backup-status/last_success
+  LOG_CHANNEL: stack
+  LOG_STACK: daily,json
+
+x-laravel: &laravel
+  <<: *app-image
+  restart: unless-stopped
+  # El mismo fichero que --env-file (staging usa .env.staging).
+  env_file: ${ENV_FILE_PROD:-.env.production}
+  environment:
+    <<: *app-env
+  volumes:
+    - app-storage:/var/www/html/storage
+    - backup-status:/backup-status:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks:
+    - app-net
+  labels:
+    - "logging=promtail"
+
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+
+networks:
+  # Caddy ↔ nginx. Subred fija para dar a Caddy una IP fija: la única que
+  # Laravel acepta como proxy (TRUSTED_PROXIES).
+  edge:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-172.31.250.0/24}
+  app-net:
+    driver: bridge
+  observability-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  app-storage:
+  ollama-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  alertmanager-data:
+  caddy-data:
+  caddy-config:
+  backups:
+  backup-status:
+
+secrets:
+  # Prometheus lee el token de /metrics de aquí (credentials_file): ya no va
+  # escrito en su configuración.
+  metrics_token:
+    environment: METRICS_TOKEN
+  # Contraseñas de los avisos de Alertmanager (vacías si no se usan).
+  alert_smtp_password:
+    environment: ALERT_SMTP_PASSWORD
+  alert_telegram_bot_token:
+    environment: ALERT_TELEGRAM_BOT_TOKEN
+
+services:
+  # ---------------------------------------------------------------
+  # Entrada: HTTPS
+  # ---------------------------------------------------------------
+  caddy:
+    image: caddy:2.11.6-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    ports:
+      - "${HTTP_BIND:-0.0.0.0}:80:80"
+      - "${HTTP_BIND:-0.0.0.0}:443:443"
+      - "${HTTP_BIND:-0.0.0.0}:443:443/udp"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificados: si se pierden, Let's Encrypt limita cuántos se piden por semana.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      nginx:
+        condition: service_healthy
+    networks:
+      edge:
+        ipv4_address: ${CADDY_IP:-172.31.250.10}
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+
+  nginx:
+    image: ${IMAGE_PREFIX:-aimail}/web:${APP_VERSION}
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: web
+      args:
+        APP_VERSION: ${APP_VERSION}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/up"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    depends_on:
+      - app
+    networks:
+      - edge
+      - app-net
+      # Prometheus lee /metrics a través de nginx.
+      - observability-net
+    labels:
+      - "logging=promtail"
+
+  # ---------------------------------------------------------------
+  # Laravel (misma imagen, cuatro procesos)
+  # ---------------------------------------------------------------
+  app:
+    <<: *laravel
+
+  horizon:
+    <<: *laravel
+    command: php artisan horizon
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+
+  scheduler:
+    <<: *laravel
+    command: php artisan schedule:work
+
+  ai-results:
+    <<: *laravel
+    command: php artisan ai:consume-results
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+
+  # ---------------------------------------------------------------
+  # Microservicio de IA
+  # ---------------------------------------------------------------
+  ai-service:
+    image: ${IMAGE_PREFIX:-aimail}/ai-service:${APP_VERSION}
+    build:
+      context: ./ai-service
+    restart: unless-stopped
+    environment:
+      AI_SERVICE_ENVIRONMENT: production
+      AI_SERVICE_LOG_LEVEL: ${AI_SERVICE_LOG_LEVEL:-INFO}
+      AI_SERVICE_LLM_PROVIDER: anthropic
+      AI_SERVICE_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?Falta ANTHROPIC_API_KEY}
+      AI_SERVICE_ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      AI_SERVICE_ANTHROPIC_CLASSIFY_MODEL: ${ANTHROPIC_CLASSIFY_MODEL:-claude-haiku-5-5}
+      AI_SERVICE_ANTHROPIC_DRAFT_MODEL: ${ANTHROPIC_DRAFT_MODEL:-}
+      AI_SERVICE_REDIS_URL: redis://:${REDIS_PASSWORD:?Falta REDIS_PASSWORD}@redis:6379/${REDIS_STREAMS_DB:-3}
+      AI_SERVICE_DEBUG_ENDPOINTS: "false"
+      AI_SERVICE_DATABASE_URL: postgresql+psycopg://ai_service_checkpoints:${AI_SERVICE_CHECKPOINTS_DB_PASSWORD:?Falta AI_SERVICE_CHECKPOINTS_DB_PASSWORD}@postgres:5432/${DB_DATABASE:-app}
+      AI_SERVICE_CHECKPOINT_DATABASE_URL: postgresql+psycopg://ai_service_checkpoints:${AI_SERVICE_CHECKPOINTS_DB_PASSWORD}@postgres:5432/${DB_DATABASE:-app}
+      AI_SERVICE_LARAVEL_URL: http://nginx
+      AI_SERVICE_OLLAMA_URL: http://ollama:11434
+      AI_SERVICE_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-bge-m3}
+      AI_SERVICE_MCP_URL: http://ai-mcp:8100
+      AI_SERVICE_MCP_TOKEN: ${AI_SERVICE_MCP_TOKEN:?Falta AI_SERVICE_MCP_TOKEN}
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:?Falta AI_SERVICE_INTERNAL_TOKEN}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      ai-mcp:
+        condition: service_healthy
+    networks:
+      - app-net
+      - observability-net
+    <<: *hardened
+    read_only: true
+    tmpfs:
+      - /tmp
+    stop_grace_period: 60s
+    labels:
+      - "logging=promtail"
+
+  ai-mcp:
+    image: ${IMAGE_PREFIX:-aimail}/ai-service:${APP_VERSION}
+    restart: unless-stopped
+    command: ai-service-mcp
+    environment:
+      AI_SERVICE_ENVIRONMENT: production
+      AI_SERVICE_MCP_TOKEN: ${AI_SERVICE_MCP_TOKEN}
+      AI_SERVICE_MCP_LARAVEL_URL: http://nginx
+      AI_SERVICE_MCP_LARAVEL_TOKEN: ${AI_SERVICE_DATA_TOKEN:?Falta AI_SERVICE_DATA_TOKEN}
+      AI_SERVICE_MCP_ALLOW_PRIVATE_HOSTS: "false"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - app-net
+    <<: *hardened
+    read_only: true
+    tmpfs:
+      - /tmp
+    labels:
+      - "logging=promtail"
+
+  ollama:
+    image: ollama/ollama:0.12.6
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 1h
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - app-net
+
+  # ---------------------------------------------------------------
+  # Datos
+  # ---------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-app}
+      POSTGRES_USER: ${DB_USERNAME:-app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD}
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./docker/postgres/init-production:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-app} -d ${DB_DATABASE:-app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+      --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-net
+
+  # Copias de seguridad diarias de la base de datos y los ficheros, cada una
+  # probada restaurándola (docker/backup/backup.sh). Misma imagen que
+  # PostgreSQL: pg_dump de la misma versión.
+  backup:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    entrypoint: ["/usr/local/bin/backup.sh"]
+    command: ["loop"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${DB_USERNAME:-app}
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: ${DB_DATABASE:-app}
+      BACKUP_TIME: ${BACKUP_TIME:-03:15}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ./docker/backup/backup.sh:/usr/local/bin/backup.sh:ro
+      - backups:/backups
+      - backup-status:/status
+      # Lectura y escritura: restaurar también devuelve los adjuntos y documentos.
+      - app-storage:/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-net
+
+  # ---------------------------------------------------------------
+  # Observabilidad (solo en 127.0.0.1 del servidor)
+  # ---------------------------------------------------------------
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USERNAME:-app}:${DB_PASSWORD}@postgres:5432/${DB_DATABASE:-app}?sslmode=disable"
+    depends_on:
+      - postgres
+    networks:
+      - app-net
+      - observability-net
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.94.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    depends_on:
+      - redis
+    networks:
+      - app-net
+      - observability-net
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    restart: unless-stopped
+    secrets:
+      - metrics_token
+    volumes:
+      - ./docker/prometheus/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=400d"
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - alertmanager
+    networks:
+      - observability-net
+
+  # Avisos de las alertas por email y/o Telegram (docker/alertmanager/start.sh).
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/etc/alertmanager/start.sh"]
+    environment:
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      ALERT_SMTP_HOST: ${ALERT_SMTP_HOST:-}
+      ALERT_SMTP_FROM: ${ALERT_SMTP_FROM:-}
+      ALERT_SMTP_USER: ${ALERT_SMTP_USER:-}
+      ALERT_SMTP_TLS: ${ALERT_SMTP_TLS:-true}
+      ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID:-}
+      # Enlace de los avisos: Alertmanager por el túnel SSH.
+      ALERTMANAGER_URL: http://localhost:${ALERTMANAGER_PORT:-9093}
+    secrets:
+      - alert_smtp_password
+      - alert_telegram_bot_token
+    volumes:
+      - ./docker/alertmanager/start.sh:/etc/alertmanager/start.sh:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    networks:
+      - observability-net
+
+  loki:
+    image: grafana/loki:3.7.8
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./docker/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - observability-net
+
+  promtail:
+    image: grafana/promtail:3.6.8
+    restart: unless-stopped
+    volumes:
+      - ./docker/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - app-storage:/var/www/html/storage:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    depends_on:
+      - loki
+    networks:
+      - observability-net
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Falta GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ai-mail/general.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards/ai-mail:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - observability-net

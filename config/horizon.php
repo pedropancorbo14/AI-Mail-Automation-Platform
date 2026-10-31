@@ -43,6 +43,13 @@ return [
 
     'path' => env('HORIZON_PATH', 'horizon'),
 
+    // Quién puede abrir /horizon fuera de local (Fase 16): emails de usuarios
+    // del panel, separados por comas (HORIZON_ALLOWED_EMAILS). Vacío = nadie.
+    'allowed_emails' => array_values(array_filter(array_map(
+        fn (string $email) => strtolower(trim($email)),
+        explode(',', (string) env('HORIZON_ALLOWED_EMAILS', '')),
+    ))),
+
     /*
     |--------------------------------------------------------------------------
     | Horizon Redis Connection

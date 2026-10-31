@@ -151,6 +151,21 @@ describe('current state', function () {
         expect(metricSample('documents', ['tenant' => 'acme', 'status' => DocumentStatus::Failed->value]))->toBe(1.0);
     });
 
+    it('publishes the last verified backup only where there are backups', function () {
+        expect(metricSample('backup_last_success_timestamp_seconds'))->toBeNull();
+
+        $file = tempnam(sys_get_temp_dir(), 'backup');
+        config(['metrics.backup_status_file' => $file]);
+
+        file_put_contents($file, "1793454833\n");
+        expect(metricSample('backup_last_success_timestamp_seconds'))->toBe(1793454833.0);
+
+        // Sin fichero (nunca salió bien una copia) o ilegible: 0, y la alerta avisa.
+        unlink($file);
+        expect(metricSample('backup_last_success_timestamp_seconds'))->toBe(0.0)
+            ->and(metricSample('state_metrics_ok', ['section' => 'backups']))->toBe(1.0);
+    });
+
     it('keeps publishing the rest when a section fails (e.g. the database)', function () {
         Log::spy();
         inTenant($this->tenant, fn () => Email::factory()->create());

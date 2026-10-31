@@ -24,6 +24,45 @@ tests:
               summary: "Prometheus no puede leer /metrics de la aplicación"
               description: "La app (nginx/PHP-FPM) no responde o el token de METRICS_TOKEN no coincide. Sin métricas, el resto de alertas no funcionan."
 
+  # Alertmanager caído: aviso a los 5 min (en desarrollo no existe: sin serie, sin alerta).
+  - interval: 1m
+    input_series:
+      - series: 'up{job="alertmanager", instance="alertmanager:9093"}'
+        values: "1 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AlertmanagerCaido
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: AlertmanagerCaido
+        exp_alerts:
+          - exp_labels: { severity: critical, job: alertmanager, instance: "alertmanager:9093" }
+            exp_annotations:
+              summary: "Alertmanager no responde: las alertas no se están enviando"
+              description: "Solo en producción. docker compose -f docker-compose.prod.yml logs alertmanager (¿configuración de ALERT_* incorrecta?)."
+
+  # Copias de seguridad: una al día va bien; si se para, avisa pasadas 26 h
+  # (+15 min); si nunca salió ninguna (0), también.
+  - interval: 1m
+    input_series:
+      # Copia correcta cada 24 h (el valor es la hora de la última).
+      - series: 'aimail_backup_last_success_timestamp_seconds{job="laravel", instance="nginx:80", env="diaria"}'
+        values: "0x1439 86400x300"
+      # La última salió bien a las 0 h y luego dejó de copiar.
+      - series: 'aimail_backup_last_success_timestamp_seconds{job="laravel", instance="nginx:80", env="parada"}'
+        values: "0x1740"
+    alert_rule_test:
+      - eval_time: 26h
+        alertname: CopiaDeSeguridadAtrasada
+        exp_alerts: []
+      - eval_time: 28h
+        alertname: CopiaDeSeguridadAtrasada
+        exp_alerts:
+          - exp_labels: { severity: critical, job: laravel, instance: "nginx:80", env: parada }
+            exp_annotations:
+              summary: "No hay una copia de seguridad correcta desde hace más de 26 horas"
+              description: "El contenedor backup copia cada día y prueba a restaurar cada copia (docker compose -f docker-compose.prod.yml logs backup). Si el valor es 0, nunca ha salido bien ninguna."
+
   # Buzón con fallos seguidos (mensaje envenenado) y otro sano.
   - interval: 1m
     input_series:

@@ -1,0 +1,32 @@
+# Caddy (Fase 16): la única puerta de entrada desde internet. Termina HTTPS
+# (certificados de Let's Encrypt automáticos y renovados solos) y pasa las
+# peticiones a nginx por la red "edge".
+#
+# Con APP_DOMAIN=localhost (staging en tu equipo o en el CI) Caddy usa su
+# propia autoridad local: HTTPS de verdad, pero el navegador avisa del
+# certificado (curl -k).
+# Sin email para Let's Encrypt: no hace falta (solo envía avisos de caducidad
+# y Caddy renueva solo).
+{
+	# Sin panel de administración de Caddy (por defecto en localhost:2019).
+	admin off
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# Lo interno no sale nunca a internet, aunque tenga su propio token o firma:
+	# /internal (ai-service y el servidor MCP leen de Laravel por la red de
+	# Docker) y /metrics (Prometheus, también por dentro).
+	@interno path /internal /internal/* /metrics /metrics/*
+	respond @interno 404
+
+	reverse_proxy nginx:80
+
+	header {
+		-Server
+		-Via
+	}
+}
+
+# http:// redirige a https:// (Caddy lo hace solo para APP_DOMAIN).

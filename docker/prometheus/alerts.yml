@@ -14,6 +14,24 @@ groups:
           summary: "Prometheus no puede leer /metrics de la aplicación"
           description: "La app (nginx/PHP-FPM) no responde o el token de METRICS_TOKEN no coincide. Sin métricas, el resto de alertas no funcionan."
 
+      - alert: AlertmanagerCaido
+        expr: up{job="alertmanager"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager no responde: las alertas no se están enviando"
+          description: "Solo en producción. docker compose -f docker-compose.prod.yml logs alertmanager (¿configuración de ALERT_* incorrecta?)."
+
+      - alert: CopiaDeSeguridadAtrasada
+        expr: time() - aimail_backup_last_success_timestamp_seconds > 93600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No hay una copia de seguridad correcta desde hace más de 26 horas"
+          description: "El contenedor backup copia cada día y prueba a restaurar cada copia (docker compose -f docker-compose.prod.yml logs backup). Si el valor es 0, nunca ha salido bien ninguna."
+
       - alert: EstadoNoDisponible
         expr: aimail_state_metrics_ok == 0
         for: 5m

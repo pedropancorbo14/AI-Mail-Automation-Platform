@@ -34,6 +34,13 @@ return [
     ],
 
     /*
+    | Fichero donde el contenedor "backup" (docker-compose.prod.yml, Fase 16)
+    | anota la hora de la última copia correcta. Vacío = no hay copias que
+    | vigilar (desarrollo): no se publica la métrica.
+    */
+    'backup_status_file' => env('BACKUP_STATUS_FILE'),
+
+    /*
     | Colas cuyo tamaño se publica (aimail_queue_size): las de los supervisores
     | de Horizon (config/horizon.php).
     */

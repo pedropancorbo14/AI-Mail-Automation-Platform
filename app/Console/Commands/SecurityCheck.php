@@ -20,7 +20,8 @@ use Illuminate\Console\Command;
 class SecurityCheck extends Command
 {
     /** Contraseñas que nunca deberían llegar a producción. */
-    private const array WEAK = ['', 'secret', 'password', 'admin', 'root', '123456', 'changeme', 'local-metrics-token'];
+    private const array WEAK = ['', 'secret', 'password', 'admin', 'root', '123456', 'changeme', 'local-metrics-token',
+        'local-internal-token', 'local-data-token', 'local-mcp-token', 'checkpoints-secret'];
 
     public function handle(): int
     {
@@ -35,6 +36,8 @@ class SecurityCheck extends Command
             ['Contraseña de PostgreSQL fuerte', $this->strong(config('database.connections.pgsql.password')), 'DB_PASSWORD: 16+ caracteres aleatorios.'],
             ['Contraseña de Redis fuerte', $this->strong(config('database.redis.default.password')), 'REDIS_PASSWORD: 16+ caracteres aleatorios.'],
             ['Token de métricas propio', ! config('metrics.enabled') || filled(config('metrics.token')) && $this->strong(config('metrics.token'), 32), 'METRICS_TOKEN: 32+ caracteres aleatorios (y el mismo en prometheus.yml).'],
+            ['Tokens internos propios', $this->strong(config('ai.remote.internal_token'), 32) && $this->strong(config('integrations.data_token'), 32), 'AI_SERVICE_INTERNAL_TOKEN y AI_SERVICE_DATA_TOKEN: 32+ caracteres aleatorios (scripts/init-env.sh los genera).'],
+            ['Contraseña del rol de ai-service fuerte', $this->strong(config('ai.remote.checkpoints_db_password')), 'AI_SERVICE_CHECKPOINTS_DB_PASSWORD: 16+ caracteres aleatorios.'],
             ['IA real (no simulada)', config('ai.remote.llm_provider') !== 'simulated', 'AI_SERVICE_LLM_PROVIDER=anthropic: la simulada respondería a clientes reales.'],
             ['Buzones solo en servidores públicos', ! config('mail_connections.allow_private_hosts'), 'MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=false (anti-SSRF).'],
             ['Proxies de confianza acotados', config('app.trusted_proxies') !== '*', 'TRUSTED_PROXIES con las IPs del proxy, no "*": cualquiera podría falsear su IP.'],

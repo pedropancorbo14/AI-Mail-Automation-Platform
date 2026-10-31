@@ -1,0 +1,54 @@
+# Producción (Fase 16): igual que prometheus.yml, pero el token de /metrics se
+# lee de un secreto (credentials_file) en vez de estar escrito aquí. Un test
+# (ProductionStackTest) comprueba que los dos ficheros raspan lo mismo.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alertas (Fase 11): ver alerts.yml y sus pruebas en alerts.test.yml.
+rule_files:
+  - alerts.yml
+
+# Avisos (Fase 16): Alertmanager los manda por email y/o Telegram.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Que Alertmanager esté vivo también se vigila (alerta AlertmanagerCaido).
+  - job_name: "alertmanager"
+    static_configs:
+      - targets: ["alertmanager:9093"]
+
+  # Métricas propias de la plataforma: GET /metrics a través de nginx, con
+  # METRICS_TOKEN (secreto "metrics_token" del docker-compose.prod.yml).
+  - job_name: "laravel"
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/metrics_token
+    static_configs:
+      - targets: ["nginx:80"]
+
+  # ai-service (Python, el motor de IA): descubierto por DNS (se puede
+  # escalar a varias réplicas); si no responde, up = 0.
+  - job_name: "ai-service"
+    metrics_path: /metrics
+    dns_sd_configs:
+      - names: ["ai-service"]
+        type: A
+        port: 8000
+        refresh_interval: 30s
+
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]

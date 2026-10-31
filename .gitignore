@@ -24,3 +24,8 @@ docker-compose.override.yml
 .env.production
 # Volcado de Redis si se arranca redis-server en la raíz del repo
 dump.rdb
+
+# Fase 16: versión desplegada y copias traídas del servidor
+/.deploy
+/.deploy-staging
+/backups

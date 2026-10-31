@@ -33,7 +33,14 @@ class StateMetrics
 
         // Cada sección por separado: si la BD no responde, /metrics sigue
         // publicando los contadores y el resto (y state_metrics_ok lo delata).
-        foreach (['emails', 'mailboxes', 'documents', 'queues'] as $section) {
+        $sections = ['emails', 'mailboxes', 'documents', 'queues'];
+
+        // Copias de seguridad (Fase 16): solo donde existen (producción).
+        if (filled(config('metrics.backup_status_file'))) {
+            $sections[] = 'backups';
+        }
+
+        foreach ($sections as $section) {
             try {
                 $this->{$section}($registry);
                 $ok->set(1, [$section]);
@@ -44,6 +51,21 @@ class StateMetrics
         }
 
         return (new RenderTextFormat())->render($registry->getMetricFamilySamples());
+    }
+
+    /**
+     * Hora de la última copia de seguridad correcta (y restaurada en la
+     * prueba), que escribe el contenedor "backup". Sin fichero = 0: nunca ha
+     * salido bien una copia, y la alerta CopiaDeSeguridadAtrasada lo avisa.
+     */
+    private function backups(CollectorRegistry $registry): void
+    {
+        $gauge = $registry->registerGauge($this->namespace, 'backup_last_success_timestamp_seconds', 'Última copia de seguridad correcta y verificada (Unix; 0 = ninguna).');
+
+        $file = (string) config('metrics.backup_status_file');
+        $content = is_readable($file) ? trim((string) file_get_contents($file)) : '';
+
+        $gauge->set(ctype_digit($content) ? (int) $content : 0);
     }
 
     /** Emails por estado ahora mismo (p. ej. cuántos esperan a una persona). */

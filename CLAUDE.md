@@ -5900,7 +5900,70 @@ proxy y `vendor` instalado fuera con `composer install --prefer-source`. El
   **Arreglado de paso:** sin `php.ini`, PHP aceptaba subidas de 2 MB
   (documentos de hasta 20 MB y adjuntos de 25 MB no llegaban); ahora 25 MB,
   `expose_php=Off` y `zend.exception_ignore_args=On`
-- [ ] 16.2 **Stack de producción con HTTPS, copias y avisos**
+- [x] 16.2 **Stack de producción con HTTPS, copias y avisos.**
+  `docker-compose.prod.yml` (proyecto `aimail`; imágenes propias
+  `aimail/{app,web,ai-service}:${APP_VERSION}`, las de terceros con versión
+  fija): **Caddy** (`docker/caddy/Caddyfile`: único con puertos, 80/443 y
+  HTTP/3; bloquea `/internal` y `/metrics`; sin panel de administración ni
+  cabecera `Server`; IP fija en la red `edge`), nginx (imagen `web`,
+  healthcheck `/up`), Laravel ×4 (`app`, `horizon`, `scheduler` con
+  `schedule:work`, `ai-results`; `env_file` = `.env.production` y fijados
+  `APP_ENV=production`, debug off, `APP_URL`/`SESSION_DOMAIN`/Sanctum desde
+  `APP_DOMAIN`, cookie segura, `TRUSTED_PROXIES` = IP de Caddy, anti-SSRF
+  sin excepción), ai-service y ai-mcp (`production`, Claude real, endurecidos
+  como en desarrollo), Ollama, PostgreSQL (`docker/postgres/init-production`:
+  solo extensiones, sin la BD de tests), Redis, exportadores, Prometheus
+  (`prometheus.prod.yml`: token por **`credentials_file`** del secreto
+  `metrics_token` y avisos a Alertmanager), Alertmanager, Loki, Promtail y
+  Grafana (estos con puerto solo en 127.0.0.1). **`.env.production.example`**
+  + **`scripts/init-env.sh <dominio> [fichero]`** (cada `__SECRET__` con un
+  valor aleatorio distinto, `APP_KEY` nueva, permisos 600, nunca sobrescribe).
+  **`php artisan tenant:create <empresa> <email> [--owner-name] [--slug]
+  [--generate-password]`**: alta de empresa + propietario en producción (sin
+  factories: Faker no está en la imagen), contraseña oculta o generada y
+  mostrada una vez, con la política de contraseñas, auditoría
+  `tenant.created`. Gate de Horizon con `horizon.allowed_emails`
+  (`HORIZON_ALLOWED_EMAILS`). `security:check`: también los tokens internos
+  (`local-*`) y la contraseña del rol de ai-service. **Copias**
+  (`docker/backup/backup.sh` en el servicio `backup`, imagen de PostgreSQL):
+  `loop` (diaria a `BACKUP_TIME` UTC), `once`, `list` y `restore <copia>`;
+  `pg_dump -Fc` + `tar` de `storage/app`, **prueba de restauración** en
+  `backup_verify` (tablas de `public` y `ai_service` + migraciones iguales;
+  si no, la copia se borra), sha256, borra las de más de
+  `BACKUP_KEEP_DAYS`, hora del último éxito en el volumen `backup-status`
+  (solo lectura para Laravel). Métrica **`aimail_backup_last_success_
+  timestamp_seconds`** (sección `backups` de `StateMetrics`, solo con
+  `BACKUP_STATUS_FILE`; sin fichero = 0) y alerta
+  **`CopiaDeSeguridadAtrasada`** (> 26 h, crítica). `scripts/lib.sh`
+  (función `dc`), **`scripts/restore.sh [copia] [--yes]`** (copia de lo
+  actual, para lo que escribe, restaura BD y ficheros, arranca) y
+  **`scripts/backup-pull.sh usuario@servidor`** (las trae por ssh a tu
+  equipo y comprueba los sha256). **Alertmanager** (`docker/alertmanager/
+  start.sh`): genera la configuración con las `ALERT_*` (email y/o Telegram;
+  contraseñas en `smtp_auth_password_file`/`bot_token_file` desde secretos
+  de compose; agrupa por alerta + empresa; críticas cada 1 h, info cada
+  24 h; si no responde la app, no avisa del resto); sin `ALERT_*` arranca y
+  avisa en el log. Alerta **`AlertmanagerCaido`**. Tests:
+  `ProductionStackTest` (11: solo Caddy publica a internet, sin código
+  montado ni servicios de desarrollo, imágenes con versión, secretos
+  obligatorios sin respaldos de desarrollo, valores fijados, solo Caddy como
+  proxy, `/internal` y `/metrics` bloqueados en el Caddyfile, token por
+  secreto y mismos targets que en desarrollo, secretos del ejemplo,
+  `.dockerignore`), `CreateTenantCommandTest` (4, con el gate de Horizon),
+  métrica de copias y `security:check`; `promtool test rules` con las dos
+  alertas nuevas. **Probado en el stack de la sesión:** los 4 targets de
+  Prometheus `up` con el token leído del secreto; HTTPS con HSTS (Laravel ve
+  la petición segura a través de Caddy), cookies `secure`, `/internal` y
+  `/metrics` → 404, http → 308 https; un `X-Forwarded-For` falso del cliente
+  no llega a la auditoría; `security:check --production` todo OK;
+  `tenant:create` + **login del panel por HTTPS**; copia (128 KB, 37 tablas,
+  45 migraciones) y **restauración real** (la empresa creada después
+  desaparece, el fichero de antes vuelve, ai-service sigue `ready` con los
+  permisos de su rol); **aviso de Alertmanager recibido por email** en un
+  GreenMail de pruebas. **Encontrado al probar:** Caddy no arrancaba con
+  `email` vacío (quitado: Let's Encrypt no lo necesita); los secretos de
+  compose con `environment:` exigen la variable definida (vacía vale);
+  `mode` de un secreto no se aplica fuera de Swarm
 - [ ] 16.3 **Despliegue, rollback y staging en el CI**
 
 ### Pendientes anotados para más adelante
