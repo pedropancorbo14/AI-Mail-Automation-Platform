@@ -1,6 +1,9 @@
 x-app-build: &app-build
   context: .
   dockerfile: docker/php/Dockerfile
+  # Desarrollo: el código entra por el volumen; la imagen de producción es
+  # docker-compose.prod.yml (Fase 16).
+  target: dev
 
 x-app-env: &app-env
   APP_ENV: ${APP_ENV:-production}

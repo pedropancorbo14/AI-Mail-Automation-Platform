@@ -1,0 +1,43 @@
+# Contexto de la imagen de Laravel (docker/php/Dockerfile). Fuera todo lo que
+# no es código de la app: secretos (.env), dependencias que se instalan dentro
+# (vendor, node_modules), ficheros generados en tu equipo y el microservicio
+# de Python (tiene su propia imagen y su propio .dockerignore).
+.git
+.github
+.env
+.env.*
+!.env.docker.example
+!.env.production.example
+vendor
+node_modules
+public/build
+public/hot
+public/storage
+bootstrap/cache/*.php
+storage/logs/*
+!storage/logs/.gitignore
+storage/framework/cache/data/*
+!storage/framework/cache/data/.gitignore
+storage/framework/sessions/*
+!storage/framework/sessions/.gitignore
+storage/framework/views/*
+!storage/framework/views/.gitignore
+storage/framework/testing/*
+!storage/framework/testing/.gitignore
+storage/app/private/*
+!storage/app/private/.gitignore
+storage/app/public/*
+!storage/app/public/.gitignore
+ai-service
+.phpunit.cache
+.phpunit.result.cache
+*.log
+docker-compose.override.yml
+.deploy
+.deploy-staging
+backups
+scripts
+tests
+phpunit.xml
+*.md
+docker-compose*.yml

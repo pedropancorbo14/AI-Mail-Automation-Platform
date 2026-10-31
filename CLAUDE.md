@@ -5832,6 +5832,77 @@ columnas de `mail_sync_states` y `mail_connections.save_sent_copy`),
 restart prometheus` (alerta `CorreoApartado`) y reconstruir `ai-service`
 (dependencia actualizada)
 
+### Fase 16 (producción), parte 1 — sin servidor: EN CURSO (2026-10-31), rama `fase-16-produccion`
+
+Pedido por el usuario (2026-10-31): preparar todo lo de producción que se
+puede hacer y probar **sin pagar un servidor** (en local y en el CI); el
+servidor real (VPS + dominio) queda para la parte 2, cuando haya
+presupuesto. Misma forma de trabajo: un commit por tarea, tests en verde,
+CI comprobado tras cada push (rama `fase-16-produccion`, nunca a `main`).
+
+**Entorno de la sesión en la nube:** Docker Hub limitado (429) y Alpine,
+PECL y los zips de GitHub bloqueados → la imagen se probó con un Dockerfile
+**solo de la sesión** (`/tmp`, fuera del repo): base
+`serversideup/php:8.4-fpm-alpine` en vez de compilar extensiones, el CA del
+proxy y `vendor` instalado fuera con `composer install --prefer-source`. El
+`docker/php/Dockerfile` real lo construye el job `production` del CI.
+
+**Decisiones tomadas:**
+- **Un compose de producción completo** (`docker-compose.prod.yml`), no un
+  override del de desarrollo: más fácil de revisar y de testear (no hereda
+  volúmenes del código, GreenMail ni Vite por accidente).
+- **Caddy** como única entrada (80/443): HTTPS automático con Let's Encrypt
+  sin certbot ni cron; con `APP_DOMAIN=localhost` usa su autoridad local
+  (staging con HTTPS de verdad). Descartados Traefik (más configuración para
+  un solo servicio) y nginx + certbot (renovación aparte). Bloquea
+  `/internal` y `/metrics` en el borde. **Laravel confía solo en la IP fija
+  de Caddy** (`172.31.250.10` en la red `edge`), no en la subred: el
+  gateway de Docker no puede falsear `X-Forwarded-For`.
+- Prometheus, Alertmanager y Grafana **solo en 127.0.0.1 del servidor**
+  (túnel SSH), no detrás de Caddy: sin superficie pública nueva. Horizon sí
+  pasa por Caddy, con `HORIZON_ALLOWED_EMAILS` (antes la lista estaba vacía en
+  el código: nadie podía entrar fuera de local).
+- **Secretos**: obligatorios en el compose (`${VAR:?}`); lo que no se puede
+  equivocar, fijado en el compose; el token de métricas por **secreto de
+  compose** (`credentials_file`); `scripts/init-env.sh` los genera todos.
+- **Versionado sin registro de imágenes**: se construyen en el propio
+  servidor con la versión (`fecha-commit`) como etiqueta y se guardan las 3
+  últimas; el rollback no construye nada. Un registro (GHCR) se valora si
+  hay varios servidores.
+- **Migraciones compatibles hacia atrás** (añadir, no renombrar ni borrar en
+  el mismo despliegue): el rollback solo cambia imágenes. Para lo demás,
+  copia verificada antes de cada migración.
+- **Copias**: `pg_dump` + `tar` de `storage/app` con la imagen de PostgreSQL
+  (misma versión de `pg_dump`), **cada copia se restaura en una BD temporal
+  y se compara** (tablas y migraciones); la hora del último éxito llega a
+  Prometheus por un volumen compartido. Fuera del servidor: a mano con
+  `scripts/backup-pull.sh` (sin coste; un almacenamiento externo, en la
+  parte 2).
+- **Alertmanager** con email (cualquier SMTP) y Telegram (gratis); su
+  configuración la genera un script al arrancar (no admite variables de
+  entorno) y las contraseñas van por `*_file`.
+
+**Tareas (commit):**
+- [x] 16.1 **Imagen de producción.** `docker/php/Dockerfile` multi-etapa:
+  `base` (PHP + extensiones + Composer + `docker/php/php.ini`), `dev` (la de
+  `docker-compose.yml`, ahora con `target: dev`: el código sigue entrando por
+  el volumen), `vendor` (`composer install --no-dev`), `assets` (`npm ci` +
+  `npm run build` del panel), **`production`** (código + vendor + panel
+  dentro, sin compiladores, autoload con `--classmap-authoritative`,
+  `package:discover` solo con las dependencias de producción, OPcache sin
+  `validate_timestamps`, usuario `www-data`, `APP_VERSION` en etiqueta y
+  entorno) y **`web`** (nginx con `public/` y el panel compilado).
+  `docker/php/entrypoint-production.sh`: sin `APP_KEY` no arranca y genera
+  `php artisan optimize` al arrancar (las variables solo existen entonces).
+  **`.dockerignore`** nuevo: antes no había ninguno y `COPY . .` metía en la
+  imagen `.env` (secretos), `.git`, `vendor`/`node_modules` del equipo,
+  `bootstrap/cache/packages.php` con paquetes de desarrollo y logs.
+  **Arreglado de paso:** sin `php.ini`, PHP aceptaba subidas de 2 MB
+  (documentos de hasta 20 MB y adjuntos de 25 MB no llegaban); ahora 25 MB,
+  `expose_php=Off` y `zend.exception_ignore_args=On`
+- [ ] 16.2 **Stack de producción con HTTPS, copias y avisos**
+- [ ] 16.3 **Despliegue, rollback y staging en el CI**
+
 ### Pendientes anotados para más adelante
 
 - **Rutas `/internal` en producción (Fase 16):** hoy nginx las sirve a
