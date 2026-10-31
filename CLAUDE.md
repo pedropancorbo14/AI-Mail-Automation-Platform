@@ -6005,7 +6005,15 @@ proxy y `vendor` instalado fuera con `composer install --prefer-source`. El
   otro); el CookieJar de Python no devuelve cookies de dominio `localhost`
   (el login de prueba lleva las cookies a mano)
 
-**Resumen:** 3 tareas en 3 commits. Laravel 1154 tests en verde (el único
+- [x] Fix (CI en rojo tras el push, 2026-10-31): `composer audit` y
+  `pip-audit` encontraron vulnerabilidades publicadas esos días en
+  dependencias, no en el código de la fase: **symfony/mime** 8.1.7 →
+  8.1.10 (CVE-2026-45070, inyección de cabeceras de email; con sus
+  dependencias) y **pypdf** 6.21.2 → 6.21.4 (7 CVE; mínimo `>=6.21.4` en
+  `pyproject.toml`). Tests de correo, automatización y seguridad (552, con
+  GreenMail) y de ai-service (590) en verde
+
+**Resumen:** 3 tareas en 3 commits + 1 fix. Laravel 1154 tests en verde (el único
 fallo, `DatabaseConnectionTest`, es el conocido de ejecutar en paralelo),
 alertas con `promtool` (2 nuevas). **Pendiente:** que el usuario revise la
 rama `fase-16-produccion` y el CI (sobre todo el job nuevo `production`, que

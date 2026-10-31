@@ -1799,7 +1799,7 @@ llega por email** (a un GreenMail de pruebas), un segundo despliegue, el
 **rollback** y un **despliegue roto que vuelve solo** a la versión anterior.
 Al terminar lo borra todo (`STAGING_KEEP=1` para dejarlo levantado). Usa su
 propio proyecto (`aimail-staging`): no toca tu entorno local. **El CI lo
-ejecuta en cada push** (job `production`, unos 5 minutos).
+ejecuta en cada push** (job `production`, unos 12 minutos: construye las imágenes desde cero).
 
 ### Lo que falta para un servidor real
 
