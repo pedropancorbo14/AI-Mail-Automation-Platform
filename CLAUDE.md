@@ -277,7 +277,11 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-10-22)
+## ESTADO ACTUAL (actualizado 2026-10-31)
+
+> **2026-10-31:** Fase 16 parte 1 (producción sin servidor) hecha en la rama
+> `fase-16-produccion`: ver su sección. Las tareas 15.8–15.10 de abajo ya
+> están hechas (2026-10-26).
 
 > **PRÓXIMA SESIÓN EN EL EQUIPO DEL USUARIO (pedido por el usuario,
 > 2026-10-22): hacer primero las dos tareas pendientes de la Fase 15**, en
@@ -5832,7 +5836,7 @@ columnas de `mail_sync_states` y `mail_connections.save_sent_copy`),
 restart prometheus` (alerta `CorreoApartado`) y reconstruir `ai-service`
 (dependencia actualizada)
 
-### Fase 16 (producción), parte 1 — sin servidor: EN CURSO (2026-10-31), rama `fase-16-produccion`
+### Fase 16 (producción), parte 1 — sin servidor: COMPLETADA Y PROBADA EN STAGING (2026-10-31), rama `fase-16-produccion`, pendiente de CI
 
 Pedido por el usuario (2026-10-31): preparar todo lo de producción que se
 puede hacer y probar **sin pagar un servidor** (en local y en el CI); el
@@ -5964,7 +5968,55 @@ proxy y `vendor` instalado fuera con `composer install --prefer-source`. El
   `email` vacío (quitado: Let's Encrypt no lo necesita); los secretos de
   compose con `environment:` exigen la variable definida (vacía vale);
   `mode` de un secreto no se aplica fuera de Swarm
-- [ ] 16.3 **Despliegue, rollback y staging en el CI**
+- [x] 16.3 **Despliegue, rollback y staging en el CI.**
+  **`scripts/deploy.sh [versión]`** (por defecto `AAAAMMDD-HHMM-<commit>`;
+  `SKIP_BUILD=1` con imágenes ya construidas, `SKIP_OLLAMA_PULL=1`):
+  construye → `security:check --production` con la imagen nueva → PostgreSQL
+  y Redis → **copia verificada** (si ya había una versión) → `migrate
+  --force` + `RolesAndPermissionsSeeder` → `up --wait` → `ollama pull` →
+  `scripts/smoke-test.sh`; **si no arranca sana o no pasa la comprobación,
+  vuelve sola a la anterior** y anota en `.deploy/history` la copia previa;
+  guarda `.deploy/current`/`previous` y borra las imágenes que no son de las
+  3 últimas versiones. **`scripts/rollback.sh [versión]`** (solo imágenes,
+  sin construir; comprueba que existen). **`scripts/smoke-test.sh`** (11
+  comprobaciones por HTTPS y por dentro, cada una reintentada: `/up`, API,
+  panel compilado, HSTS, cookies `secure`, sin versiones en cabeceras,
+  `/internal` y `/metrics` → 404, http → https, ai-service `/ready`,
+  Prometheus con el target `laravel` en `up`). **`scripts/staging-test.sh`**
+  (proyecto `aimail-staging`, `.env.staging`, `.deploy-staging`: no toca un
+  despliegue real; clave de IA falsa): primer despliegue → `tenant:create` +
+  login del panel por HTTPS (`scripts/ci/panel_login.py`) → copia,
+  restauración y comprobación de que lo creado después desaparece → aviso de
+  Alertmanager recibido por email en un GreenMail
+  (`scripts/ci/wait_for_mail.py`) → segundo despliegue → rollback →
+  despliegue roto (app sin `index.php`) que vuelve solo; si falla, vuelca
+  estado y logs; al terminar borra todo (`STAGING_KEEP=1` lo deja). CI: job
+  **`production`** (ejecuta `staging-test.sh` con el Dockerfile real) y en
+  `observability` `promtool check config` de `prometheus.prod.yml`,
+  `amtool check-config` de la configuración de Alertmanager (sin avisos y
+  con email + Telegram) y `caddy validate`. README: sección **"19. Entornos:
+  staging y producción"** (sustituye a la que decía que no existían),
+  estado, comandos, CI y problemas frecuentes. **Probado en la sesión:**
+  staging completo en 4 min 24 s; antes, a mano: despliegue desde cero en
+  31 s, v2 con copia previa, rollback, y v3 rota → "nginx is unhealthy" →
+  vuelta a v1. **Encontrado al probar:** `set -e` cortaba el primer
+  despliegue al final (`cat` de un `.deploy/previous` que aún no existe);
+  el `env_file` del compose estaba fijo a `.env.production` (staging usa
+  otro); el CookieJar de Python no devuelve cookies de dominio `localhost`
+  (el login de prueba lleva las cookies a mano)
+
+**Resumen:** 3 tareas en 3 commits. Laravel 1154 tests en verde (el único
+fallo, `DatabaseConnectionTest`, es el conocido de ejecutar en paralelo),
+alertas con `promtool` (2 nuevas). **Pendiente:** que el usuario revise la
+rama `fase-16-produccion` y el CI (sobre todo el job nuevo `production`, que
+construye el Dockerfile real por primera vez) y la fusione; en su equipo,
+`docker compose build app && docker compose up -d` (imagen `dev` con el
+`php.ini` nuevo). **Parte 2 (cuando haya presupuesto):** VPS (≥ 4 GB de RAM:
+Ollama + bge-m3) y dominio; cortafuegos 22/80/443, SSH solo con clave,
+actualizaciones automáticas; copias fuera del servidor (almacenamiento
+externo, cifradas); probar OAuth de Microsoft/Google con el dominio real;
+valorar un registro de imágenes (GHCR) si hay más de un servidor; Promtail
+→ Grafana Alloy (Promtail sin soporte).
 
 ### Pendientes anotados para más adelante
 

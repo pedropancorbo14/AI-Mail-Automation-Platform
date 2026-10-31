@@ -92,6 +92,11 @@ Tres `.env` distintos, mismo `docker-compose.yml` base:
 docker compose up -d --build
 ```
 
+> **Desactualizado (Fase 16):** staging y producción ya no se hacen así.
+> `docker-compose.prod.yml` es un compose completo (no un override) y se usa
+> con los scripts de `scripts/`: ver la sección "19. Entornos: staging y
+> producción" del README.
+
 **Staging:**
 ```bash
 cp .env.staging.example .env.staging

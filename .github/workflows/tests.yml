@@ -172,6 +172,47 @@ jobs:
           print(f'{len(uids)} dashboards'); sys.exit(0 if ok else 1)
           PY
 
+      # Fase 16: configuración de producción (el token de /metrics sale de un
+      # secreto; Alertmanager se configura al arrancar a partir de ALERT_*).
+      - name: Comprobar la configuración de Prometheus de producción
+        run: >
+          echo ci-token > /tmp/metrics_token &&
+          docker run --rm -v "$PWD/docker/prometheus:/etc/prometheus" -v /tmp/metrics_token:/run/secrets/metrics_token:ro
+          -w /etc/prometheus --entrypoint promtool prom/prometheus:v3.15.0 check config prometheus.prod.yml
+
+      - name: Comprobar la configuración de Alertmanager (sin avisos, email y Telegram)
+        run: |
+          docker run --rm -v "$PWD/docker/alertmanager/start.sh:/start.sh:ro" --entrypoint sh prom/alertmanager:v0.34.1 -c '
+            set -e
+            sh /start.sh --render > /tmp/none.yml && amtool check-config /tmp/none.yml
+            mkdir -p /tmp/s && echo pass > /tmp/s/alert_smtp_password && echo 123:abc > /tmp/s/alert_telegram_bot_token
+            export ALERTMANAGER_SECRETS_DIR=/tmp/s ALERT_EMAIL_TO=ops@example.com ALERT_SMTP_HOST=smtp.example.com:587 \
+              ALERT_SMTP_FROM="Alertas <a@example.com>" ALERT_SMTP_USER=a@example.com ALERT_TELEGRAM_CHAT_ID=-1001
+            sh /start.sh --render > /tmp/all.yml && amtool check-config /tmp/all.yml'
+
+      - name: Comprobar el Caddyfile
+        run: >
+          docker run --rm -e APP_DOMAIN=plataforma.example.com -v "$PWD/docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
+          caddy:2.11.6-alpine caddy validate --config /etc/caddy/Caddyfile
+
+  # Staging (Fase 16): el stack de PRODUCCIÓN entero en el runner, con las
+  # imágenes reales (docker/php/Dockerfile, ai-service/Dockerfile) y HTTPS en
+  # https://localhost. Despliegue desde cero, login del panel, copia y
+  # restauración, un aviso de Alertmanager por email, rollback y un
+  # despliegue roto que vuelve solo a la versión anterior.
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Staging de principio a fin (scripts/staging-test.sh)
+        run: scripts/staging-test.sh
+        env:
+          STAGING_VERSION: ci-${{ github.run_number }}-1
+
   # Microservicio de IA en Python (ai-service/): lint, tipos, reglas de capas
   # y tests. El LLM siempre está simulado: nunca se llama a la API real.
   ai-service:

@@ -36,7 +36,9 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 13 | Revisión humana (*human in the loop*): bandeja de casos pendientes, aprobar, corregir o descartar la respuesta de la IA, responder, cerrar, reprocesar, asignarse casos, historial de decisiones con métricas y alerta | ✅ Hecha (probada en el navegador con la IA simulada y GreenMail) |
 | AI | **Microservicio de IA en Python** ([`ai-service/`](ai-service/README.md)): LangGraph, Redis Streams, MCP, arquitectura hexagonal; Laravel publica cada email como evento y aplica el resultado | ✅ Las 6 fases hechas: 1 camino mínimo, 2 RAG, 3 MCP + tools, 4 aprobación humana (`interrupt` y checkpoints en PostgreSQL), 5 supervisor con especialistas, redactor agéntico y modo sombra, y 6 Kubernetes (Kustomize, Pod Security restricted, NetworkPolicies; desplegado en kind en el CI en cada push). Probadas de punta a punta con la IA simulada y con Claude real. **Es el único motor de IA**: el de Laravel se retiró (octubre de 2026) tras una puerta de calidad con Claude real en modo sombra |
 | 15 | Evaluación de la IA: 52 correos de prueba (12 de comprobación) contra el agente real, informe de seguridad y calidad, comparación de modelos y evaluación con la IA simulada en el CI ([ai-service](ai-service/README.md#evaluación-de-la-ia-fase-15)) | ✅ Hecha (con Claude real: 0 envíos inseguros y 0 fugas con Opus y Sonnet; Sonnet 5.5 elegido por coste) |
-| 14, 16–17 | Integraciones, producción, SaaS | Pendiente |
+| 14 | Integraciones: pedidos por CSV, API estándar para el sistema propio de cada empresa, WooCommerce, citas | ✅ Hecha (probada con la IA simulada y una tienda WooCommerce real en Docker) |
+| 16 | Producción: imagen con el código dentro, HTTPS con Caddy, secretos obligatorios, copias diarias verificadas restaurándolas, avisos por email/Telegram, despliegue con versión y rollback, staging completo en el CI | ✅ Parte 1 hecha (todo probado en local y en el CI; falta el servidor real: ver [Entornos](#19-entornos-staging-y-producción)) |
+| 17 | SaaS: planes, límites, facturación, alta de empresas | Pendiente |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
@@ -157,6 +159,8 @@ docker compose exec app php artisan ai:budget 1            # presupuesto diario 
 docker compose exec app php artisan data:prune             # aplicar la retención ya (si no, cada noche a las 03:30)
 docker compose exec app php artisan data:forget-address 1 ana@cliente.test   # derecho de supresión (cuenta; --force para borrar)
 docker compose exec app php artisan security:check --production              # ¿la configuración es apta para producción?
+docker compose exec app php artisan tenant:create "Acme" ana@acme.example --generate-password   # nueva empresa con su propietario
+scripts/staging-test.sh                                    # el stack de producción entero en https://localhost, probado de principio a fin
 docker compose exec app tail -f storage/logs/laravel-$(date +%F).log
 docker compose logs -f vite                                # servidor de desarrollo del panel
 docker compose exec vite npm test                          # tests del panel (Vitest)
@@ -1663,19 +1667,147 @@ docker compose exec app php artisan test --group=greenmail   # solo IMAP/SMTP co
 Cada push y cada Pull Request a `main` ejecuta los tests en GitHub Actions
 contra PostgreSQL + pgvector, Redis y GreenMail reales, y además el job
 `frontend` comprueba los tipos del panel, sus tests y que compila, y el job
-`observability` valida la configuración de Prometheus, prueba las alertas
-(`promtool test rules`) y revisa los dashboards de Grafana. El job
+`observability` valida la configuración de Prometheus (también la de
+producción), Alertmanager y Caddy, prueba las alertas (`promtool test
+rules`) y revisa los dashboards de Grafana, y el job `production` levanta el
+stack de producción entero con HTTPS y lo prueba de principio a fin
+(`scripts/staging-test.sh`). El job
 `ai-service` pasa además la evaluación de la IA con la IA simulada. **`composer
 audit`** y **`npm audit`** hacen fallar el CI si alguna dependencia tiene
 una vulnerabilidad conocida
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)). El resultado
 se ve en la pestaña **Actions** del repositorio.
 
-## 19. Entornos
+## 19. Entornos: staging y producción
 
-Ahora mismo solo existe el entorno **local**. Staging y producción (con su
-`.env` y un override de Docker Compose sin el código montado desde disco) se
-prepararán en la fase de producción.
+Hay tres formas de levantar la plataforma:
+
+| Entorno | Fichero | Para qué |
+|---|---|---|
+| **Local** | `docker-compose.yml` + `.env` | Desarrollar: el código entra por un volumen, Vite recompila al guardar, GreenMail hace de servidor de correo |
+| **Staging** | `docker-compose.prod.yml` + `.env.staging` | El stack de producción entero en tu equipo o en el CI, en `https://localhost` (`scripts/staging-test.sh`) |
+| **Producción** | `docker-compose.prod.yml` + `.env.production` | Un servidor con un dominio |
+
+### Qué cambia en producción
+
+- **El código va dentro de las imágenes** (`docker/php/Dockerfile`, etapas
+  `production` y `web`): sin volúmenes del código, sin dependencias de
+  desarrollo, OPcache sin comprobar ficheros y el panel ya compilado. Cada
+  despliegue tiene **versión** (`aimail/app:<versión>`), así que se puede
+  volver a la anterior sin construir nada.
+- **Solo Caddy da a internet** (puertos 80 y 443): pide y renueva solo el
+  certificado de Let's Encrypt, redirige `http://` a `https://` y bloquea
+  `/internal` y `/metrics` (aunque tengan token). Laravel confía **solo** en
+  la IP fija de Caddy para `X-Forwarded-For` (`TRUSTED_PROXIES`): la
+  auditoría y los límites ven la IP real y nadie la puede falsear.
+- **Prometheus, Alertmanager y Grafana solo en `127.0.0.1` del servidor**:
+  se abren con un túnel SSH (`ssh -L 3000:localhost:3000 usuario@servidor`
+  y `http://localhost:3000` en tu navegador). Horizon (`/horizon`) solo
+  para los emails de `HORIZON_ALLOWED_EMAILS`.
+- **Secretos obligatorios**: si falta uno, el compose no arranca. Lo que no
+  se puede equivocar (`APP_ENV=production`, debug desactivado, cookies
+  seguras, anti-SSRF de los buzones, IA real) va fijado en el compose, no en
+  el `.env`. El token de `/metrics` ya no está escrito en la configuración
+  de Prometheus: lo lee de un secreto.
+- **Sin datos de demostración**: la primera empresa se crea con
+  `tenant:create` (abajo).
+
+### Variables
+
+`scripts/init-env.sh <dominio>` crea `.env.production` a partir de
+[`.env.production.example`](.env.production.example) con **todos los
+secretos aleatorios** y una `APP_KEY` nueva (nunca sobrescribe uno que ya
+exista). Solo tienes que añadir `ANTHROPIC_API_KEY` y, si quieres avisos,
+las `ALERT_*`. Guarda una copia del fichero en un gestor de contraseñas:
+**sin la `APP_KEY` no se pueden descifrar las credenciales de los buzones**.
+
+### Desplegar
+
+En el servidor (Linux con Docker y Docker Compose, un dominio apuntando a
+su IP y los puertos 80 y 443 abiertos):
+
+```bash
+git clone <repositorio> && cd AI-Mail-Automation-Platform
+ANTHROPIC_API_KEY=sk-ant-... scripts/init-env.sh plataforma.tu-dominio.com
+scripts/deploy.sh
+docker compose -f docker-compose.prod.yml --env-file .env.production \
+  run --rm app php artisan tenant:create "Mi Empresa" yo@mi-empresa.com --generate-password
+```
+
+Para actualizar: `git pull && scripts/deploy.sh`.
+[`scripts/deploy.sh`](scripts/deploy.sh) hace, en orden: construye las
+imágenes de la versión nueva, pasa **`security:check --production`** con
+ellas (no despliega una configuración insegura), hace una **copia de
+seguridad verificada**, migra, arranca y espera a que todo esté sano, y pasa
+[`scripts/smoke-test.sh`](scripts/smoke-test.sh) (HTTPS, HSTS, cookies,
+`/internal` y `/metrics` bloqueados, ai-service listo, Prometheus leyendo las
+métricas). **Si la versión nueva no arranca o no pasa la comprobación,
+vuelve sola a la anterior.** Se guardan las imágenes de las 3 últimas
+versiones.
+
+**Volver atrás:** `scripts/rollback.sh` (a la anterior) o
+`scripts/rollback.sh <versión>` (ver `.deploy/history`). No toca la base de
+datos: por eso **las migraciones tienen que funcionar con la versión
+anterior del código** (añadir columnas o tablas; renombrar o borrar, en un
+despliegue posterior). Si alguna vez no se puede, `.deploy/history` dice qué
+copia se hizo justo antes de cada despliegue.
+
+### Copias de seguridad
+
+El contenedor `backup` ([`docker/backup/backup.sh`](docker/backup/backup.sh))
+copia cada día (`BACKUP_TIME`, 03:15 UTC) la base de datos (`pg_dump`) y los
+ficheros (adjuntos y documentos), y **prueba cada copia restaurándola** en
+una base de datos temporal (mismas tablas y migraciones que la original): una
+copia que no se restaura bien se borra y no cuenta. Se guardan
+`BACKUP_KEEP_DAYS` (14) días. Laravel publica la hora de la última copia
+correcta y la alerta **`CopiaDeSeguridadAtrasada`** avisa si pasan más de
+26 horas sin ninguna.
+
+```bash
+scripts/restore.sh                       # copias disponibles
+scripts/restore.sh 20261031-031500       # restaurar (pide confirmación; antes hace una copia de lo actual)
+scripts/backup-pull.sh usuario@servidor  # desde TU equipo: traerte las copias
+```
+
+Las copias se quedan en el servidor: si se pierde el servidor, se pierden
+con él. Tráetelas con `scripts/backup-pull.sh` con regularidad y guárdalas
+cifradas (llevan todos los datos de los clientes).
+
+### Avisos de las alertas
+
+Alertmanager manda las alertas de Prometheus por **email** (cualquier SMTP;
+gratis con Gmail y una contraseña de aplicación) y/o **Telegram** (gratis:
+un bot de @BotFather). Se configura con las `ALERT_*` de
+`.env.production` ([`docker/alertmanager/start.sh`](docker/alertmanager/start.sh)
+escribe su configuración al arrancar; las contraseñas van en secretos). Agrupa
+por alerta y empresa, repite las críticas cada hora y, si la app entera no
+responde, no avisa además de todo lo que depende de ella. Sin `ALERT_*`
+arranca igual y lo dice en el log (las alertas se siguen viendo en Grafana).
+
+### Staging: probarlo todo sin servidor
+
+```bash
+scripts/staging-test.sh
+```
+
+Levanta el stack de producción en tu equipo (`https://localhost`, con el
+certificado local de Caddy; necesita los puertos 80 y 443 libres, Docker,
+`curl` y `python3`) y prueba de principio a fin: primer despliegue,
+`tenant:create` y **login del panel por HTTPS**, **copia y restauración**
+(lo creado después de la copia desaparece), **un aviso de Alertmanager que
+llega por email** (a un GreenMail de pruebas), un segundo despliegue, el
+**rollback** y un **despliegue roto que vuelve solo** a la versión anterior.
+Al terminar lo borra todo (`STAGING_KEEP=1` para dejarlo levantado). Usa su
+propio proyecto (`aimail-staging`): no toca tu entorno local. **El CI lo
+ejecuta en cada push** (job `production`, unos 5 minutos).
+
+### Lo que falta para un servidor real
+
+No se ha probado en un servidor real (no hay presupuesto para uno todavía).
+Cuando lo haya: un VPS con 4 GB de RAM como mínimo (Ollama con bge-m3 usa
+~1,5 GB), un dominio, cortafuegos con solo 22, 80 y 443, acceso SSH solo con
+clave, actualizaciones automáticas del sistema y una copia de las
+`backups` fuera del servidor.
 
 ## 20. Problemas frecuentes
 
@@ -1694,6 +1826,10 @@ prepararán en la fase de producción.
 | Mi buzón local (GreenMail) da "dirección interna no permitida" | `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` solo vale con `APP_ENV=local`; y `169.254.x.x` no se permite nunca. |
 | Falta la extensión `vector` o la BD `app_testing` | El script de inicio de Postgres solo se ejecuta con un volumen nuevo: `docker compose down -v` (⚠️ borra los datos locales) y volver a levantar. |
 | `429 Too Many Requests` al probar el login | Límite de 5 intentos/min por email+IP; espera un minuto. |
+| `scripts/staging-test.sh` o Caddy: "address already in use" en el 80 o el 443 | Otro programa usa esos puertos (en Windows, a veces IIS o Skype; en Linux, otro nginx/Apache). Páralo o prueba en el CI. |
+| Producción: Caddy no consigue el certificado | El dominio de `APP_DOMAIN` tiene que apuntar a la IP del servidor y los puertos 80 y 443 estar abiertos (Let's Encrypt comprueba por ahí). Mira `docker compose -f docker-compose.prod.yml --env-file .env.production logs caddy`. |
+| Producción: el compose dice "Falta …" | Falta un secreto en `.env.production` (créalo con `scripts/init-env.sh`, que los genera todos). |
+| Subir un documento de varios MB fallaba (antes de la Fase 16) | PHP subía como máximo 2 MB: ahora `docker/php/php.ini` lo sube a 25 MB. En local, reconstruye la imagen: `docker compose build app && docker compose up -d`. |
 | Los tests del grupo `greenmail` fallan con "No se pudo conectar" | GreenMail no está levantado: `docker compose up -d greenmail`. |
 | "El servidor X apunta a una dirección interna no permitida" en local | Protección anti-SSRF. Para usar GreenMail u otro servidor local: `MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=true` en `.env` (**nunca en producción**). |
 | Llegan correos al buzón pero no aparecen en `emails` | El buzón no está `active` (pruébalo con `POST /mail-connections/{id}/test`), la 1ª sincronización solo fija el punto de partida (lo anterior no se importa), o Horizon no procesa la cola `mail`: `docker compose exec horizon php artisan horizon:supervisors` debe mostrar `supervisor-mail`. Mira `last_error` en `mail_sync_states`. |
