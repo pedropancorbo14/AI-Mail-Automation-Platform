@@ -15,7 +15,7 @@ enum PlanLimit: string
     {
         return match ($this) {
             self::AiEmailsPerMonth => 'Emails con IA al mes',
-            self::AiBudgetUsdPerMonth => 'Gasto de IA al mes',
+            self::AiBudgetUsdPerMonth => 'Capacidad de IA al mes',
             self::Mailboxes => 'Buzones',
             self::Users => 'Usuarios',
             self::Documents => 'Documentos',

@@ -2,6 +2,7 @@
 import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import {
+    NAlert,
     NBadge,
     NButton,
     NDropdown,
@@ -18,6 +19,9 @@ import { ChevronDownOutline, LogOutOutline, MailOutline, PersonCircleOutline } f
 import { menuEntries, roleLabels, visibleMenu } from '@/menu';
 import { useAuthStore } from '@/stores/auth';
 import { useReviewQueueStore } from '@/stores/reviewQueue';
+import { useBillingStore } from '@/stores/billing';
+import { limitsNearMax } from '@/api/billing';
+import { formatPercent } from '@/utils/format';
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -29,6 +33,27 @@ const collapsed = ref(typeof window !== 'undefined' && window.innerWidth < 768);
 // Número de casos que esperan a una persona junto a "Revisión".
 onMounted(() => auth.can('emails.view') && reviewQueue.start());
 onBeforeUnmount(() => reviewQueue.stop());
+
+// Aviso del plan: la IA está parada (prueba terminada, pago fallido…) o un
+// límite casi agotado. Solo con permiso para ver la empresa.
+const billing = useBillingStore();
+onMounted(() => auth.can('tenant.view') && billing.refresh());
+
+const planNotice = computed(() => {
+    const data = billing.billing;
+
+    if (!data || route.name === 'plan') {
+        return null;
+    }
+
+    if (data.subscription.ai_block_reason) {
+        return { type: 'warning' as const, text: data.subscription.ai_block_reason };
+    }
+
+    const near = limitsNearMax(data)[0];
+
+    return near ? { type: 'info' as const, text: `${near.label}: ${formatPercent(Math.min(near.ratio, 1))} usado este mes.` } : null;
+});
 
 const menuOptions = computed<MenuOption[]>(() =>
     visibleMenu(menuEntries, auth.can).map((entry) => ({
@@ -99,6 +124,10 @@ async function onUserAction(key: string): Promise<void> {
             </NLayoutHeader>
 
             <NLayoutContent class="layout__content">
+                <NAlert v-if="planNotice" :type="planNotice.type" class="layout__notice" data-test="plan-notice">
+                    {{ planNotice.text }}
+                    <RouterLink :to="{ name: 'plan' }">Ver plan y uso</RouterLink>
+                </NAlert>
                 <RouterView />
             </NLayoutContent>
         </NLayout>
@@ -126,6 +155,10 @@ async function onUserAction(key: string): Promise<void> {
     justify-content: space-between;
     height: 56px;
     padding: 0 24px;
+}
+
+.layout__notice {
+    margin-bottom: 16px;
 }
 
 .layout__role {

@@ -1,6 +1,7 @@
 import type { Component } from 'vue';
 import {
     BookOutline,
+    CardOutline,
     CartOutline,
     CheckmarkDoneOutline,
     BusinessOutline,
@@ -34,6 +35,7 @@ export const menuEntries: MenuEntry[] = [
     { route: 'integrations', label: 'Integraciones', icon: GitNetworkOutline, permission: 'integrations.view' },
     { route: 'ai-settings', label: 'Ajustes de la IA', icon: SparklesOutline, permission: 'tenant.view' },
     { route: 'company', label: 'Empresa y usuarios', icon: BusinessOutline, permission: 'tenant.view' },
+    { route: 'plan', label: 'Plan y uso', icon: CardOutline, permission: 'tenant.view' },
     { route: 'audit', label: 'Auditoría', icon: ShieldCheckmarkOutline, permission: 'audit.view' },
 ];
 

@@ -6108,7 +6108,22 @@ empezar (1155).
   `plan_emails` o `plan_budget`; la alerta `IAFrenadaPorLimites` solo mira
   `budget|sender` (los frenos del plan son de negocio, no de seguridad).
   Tests `PlanLimitsTest` (9) y uno en `MicrosoftOAuthTest`
-- [ ] 4. API y página "Plan y uso" del panel + avisos
+- [x] 4. **"Plan y uso" en el panel.** `GET /api/v1/billing`
+  (`BillingController`, `tenant.view`: todos los roles): plan, suscripción
+  (estado + etiqueta, fin de la prueba y del periodo, `ai_block_reason`),
+  uso del mes (correos recibidos, límites con `used`/`limit`/`ratio`),
+  etiquetas y catálogo de planes con `current`. **Sin dólares** (decisión de
+  la Fase 11: los costes son del operador): el límite de gasto de IA se
+  enseña como **"capacidad de IA del mes"** en porcentaje
+  (`ai_capacity_ratio`), fuera de los límites y de los planes; el test lo
+  comprueba con `costOrTokenKeys()`. Panel: página **`PlanPage`** (`/plan`,
+  menú "Plan y uso"): plan con estado y precio, aviso si la IA está parada
+  (los emails se siguen recibiendo), barras de uso (ámbar ≥ 80 %, rojo al
+  100 %) y tarjetas de los planes. Store `billing` y **aviso en la cabecera**
+  de todas las páginas (`AppLayout`): IA parada o un límite casi agotado, con
+  enlace a "Plan y uso". `api/billing.ts` (`limitsNearMax`, `formatLimit`,
+  `formatPrice`). Tests: Pest `BillingApiTest` (5) y Vitest
+  (`billing.test.ts`, `PlanPage.test.ts`; 113 en total)
 - [ ] 5. Cobro con Stripe (Checkout, portal, webhook firmado e idempotente)
 - [ ] 6. Alta de empresas desde la web con verificación del email
 - [ ] 7. Primeros pasos en el panel

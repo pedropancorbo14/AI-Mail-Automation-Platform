@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\Auth\AccountController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\AutomationController;
+use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\EmailController;
@@ -41,6 +42,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/auth/logout-other-devices', [AccountController::class, 'logoutOtherDevices'])->middleware('throttle:6,1');
 
     Route::get('/tenant', [TenantController::class, 'show']);
+
+    // Plan, suscripción y uso del mes (Fase 17).
+    Route::get('/billing', [BillingController::class, 'show']);
     Route::patch('/tenant', [TenantController::class, 'update']);
 
     Route::apiResource('users', UserController::class);

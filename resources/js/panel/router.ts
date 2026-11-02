@@ -80,6 +80,12 @@ export const routes: RouteRecordRaw[] = [
                 meta: { title: 'Empresa y usuarios', permission: 'tenant.view' },
             },
             {
+                path: 'plan',
+                name: 'plan',
+                component: () => import('@/pages/PlanPage.vue'),
+                meta: { title: 'Plan y uso', permission: 'tenant.view' },
+            },
+            {
                 path: 'cuenta',
                 name: 'account',
                 component: () => import('@/pages/AccountPage.vue'),
