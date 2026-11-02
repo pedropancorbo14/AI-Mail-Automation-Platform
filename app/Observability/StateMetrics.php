@@ -2,6 +2,9 @@
 
 namespace App\Observability;
 
+use App\Billing\PlanCatalog;
+use App\Billing\PlanLimit;
+use App\Billing\UsageMeter;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -33,7 +36,7 @@ class StateMetrics
 
         // Cada sección por separado: si la BD no responde, /metrics sigue
         // publicando los contadores y el resto (y state_metrics_ok lo delata).
-        $sections = ['emails', 'mailboxes', 'documents', 'queues'];
+        $sections = ['emails', 'mailboxes', 'documents', 'queues', 'plans'];
 
         // Copias de seguridad (Fase 16): solo donde existen (producción).
         if (filled(config('metrics.backup_status_file'))) {
@@ -66,6 +69,51 @@ class StateMetrics
         $content = is_readable($file) ? trim((string) file_get_contents($file)) : '';
 
         $gauge->set(ctype_digit($content) ? (int) $content : 0);
+    }
+
+    /**
+     * Plan, suscripción y uso del mes de cada empresa activa (Fase 17). Con
+     * consultas agregadas (una por recurso), no una por empresa. Solo para el
+     * operador: aquí sí entra el gasto de IA (como fracción del límite).
+     */
+    private function plans(CollectorRegistry $registry): void
+    {
+        $plan = $registry->registerGauge($this->namespace, 'tenant_plan', 'Plan y estado de la suscripción de cada empresa (siempre 1).', ['tenant', 'plan', 'status']);
+        $trial = $registry->registerGauge($this->namespace, 'tenant_trial_ends_timestamp_seconds', 'Fin de la prueba de las empresas en prueba (Unix).', ['tenant']);
+        $ratio = $registry->registerGauge($this->namespace, 'tenant_plan_usage_ratio', 'Parte usada de cada límite del plan (1 = alcanzado).', ['tenant', 'limit']);
+
+        $tenants = DB::table('tenants')->where('is_active', true)->get(['id', 'plan', 'subscription_status', 'trial_ends_at']);
+
+        if ($tenants->isEmpty()) {
+            return;
+        }
+
+        $month = UsageMeter::period();
+        $used = [
+            PlanLimit::AiEmailsPerMonth->value => DB::table('tenant_usage')->where('period', $month->toDateString())->pluck('ai_emails', 'tenant_id'),
+            PlanLimit::AiBudgetUsdPerMonth->value => DB::table('ai_requests')->where('created_at', '>=', $month)->groupBy('tenant_id')->select('tenant_id', DB::raw('sum(cost_usd) as total'))->pluck('total', 'tenant_id'),
+            PlanLimit::Mailboxes->value => DB::table('mail_connections')->where('status', '!=', 'disabled')->groupBy('tenant_id')->select('tenant_id', DB::raw('count(*) as total'))->pluck('total', 'tenant_id'),
+            PlanLimit::Users->value => DB::table('users')->groupBy('tenant_id')->select('tenant_id', DB::raw('count(*) as total'))->pluck('total', 'tenant_id'),
+            PlanLimit::Documents->value => DB::table('documents')->groupBy('tenant_id')->select('tenant_id', DB::raw('count(*) as total'))->pluck('total', 'tenant_id'),
+        ];
+
+        foreach ($tenants as $tenant) {
+            $label = $this->labels->tenant($tenant->id);
+            $current = PlanCatalog::find($tenant->plan) ?? PlanCatalog::get('trial');
+            $plan->set(1, [$label, $current->key, $tenant->subscription_status]);
+
+            if ($tenant->subscription_status === 'trialing' && $tenant->trial_ends_at !== null) {
+                $trial->set(Carbon::parse($tenant->trial_ends_at)->getTimestamp(), [$label]);
+            }
+
+            foreach (PlanLimit::cases() as $limit) {
+                $max = $current->limit($limit);
+
+                if ($max !== null) {
+                    $ratio->set($max > 0 ? round((float) ($used[$limit->value][$tenant->id] ?? 0) / $max, 4) : 1, [$label, $limit->value]);
+                }
+            }
+        }
     }
 
     /** Emails por estado ahora mismo (p. ej. cuántos esperan a una persona). */

@@ -7,6 +7,7 @@ use App\Billing\SubscriptionStatus;
 use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Observability\Metrics;
 use App\Security\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -23,7 +24,7 @@ use Illuminate\Support\Str;
  */
 class SignupService
 {
-    public function __construct(private readonly AuditLogger $audit)
+    public function __construct(private readonly AuditLogger $audit, private readonly Metrics $metrics)
     {
     }
 
@@ -35,6 +36,7 @@ class SignupService
 
         if ($existing !== null) {
             Mail::to($existing->email)->send(new AccountExistsMessage($existing));
+            $this->metrics->increment('tenant_signups_total', ['result' => 'existing']);
 
             return;
         }
@@ -56,6 +58,7 @@ class SignupService
             return [$tenant, $user];
         });
 
+        $this->metrics->increment('tenant_signups_total', ['result' => 'created']);
         $this->audit->record('tenant.signed_up', $tenant, $tenant->name, metadata: ['owner_email' => $email, 'plan' => $tenant->plan], actor: $user, tenantId: $tenant->id);
         $this->sendVerification($user);
     }

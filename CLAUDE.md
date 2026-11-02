@@ -6191,7 +6191,27 @@ empezar (1155).
   Panel: tarjeta **`OnboardingCard`** arriba del Resumen (progreso, enlace a
   cada paso pendiente, "Ocultar"); desaparece al completarla. Tests
   `OnboardingTest` (4) y Vitest (121)
-- [ ] 8. Métricas, Grafana y alertas de planes
+- [x] 8. **Métricas, Grafana y alertas** (solo para el operador).
+  `StateMetrics` sección nueva **`plans`** (consultas agregadas, una por
+  recurso, no una por empresa): `tenant_plan{tenant, plan, status}` (1),
+  `tenant_trial_ends_timestamp_seconds{tenant}` y
+  `tenant_plan_usage_ratio{tenant, limit}` (aquí sí el gasto de IA frente al
+  tope del plan; solo empresas activas y límites que existen). Contadores
+  `billing_webhooks_total{result}` (applied/ignored/stale/duplicate/
+  invalid_signature) y `tenant_signups_total{result}` (created/existing).
+  Alertas (grupo **`saas`**, probadas con `promtool`):
+  **`PruebaTerminaPronto`** (info, < 3 días), **`EmpresaEnElLimiteDeIA`**
+  (info, emails o capacidad de IA del mes agotados), 
+  **`PagoDeSuscripcionFallido`** (warning, past_due) y
+  **`AvisosDeStripeConFirmaMala`** (warning, primera aparición incluida); y
+  una prueba de que los frenos del plan no disparan `IAFrenadaPorLimites`.
+  Dashboard **`saas.json`** ("Planes y suscripciones", uid `aimail-saas`):
+  empresas activas, en prueba, de pago, con pago pendiente (ámbar ≥ 1) y
+  altas; rankings por plan, estado e IA frenada por el plan; tablas de uso
+  de cada límite y días de prueba que quedan; avisos de Stripe. Las 13
+  consultas comprobadas contra un Prometheus real. Tests
+  `BillingMetricsTest` (3). **Al actualizar:** `docker compose restart
+  prometheus grafana`
 - [ ] 9. Documentación para las empresas, README y prueba de punta a punta
 
 ### Pendientes anotados para más adelante

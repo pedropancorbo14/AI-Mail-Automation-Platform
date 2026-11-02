@@ -63,7 +63,12 @@ class Metrics
         'ai_agent_runs_total' => ['type' => 'counter', 'help' => 'Ejecuciones del agente por motivo de fin.', 'labels' => ['tenant', 'status', 'stop_reason']],
         'ai_agent_run_duration_seconds' => ['type' => 'histogram', 'help' => 'Duración de las ejecuciones del agente.', 'labels' => ['stop_reason'], 'buckets' => self::SECONDS],
         'ai_agent_replies_total' => ['type' => 'counter', 'help' => 'Propuestas de respuesta del agente y si necesitan una persona.', 'labels' => ['tenant', 'needs_human']],
-        'ai_guard_blocks_total' => ['type' => 'counter', 'help' => 'Emails enviados a una persona sin IA por superar un límite de gasto (budget = presupuesto diario, sender = remitente).', 'labels' => ['tenant', 'reason']],
+        'ai_guard_blocks_total' => ['type' => 'counter', 'help' => 'Emails enviados a una persona sin IA por un freno (budget = presupuesto diario, sender = remitente; del plan: subscription, plan_emails, plan_budget).', 'labels' => ['tenant', 'reason']],
+        // SaaS (Fase 17). result del webhook: applied, ignored, stale, duplicate o
+        // invalid_signature (firma mala: secreto mal configurado o alguien probando).
+        'billing_webhooks_total' => ['type' => 'counter', 'help' => 'Avisos de Stripe recibidos, por resultado.', 'labels' => ['result']],
+        // result: created (empresa nueva) o existing (el email ya tenía cuenta).
+        'tenant_signups_total' => ['type' => 'counter', 'help' => 'Altas de empresas desde la web.', 'labels' => ['result']],
         // Motor remoto (ai-service): resultados recibidos por Redis Streams. result = applied
         // (aplicado al email), stale (el email ya no esperaba: duplicado o tardío), missing
         // (email borrado), invalid (no cumple el contrato), tenant_mismatch (empresa que no

@@ -434,3 +434,89 @@ tests:
             exp_annotations:
               summary: "Resultados de ai-service en la cola de errores de Laravel (invalid)"
               description: "invalid = no cumplen el contrato (¿versiones distintas de Laravel y ai-service?); dead_lettered = fallaron al aplicarse varias veces. Revisar los streams *.dlq y el log de ai-results."
+
+  # SaaS (Fase 17): la prueba termina en menos de 3 días (y otra empresa con
+  # más margen no alerta).
+  - interval: 1m
+    input_series:
+      - series: 'aimail_tenant_trial_ends_timestamp_seconds{job="laravel", instance="nginx:80", tenant="acme"}'
+        values: "200000x30"
+      - series: 'aimail_tenant_trial_ends_timestamp_seconds{job="laravel", instance="nginx:80", tenant="globex"}'
+        values: "900000x30"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PruebaTerminaPronto
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PruebaTerminaPronto
+        exp_alerts:
+          - exp_labels: { severity: info, job: laravel, instance: "nginx:80", tenant: acme }
+            exp_annotations:
+              summary: "acme: su prueba termina en menos de 3 días"
+              description: "Al terminar, la IA se para y los emails los atiende su equipo hasta que elija un plan. Buen momento para escribirles."
+
+  # Límite de IA del mes agotado (el de usuarios lleno no alerta).
+  - interval: 1m
+    input_series:
+      - series: 'aimail_tenant_plan_usage_ratio{job="laravel", instance="nginx:80", tenant="acme", limit="ai_emails_per_month"}'
+        values: "1x30"
+      - series: 'aimail_tenant_plan_usage_ratio{job="laravel", instance="nginx:80", tenant="acme", limit="users"}'
+        values: "1x30"
+      - series: 'aimail_tenant_plan_usage_ratio{job="laravel", instance="nginx:80", tenant="globex", limit="ai_emails_per_month"}'
+        values: "0.9x30"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: EmpresaEnElLimiteDeIA
+        exp_alerts:
+          - exp_labels: { severity: info, tenant: acme, limit: ai_emails_per_month }
+            exp_annotations:
+              summary: "acme: ha agotado el límite ai_emails_per_month de su plan este mes"
+              description: "Sus emails nuevos van a una persona sin IA hasta el mes que viene. Ofrecerle un plan mayor (tenant:plan o desde su panel)."
+
+  # Cobro fallido.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_tenant_plan{job="laravel", instance="nginx:80", tenant="acme", plan="starter", status="past_due"}'
+        values: "1x30"
+      - series: 'aimail_tenant_plan{job="laravel", instance="nginx:80", tenant="globex", plan="starter", status="active"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PagoDeSuscripcionFallido
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PagoDeSuscripcionFallido
+        exp_alerts:
+          - exp_labels: { severity: warning, tenant: acme, plan: starter }
+            exp_annotations:
+              summary: "acme: el último cobro de su suscripción (starter) falló"
+              description: "Stripe sigue reintentando. Pasados SAAS_PAST_DUE_GRACE_DAYS días sin pagar, la IA se para. Contactar con la empresa."
+
+  # Avisos de Stripe con firma mala (primera aparición de la serie incluida).
+  - interval: 1m
+    input_series:
+      - series: 'aimail_billing_webhooks_total{job="laravel", instance="nginx:80", result="invalid_signature"}'
+        values: "_ _ 1 1 1x20"
+      - series: 'aimail_billing_webhooks_total{job="laravel", instance="nginx:80", result="applied"}'
+        values: "_ _ 5 5 5x20"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AvisosDeStripeConFirmaMala
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Avisos a /api/v1/webhooks/stripe con una firma no válida"
+              description: "O STRIPE_WEBHOOK_SECRET no es el del webhook de Stripe (los pagos no activarían planes) o alguien está probando la URL. Comparar el secreto en el panel de Stripe."
+      - eval_time: 25m
+        alertname: AvisosDeStripeConFirmaMala
+        exp_alerts: []
+
+  # Los frenos del plan no disparan la alerta de seguridad de gasto.
+  - interval: 1m
+    input_series:
+      - series: 'aimail_ai_guard_blocks_total{job="laravel", instance="nginx:80", tenant="acme", reason="plan_emails"}'
+        values: "_ _ 1 2 3x20"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: IAFrenadaPorLimites
+        exp_alerts: []

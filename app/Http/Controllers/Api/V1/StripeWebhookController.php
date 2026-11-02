@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Billing\Stripe\StripeEventHandler;
 use App\Billing\Stripe\StripeSignature;
 use App\Http\Controllers\Controller;
+use App\Observability\Metrics;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Log;
  */
 class StripeWebhookController extends Controller
 {
-    public function __invoke(Request $request, StripeEventHandler $handler): JsonResponse
+    public function __invoke(Request $request, StripeEventHandler $handler, Metrics $metrics): JsonResponse
     {
         $secret = (string) config('services.stripe.webhook_secret');
 
@@ -28,6 +29,7 @@ class StripeWebhookController extends Controller
 
         if (! StripeSignature::valid($payload, $request->header('Stripe-Signature'), $secret, (int) config('services.stripe.webhook_tolerance'))) {
             Log::warning('Aviso de Stripe con una firma no válida');
+            $metrics->increment('billing_webhooks_total', ['result' => 'invalid_signature']);
 
             return response()->json(['message' => 'Firma no válida.'], 400);
         }
@@ -39,6 +41,7 @@ class StripeWebhookController extends Controller
         }
 
         $result = $handler->handle($event);
+        $metrics->increment('billing_webhooks_total', ['result' => $result]);
         Log::info('Aviso de Stripe', ['type' => $event['type'] ?? null, 'result' => $result]);
 
         // 200 también si se ignora: si no, Stripe lo reintentaría durante días.

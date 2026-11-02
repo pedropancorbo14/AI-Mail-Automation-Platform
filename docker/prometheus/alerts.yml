@@ -233,3 +233,46 @@ groups:
         annotations:
           summary: "Resultados de ai-service en la cola de errores de Laravel ({{ $labels.result }})"
           description: "invalid = no cumplen el contrato (¿versiones distintas de Laravel y ai-service?); dead_lettered = fallaron al aplicarse varias veces. Revisar los streams *.dlq y el log de ai-results."
+
+  # SaaS (Fase 17): planes y cobro de cada empresa. Avisos de negocio
+  # (info) salvo el cobro y los avisos de Stripe con firma mala.
+  - name: saas
+    rules:
+      - alert: PruebaTerminaPronto
+        expr: |
+          (aimail_tenant_trial_ends_timestamp_seconds - time()) < 3 * 86400
+          and (aimail_tenant_trial_ends_timestamp_seconds - time()) > 0
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.tenant }}: su prueba termina en menos de 3 días"
+          description: "Al terminar, la IA se para y los emails los atiende su equipo hasta que elija un plan. Buen momento para escribirles."
+
+      - alert: EmpresaEnElLimiteDeIA
+        expr: max by (tenant, limit) (aimail_tenant_plan_usage_ratio{limit=~"ai_emails_per_month|ai_budget_usd_per_month"}) >= 1
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.tenant }}: ha agotado el límite {{ $labels.limit }} de su plan este mes"
+          description: "Sus emails nuevos van a una persona sin IA hasta el mes que viene. Ofrecerle un plan mayor (tenant:plan o desde su panel)."
+
+      - alert: PagoDeSuscripcionFallido
+        expr: max by (tenant, plan) (aimail_tenant_plan{status="past_due"}) == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.tenant }}: el último cobro de su suscripción ({{ $labels.plan }}) falló"
+          description: "Stripe sigue reintentando. Pasados SAAS_PAST_DUE_GRACE_DAYS días sin pagar, la IA se para. Contactar con la empresa."
+
+      - alert: AvisosDeStripeConFirmaMala
+        expr: |
+          sum(increase(aimail_billing_webhooks_total{result="invalid_signature"}[15m])) > 0
+          or sum(aimail_billing_webhooks_total{result="invalid_signature"} unless aimail_billing_webhooks_total{result="invalid_signature"} offset 15m) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Avisos a /api/v1/webhooks/stripe con una firma no válida"
+          description: "O STRIPE_WEBHOOK_SECRET no es el del webhook de Stripe (los pagos no activarían planes) o alguien está probando la URL. Comparar el secreto en el panel de Stripe."
