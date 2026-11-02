@@ -6,6 +6,7 @@ use App\AI\Agent\Enums\EmailReplyStatus;
 use App\AI\Classification\EmailIntent;
 use App\AI\Remote\EmailEventPublisher;
 use App\AI\Remote\Exceptions\InvalidEventException;
+use App\Billing\PlanGuard;
 use App\Billing\UsageMeter;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
@@ -38,6 +39,7 @@ class EmailProcessor
         private readonly AiSpendGuard $spendGuard,
         private readonly EmailEventPublisher $publisher,
         private readonly UsageMeter $usage,
+        private readonly PlanGuard $planGuard,
     ) {
     }
 
@@ -118,6 +120,13 @@ class EmailProcessor
         // Un correo antiguo (p. ej. movido a la bandeja) no se responde con la IA,
         // salvo que una persona lo reprocese a mano.
         if (! $reprocess && ($reason = self::staleReason($email))) {
+            $email->transitionTo(EmailStatus::HumanReview, $reason);
+
+            return;
+        }
+
+        // Plan de la empresa: suscripción válida y cuota del mes (Fase 17).
+        if ($reason = $this->planGuard->aiBlockReason($email)) {
             $email->transitionTo(EmailStatus::HumanReview, $reason);
 
             return;

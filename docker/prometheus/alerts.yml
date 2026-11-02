@@ -155,13 +155,13 @@ groups:
 
       - alert: IAFrenadaPorLimites
         expr: |
-          sum by (tenant, reason) (increase(aimail_ai_guard_blocks_total[15m])) > 0
-          or sum by (tenant, reason) (aimail_ai_guard_blocks_total unless aimail_ai_guard_blocks_total offset 15m) > 0
+          sum by (tenant, reason) (increase(aimail_ai_guard_blocks_total{reason=~"budget|sender"}[15m])) > 0
+          or sum by (tenant, reason) (aimail_ai_guard_blocks_total{reason=~"budget|sender"} unless aimail_ai_guard_blocks_total offset 15m) > 0
         labels:
           severity: warning
         annotations:
           summary: "{{ $labels.tenant }}: emails sin IA por límite de gasto ({{ $labels.reason }})"
-          description: "budget = la empresa agotó su presupuesto diario (ver ai:budget); sender = un remitente supera el máximo de emails en 24 h (¿inundación o bucle con otro sistema?). Esos emails los atiende una persona."
+          description: "budget = la empresa agotó su presupuesto diario (ver ai:budget); sender = un remitente supera el máximo de emails en 24 h (¿inundación o bucle con otro sistema?). Esos emails los atiende una persona. Los frenos del plan (subscription, plan_emails, plan_budget) no alertan aquí: son de negocio."
 
   # Microservicio de IA en Python (ai-service) y el consumidor de sus
   # resultados en Laravel.

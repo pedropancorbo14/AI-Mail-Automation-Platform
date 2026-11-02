@@ -300,7 +300,7 @@ tests:
           - exp_labels: { severity: warning, tenant: acme, reason: budget }
             exp_annotations:
               summary: "acme: emails sin IA por límite de gasto (budget)"
-              description: "budget = la empresa agotó su presupuesto diario (ver ai:budget); sender = un remitente supera el máximo de emails en 24 h (¿inundación o bucle con otro sistema?). Esos emails los atiende una persona."
+              description: "budget = la empresa agotó su presupuesto diario (ver ai:budget); sender = un remitente supera el máximo de emails en 24 h (¿inundación o bucle con otro sistema?). Esos emails los atiende una persona. Los frenos del plan (subscription, plan_emails, plan_budget) no alertan aquí: son de negocio."
       - eval_time: 25m
         alertname: IAFrenadaPorLimites
         exp_alerts: []

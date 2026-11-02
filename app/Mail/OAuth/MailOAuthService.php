@@ -2,6 +2,9 @@
 
 namespace App\Mail\OAuth;
 
+use App\Billing\PlanGuard;
+use App\Billing\PlanLimit;
+use App\Billing\PlanLimitException;
 use App\Mail\Enums\MailConnectionStatus;
 use App\Mail\Enums\MailProviderType;
 use App\Mail\Exceptions\MailProviderException;
@@ -27,6 +30,7 @@ class MailOAuthService
         private readonly OAuthClients $clients,
         private readonly TenantService $tenancy,
         private readonly AuditLogger $audit,
+        private readonly PlanGuard $plans,
     ) {
     }
 
@@ -84,6 +88,15 @@ class MailOAuthService
                 throw new MailProviderException(
                     "La cuenta {$account->email} ya está conectada como {$connection->provider->value}.",
                 );
+            }
+
+            // Una cuenta nueva (o desactivada) ocupa un hueco del plan; reconectar una activa, no.
+            if ($connection === null || $connection->status === MailConnectionStatus::Disabled) {
+                try {
+                    $this->plans->ensureCanAdd($user->tenant, PlanLimit::Mailboxes);
+                } catch (PlanLimitException $e) {
+                    throw new MailProviderException($e->getMessage());
+                }
             }
 
             // Reconectar una cuenta existente actualiza sus tokens en vez de duplicarla.

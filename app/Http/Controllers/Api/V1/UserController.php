@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Billing\PlanGuard;
+use App\Billing\PlanLimit;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Users\StoreUserRequest;
 use App\Http\Requests\Users\UpdateUserRequest;
@@ -39,8 +41,10 @@ class UserController extends Controller
         return UserResource::collection($users);
     }
 
-    public function store(StoreUserRequest $request): UserResource
+    public function store(StoreUserRequest $request, PlanGuard $plans): UserResource
     {
+        $plans->ensureCanAdd($this->tenancy->currentOrFail(), PlanLimit::Users);
+
         $user = new User($request->safe()->only(['name', 'email', 'password']));
         $user->tenant()->associate($this->tenancy->currentOrFail());
         $user->role()->associate(Role::where('name', $request->validated('role'))->firstOrFail());

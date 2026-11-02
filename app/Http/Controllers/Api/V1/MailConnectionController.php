@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Billing\PlanGuard;
+use App\Billing\PlanLimit;
+use App\Tenancy\TenantService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\MailConnections\StoreMailConnectionRequest;
 use App\Http\Requests\MailConnections\UpdateMailConnectionFoldersRequest;
@@ -41,8 +44,10 @@ class MailConnectionController extends Controller
         );
     }
 
-    public function store(StoreMailConnectionRequest $request): MailConnectionResource
+    public function store(StoreMailConnectionRequest $request, PlanGuard $plans, TenantService $tenancy): MailConnectionResource
     {
+        $plans->ensureCanAdd($tenancy->currentOrFail(), PlanLimit::Mailboxes);
+
         $connection = new MailConnection($request->safe()->only(['name', 'email', 'save_sent_copy']));
         $connection->provider = MailProviderType::Imap;
         $connection->credentials = $request->credentials();
@@ -64,8 +69,13 @@ class MailConnectionController extends Controller
         return new MailConnectionResource($mailConnection);
     }
 
-    public function update(UpdateMailConnectionRequest $request, MailConnection $mailConnection): MailConnectionResource
+    public function update(UpdateMailConnectionRequest $request, MailConnection $mailConnection, PlanGuard $plans, TenantService $tenancy): MailConnectionResource
     {
+        // Volver a activar un buzón desactivado ocupa otra vez un hueco del plan.
+        if ($mailConnection->status === MailConnectionStatus::Disabled && ($status = $request->status()) && $status !== MailConnectionStatus::Disabled) {
+            $plans->ensureCanAdd($tenancy->currentOrFail(), PlanLimit::Mailboxes);
+        }
+
         $mailConnection->fill($request->safe()->only(['name', 'email', 'save_sent_copy']));
 
         if ($request->changesCredentials()) {

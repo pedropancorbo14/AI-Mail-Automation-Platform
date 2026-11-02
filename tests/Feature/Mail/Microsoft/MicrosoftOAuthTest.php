@@ -305,3 +305,23 @@ it('renews expired tokens transparently when using the provider', function () {
     Http::assertSent(fn (Request $request) => str_contains($request->url(), 'mailFolders/inbox')
         && $request->hasHeader('Authorization', 'Bearer access-nuevo'));
 });
+
+// --- Plan de la empresa (Fase 17) -------------------------------------------------
+
+it('does not connect a new mailbox beyond the plan, but reconnects an existing one', function () {
+    fakeMicrosoft();
+    $this->tenant->assignPlan(App\Billing\PlanCatalog::get('trial'), App\Billing\SubscriptionStatus::Trialing);
+    $other = inTenant($this->tenant, fn () => MailConnection::factory()->create(['email' => 'otro@contoso.test']));
+
+    [$state] = startMicrosoft($this->admin);
+    callbackMicrosoft(['code' => 'c', 'state' => $state])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Tu plan «Prueba» permite 1 buzones. Cambia de plan en «Plan y uso» para añadir más.');
+    expect(inTenant($this->tenant, fn () => MailConnection::count()))->toBe(1);
+
+    // La cuenta ya conectada sí se puede reconectar (no ocupa otro hueco).
+    inTenant($this->tenant, fn () => $other->delete());
+    inTenant($this->tenant, fn () => MailConnection::factory()->microsoft()->create(['email' => 'soporte@contoso.test']));
+    [$state] = startMicrosoft($this->admin);
+    callbackMicrosoft(['code' => 'c', 'state' => $state])->assertCreated();
+});

@@ -6092,8 +6092,22 @@ empezar (1155).
   `BillingServiceProvider`. Tests `UsageTest` (8: borrar no libera, rollback
   no cuenta, reproceso cuenta y reintento no, automáticos fuera, mes nuevo,
   gasto y recuentos, aislamiento, sin límites en enterprise)
-- [ ] 3. Límites aplicados (buzones, usuarios, documentos; IA sin suscripción
-  o con la cuota del mes agotada → persona)
+- [x] 3. **Límites aplicados.** `App\Billing\PlanGuard`:
+  `ensureCanAdd($tenant, PlanLimit)` → `PlanLimitException`, que la API
+  devuelve como **402** (`message` "Tu plan «Prueba» permite 3 usuarios…",
+  `code: plan_limit`, `limit`, `plan`); se comprueba al crear un usuario, un
+  buzón IMAP, al **reactivar** un buzón desactivado (los desactivados no
+  cuentan), al conectar por OAuth una cuenta **nueva** (reconectar una
+  existente no ocupa otro hueco; el error vuelve como el resto de fallos del
+  callback) y al subir un documento. Los comandos del operador (`kb:import`,
+  seeders) no se frenan. `aiBlockReason($email)` en `EmailProcessor` (tras el
+  freno por antigüedad y antes de `AiSpendGuard`; también al reprocesar):
+  suscripción que no permite la IA, emails con IA del mes agotados o gasto de
+  IA del mes alcanzado → **revisión humana sin llamar a la IA** con el
+  motivo. Métrica `ai_guard_blocks_total` con `reason` `subscription`,
+  `plan_emails` o `plan_budget`; la alerta `IAFrenadaPorLimites` solo mira
+  `budget|sender` (los frenos del plan son de negocio, no de seguridad).
+  Tests `PlanLimitsTest` (9) y uno en `MicrosoftOAuthTest`
 - [ ] 4. API y página "Plan y uso" del panel + avisos
 - [ ] 5. Cobro con Stripe (Checkout, portal, webhook firmado e idempotente)
 - [ ] 6. Alta de empresas desde la web con verificación del email

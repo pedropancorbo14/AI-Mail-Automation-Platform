@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Billing\PlanGuard;
+use App\Billing\PlanLimit;
+use App\Tenancy\TenantService;
 use App\Documents\DocumentService;
 use App\Documents\Exceptions\DocumentProcessingException;
 use App\Http\Controllers\Controller;
@@ -34,8 +37,10 @@ class DocumentController extends Controller
     }
 
     /** Sube el documento; el indexado se hace en cola (status pending → ready). */
-    public function store(StoreDocumentRequest $request): DocumentResource
+    public function store(StoreDocumentRequest $request, PlanGuard $plans, TenantService $tenancy): DocumentResource
     {
+        $plans->ensureCanAdd($tenancy->currentOrFail(), PlanLimit::Documents);
+
         $file = $request->file('file');
 
         try {

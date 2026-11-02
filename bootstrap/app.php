@@ -106,6 +106,18 @@ return Application::configure(basePath: dirname(__DIR__))
             };
         });
 
+        // Límite del plan (Fase 17): 402 con el motivo, para que el panel lo muestre.
+        $exceptions->render(function (App\Billing\PlanLimitException $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'code' => 'plan_limit',
+                    'limit' => $e->limit->value,
+                    'plan' => $e->plan->key,
+                ], 402);
+            }
+        });
+
         // Solo errores inesperados: las excepciones HTTP (403, 405, 429...)
         // conservan su código aunque APP_DEBUG=false.
         $exceptions->render(function (Throwable $e, $request) {
