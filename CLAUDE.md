@@ -6078,7 +6078,20 @@ empezar (1155).
   --trial-days` y comando nuevo **`tenant:plan <id|slug> [--plan] [--status]
   [--trial-days]`** (auditoría `tenant.plan_changed`, tabla de límites).
   Tests `tests/Feature/Billing/PlanTest.php` (8)
-- [ ] 2. Uso del mes por empresa (contadores) y `UsageService`
+- [x] 2. **Uso del mes.** Tabla `tenant_usage` (empresa + primer día del
+  mes, único; `emails_received`, `ai_emails`): **contadores**, no recuentos,
+  así borrar correos (a mano o por la retención) no libera cuota.
+  `App\Billing\UsageMeter` (`increment` con un único `INSERT ... ON
+  CONFLICT`: dos workers no pierden ninguno; `get`; `period()`).
+  `EmailUsageObserver` (`afterCommit`) cuenta cada correo guardado;
+  `EmailProcessor::publish()` cuenta cada email que va a la IA (también un
+  reproceso, que se paga otra vez; un reintento del job o el reconciliador
+  no). `UsageService::forTenant()` → `Usage` (`used`, `remaining`, `reached`,
+  `ratio`, `toArray`): emails con IA (contador), gasto de IA del mes (suma de
+  `ai_requests.cost_usd`), buzones no desactivados, usuarios, documentos.
+  `BillingServiceProvider`. Tests `UsageTest` (8: borrar no libera, rollback
+  no cuenta, reproceso cuenta y reintento no, automáticos fuera, mes nuevo,
+  gasto y recuentos, aislamiento, sin límites en enterprise)
 - [ ] 3. Límites aplicados (buzones, usuarios, documentos; IA sin suscripción
   o con la cuota del mes agotada → persona)
 - [ ] 4. API y página "Plan y uso" del panel + avisos

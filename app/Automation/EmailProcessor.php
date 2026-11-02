@@ -6,6 +6,7 @@ use App\AI\Agent\Enums\EmailReplyStatus;
 use App\AI\Classification\EmailIntent;
 use App\AI\Remote\EmailEventPublisher;
 use App\AI\Remote\Exceptions\InvalidEventException;
+use App\Billing\UsageMeter;
 use App\Mail\Enums\EmailStatus;
 use App\Models\Email;
 use App\Security\AiSpendGuard;
@@ -36,6 +37,7 @@ class EmailProcessor
         private readonly TenantService $tenants,
         private readonly AiSpendGuard $spendGuard,
         private readonly EmailEventPublisher $publisher,
+        private readonly UsageMeter $usage,
     ) {
     }
 
@@ -143,8 +145,16 @@ class EmailProcessor
             return;
         }
 
+        $firstRequest = $email->ai_requested_at === null;
+
         try {
             $this->publisher->publish($email);
+
+            // Uso del plan: cada email que va a la IA (también un reproceso, que
+            // se paga otra vez). Un reintento del job que republica no cuenta.
+            if ($firstRequest || $reprocess) {
+                $this->usage->increment($email->tenant_id, UsageMeter::AI_EMAILS);
+            }
         } catch (InvalidEventException $e) {
             // P. ej. sin remitente válido: la IA no puede procesarlo.
             $email->transitionTo(EmailStatus::HumanReview, "No se pudo enviar al servicio de IA ({$e->getMessage()}): lo atiende una persona.");
