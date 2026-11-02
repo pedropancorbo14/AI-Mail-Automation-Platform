@@ -1,16 +1,45 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { NAlert, NCard, NGrid, NGi, NProgress, NSpace, NSpin, NTag, NText } from 'naive-ui';
-import { formatLimit, formatPrice, NEAR_LIMIT, type LimitKey, type LimitUsage } from '@/api/billing';
+import { useRoute, useRouter } from 'vue-router';
+import { NAlert, NButton, NCard, NGrid, NGi, NProgress, NSpace, NSpin, NTag, NText, useMessage } from 'naive-ui';
+import { formatLimit, formatPrice, NEAR_LIMIT, openPortal, startCheckout, type LimitKey, type LimitUsage } from '@/api/billing';
 import { ApiError } from '@/api/http';
+import { useAuthStore } from '@/stores/auth';
 import { useBillingStore } from '@/stores/billing';
 import { formatDateTime, formatPercent } from '@/utils/format';
 
 const store = useBillingStore();
+const auth = useAuthStore();
+const route = useRoute();
+const router = useRouter();
+const message = useMessage();
 const loading = ref(true);
 const error = ref<string | null>(null);
+const redirecting = ref<string | null>(null);
+const canManage = computed(() => auth.can('billing.manage'));
+
+/** Va a la página de Stripe (pago o portal); la tarjeta nunca pasa por el panel. */
+async function goTo(action: string, getUrl: () => Promise<string>): Promise<void> {
+    redirecting.value = action;
+    try {
+        window.location.assign(await getUrl());
+    } catch (e) {
+        message.error(e instanceof ApiError ? e.message : 'No se pudo abrir el sistema de pagos.');
+        redirecting.value = null;
+    }
+}
 
 onMounted(async () => {
+    // Vuelta desde Stripe: el plan se activa cuando llega su aviso (segundos).
+    if (route.query.checkout === 'success') {
+        message.success('Pago recibido. Tu plan se activará en unos segundos.');
+        void router.replace({ query: {} });
+        setTimeout(() => void store.refresh(), 5000);
+    } else if (route.query.checkout === 'cancel') {
+        message.info('No se ha hecho ningún cargo.');
+        void router.replace({ query: {} });
+    }
+
     try {
         await store.refresh();
         if (!store.billing) {
@@ -91,6 +120,16 @@ function monthName(period: string): string {
                 <NAlert v-if="billing.subscription.ai_block_reason" type="warning" class="plan__alert" data-test="ai-blocked">
                     {{ billing.subscription.ai_block_reason }} Mientras tanto los emails se siguen recibiendo y los atiende tu equipo.
                 </NAlert>
+                <NButton
+                    v-if="canManage && billing.billing.has_subscription"
+                    class="plan__alert"
+                    :loading="redirecting === 'portal'"
+                    data-test="portal"
+                    @click="goTo('portal', openPortal)"
+                >
+                    Gestionar suscripción (plan, tarjeta y facturas)
+                </NButton>
+                <NText v-else-if="!canManage" depth="3" class="plan__line">Solo el propietario de la empresa puede cambiar el plan.</NText>
             </NCard>
 
             <NCard :title="`Uso de ${monthName(billing.usage.period)}`">
@@ -132,6 +171,17 @@ function monthName(period: string): string {
                                         {{ billing.limit_labels[key] }}: {{ value === null ? 'sin límite' : value.toLocaleString('es-ES') }}
                                     </li>
                                 </ul>
+                                <NButton
+                                    v-if="canManage && plan.purchasable && !plan.current && !billing.billing.has_subscription"
+                                    type="primary"
+                                    size="small"
+                                    :loading="redirecting === plan.key"
+                                    :data-test="`buy-${plan.key}`"
+                                    @click="goTo(plan.key, () => startCheckout(plan.key))"
+                                >
+                                    Contratar
+                                </NButton>
+                                <NText v-else-if="plan.key === 'enterprise' && !plan.current" depth="3">Escríbenos y lo preparamos.</NText>
                             </NSpace>
                         </NCard>
                     </NGi>

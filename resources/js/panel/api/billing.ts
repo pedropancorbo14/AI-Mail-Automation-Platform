@@ -10,6 +10,8 @@ export interface PlanInfo {
     description: string;
     limits: Record<LimitKey, number | null>;
     current?: boolean;
+    /** Se puede contratar desde el panel (cobro con Stripe configurado). */
+    purchasable?: boolean;
 }
 
 export interface LimitUsage {
@@ -38,10 +40,26 @@ export interface Billing {
     };
     limit_labels: Record<LimitKey, string>;
     plans: PlanInfo[];
+    billing: {
+        /** Cobro con tarjeta configurado en la plataforma. */
+        enabled: boolean;
+        /** Ya paga con tarjeta: cambia de plan en el portal. */
+        has_subscription: boolean;
+    };
 }
 
 export async function getBilling(): Promise<Billing> {
     return (await api.get<{ data: Billing }>('/billing')).data;
+}
+
+/** URL de la página de pago de Stripe para contratar un plan. */
+export async function startCheckout(plan: string): Promise<string> {
+    return (await api.post<{ url: string }>('/billing/checkout', { plan })).url;
+}
+
+/** URL del portal de Stripe (cambiar de plan, tarjeta, facturas, cancelar). */
+export async function openPortal(): Promise<string> {
+    return (await api.post<{ url: string }>('/billing/portal')).url;
 }
 
 /** Límite casi agotado a partir de este uso (aviso en el panel). */

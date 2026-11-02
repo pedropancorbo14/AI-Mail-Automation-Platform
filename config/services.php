@@ -46,6 +46,21 @@ return [
         'redirect_uri' => env('GOOGLE_REDIRECT_URI', rtrim((string) env('APP_URL'), '/') . '/api/v1/mail-connections/oauth/google/callback'),
     ],
 
+    // Cobro de las suscripciones (Fase 17). Sin STRIPE_SECRET el cobro está
+    // desactivado y el operador asigna los planes con tenant:plan. Para
+    // probar sin dinero real: claves de modo de pruebas (sk_test_...).
+    // Webhook: APP_URL/api/v1/webhooks/stripe con los eventos
+    // checkout.session.completed, customer.subscription.created/updated/deleted
+    // e invoice.payment_failed.
+    'stripe' => [
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'base_url' => env('STRIPE_BASE_URL', 'https://api.stripe.com/v1'),
+        'timeout' => (int) env('STRIPE_TIMEOUT', 10),
+        // Segundos de margen para la marca de tiempo de la firma (contra repeticiones).
+        'webhook_tolerance' => (int) env('STRIPE_WEBHOOK_TOLERANCE', 300),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

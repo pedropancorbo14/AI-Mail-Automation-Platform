@@ -20,8 +20,9 @@ export function billingFixture(overrides: Partial<Billing['usage']> = {}, subscr
         limit_labels: { ai_emails_per_month: 'Emails con IA al mes', mailboxes: 'Buzones', users: 'Usuarios', documents: 'Documentos' },
         plans: [
             { key: 'trial', name: 'Prueba', price_eur_month: 0, description: 'Para probar.', limits: { ai_emails_per_month: 200, mailboxes: 1, users: 3, documents: 20 }, current: true },
-            { key: 'starter', name: 'Inicial', price_eur_month: 49, description: 'Equipos pequeños.', limits: { ai_emails_per_month: 1000, mailboxes: 2, users: 5, documents: 50 }, current: false },
+            { key: 'starter', name: 'Inicial', price_eur_month: 49, description: 'Equipos pequeños.', limits: { ai_emails_per_month: 1000, mailboxes: 2, users: 5, documents: 50 }, current: false, purchasable: true },
             { key: 'enterprise', name: 'A medida', price_eur_month: null, description: 'A medida.', limits: { ai_emails_per_month: null, mailboxes: null, users: null, documents: null }, current: false },
         ],
+        billing: { enabled: true, has_subscription: false },
     };
 }

@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\MailOAuthController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\ReviewHistoryController;
 use App\Http\Controllers\Api\V1\ReviewQueueController;
+use App\Http\Controllers\Api\V1\StripeWebhookController;
 use App\Http\Controllers\Api\V1\TenantController;
 use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Support\Facades\Route;
@@ -32,6 +33,9 @@ Route::post('/auth/session', [AuthController::class, 'session'])->middleware('th
 Route::get('/mail-connections/oauth/{provider}/callback', [MailOAuthController::class, 'callback'])
     ->middleware('throttle:30,1');
 
+// Avisos de Stripe (Fase 17): públicos, solo valen con su firma.
+Route::post('/webhooks/stripe', StripeWebhookController::class)->middleware('throttle:120,1');
+
 // Todo lo que requiere usuario autenticado (token Sanctum o cookie SPA) y
 // se ejecuta dentro de su tenant.
 Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
@@ -45,6 +49,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Plan, suscripción y uso del mes (Fase 17).
     Route::get('/billing', [BillingController::class, 'show']);
+    // Llaman a Stripe: límite bajo.
+    Route::post('/billing/checkout', [BillingController::class, 'checkout'])->middleware('throttle:10,1');
+    Route::post('/billing/portal', [BillingController::class, 'portal'])->middleware('throttle:10,1');
     Route::patch('/tenant', [TenantController::class, 'update']);
 
     Route::apiResource('users', UserController::class);

@@ -6124,7 +6124,40 @@ empezar (1155).
   enlace a "Plan y uso". `api/billing.ts` (`limitsNearMax`, `formatLimit`,
   `formatPrice`). Tests: Pest `BillingApiTest` (5) y Vitest
   (`billing.test.ts`, `PlanPage.test.ts`; 113 en total)
-- [ ] 5. Cobro con Stripe (Checkout, portal, webhook firmado e idempotente)
+- [x] 5. **Cobro con Stripe** (modo de pruebas; sin SDK, con `Http` como el
+  OAuth de la Fase 3; las tarjetas nunca pasan por nuestro servidor).
+  `config/services.php` → `stripe` (`STRIPE_SECRET`, `STRIPE_WEBHOOK_SECRET`,
+  tolerancia de la firma 300 s); sin `STRIPE_SECRET` el cobro está apagado y
+  el operador asigna planes con `tenant:plan`. Permiso nuevo
+  **`billing.manage`** (solo el propietario). `StripeClient`: **Checkout**
+  (`mode=subscription`, precio del plan, `tenant_id` en los metadatos de la
+  sesión y de la suscripción, `customer` o `customer_email`, vuelta a
+  `/plan?checkout=success|cancel`) y **portal del cliente** (cambiar de
+  plan, tarjeta, facturas, cancelar); errores → `StripeException` (503,
+  detalle solo al log). `POST /billing/checkout` (409 si ya paga: se cambia de
+  plan en el portal, nunca una segunda suscripción; 422 si el plan no tiene
+  precio) y `POST /billing/portal` (throttle 10/min); auditoría
+  `billing.checkout_started`. **Webhook** `POST /api/v1/webhooks/stripe`
+  (público, throttle 120/min, 404 sin secreto): `StripeSignature`
+  (`t=…,v1=HMAC-SHA256("t.cuerpo")`, `hash_equals`, rechaza firmas de más de
+  300 s) y `StripeEventHandler`: tabla **`billing_events`** (id de Stripe
+  único: un aviso repetido se aplica una vez → `duplicate`),
+  `tenants.billing_event_at` (un aviso de suscripción más antiguo que el
+  último aplicado → `stale`), empresa por los metadatos o por el cliente de
+  Stripe guardado (otro cliente de Stripe → no se aplica, log crítico),
+  avisos de una suscripción anterior ignorados salvo `created`. Eventos:
+  `checkout.session.completed` (guarda cliente y suscripción),
+  `customer.subscription.created/updated/deleted` (plan por el precio,
+  estado —trialing/active/past_due+unpaid/canceled; `incomplete` se ignora—,
+  fin del periodo y de la prueba; auditoría `tenant.plan_changed` con
+  `source: stripe`) e `invoice.payment_failed` (auditoría). Siempre 200 a
+  Stripe (si no, reintenta días). `GET /billing` añade `billing.enabled`,
+  `billing.has_subscription` y `purchasable` por plan. Panel: botones
+  **Contratar** (solo propietario, plan con precio, si aún no paga) y
+  **Gestionar suscripción** (portal); mensaje al volver de Stripe y recarga a
+  los 5 s. Variables `SAAS_*` y `STRIPE_*` en los `.env` de ejemplo.
+  **Al actualizar:** `RolesAndPermissionsSeeder` (permiso nuevo). Tests
+  `StripeBillingTest` (12, Stripe simulado) y Vitest (115)
 - [ ] 6. Alta de empresas desde la web con verificación del email
 - [ ] 7. Primeros pasos en el panel
 - [ ] 8. Métricas, Grafana y alertas de planes

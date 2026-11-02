@@ -45,6 +45,8 @@ class Role extends Model
             Permission::ORDERS_MANAGE,
             Permission::INTEGRATIONS_VIEW,
             Permission::INTEGRATIONS_MANAGE,
+            // Solo el propietario contrata y paga.
+            Permission::BILLING_MANAGE,
         ],
         self::ADMIN => [
             Permission::USERS_VIEW,

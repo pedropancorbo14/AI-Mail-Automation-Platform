@@ -61,6 +61,7 @@ class Permission extends Model
 
     /** Conectar, probar y desconectar los sistemas de la empresa. */
     public const string INTEGRATIONS_MANAGE = 'integrations.manage';
+    public const string BILLING_MANAGE = 'billing.manage';
 
     /**
      * Catálogo completo (nombre => descripción). Cada permiso se registra
@@ -86,6 +87,7 @@ class Permission extends Model
         self::ORDERS_MANAGE => 'Importar pedidos por CSV y borrarlos',
         self::INTEGRATIONS_VIEW => 'Ver los sistemas de la empresa conectados a la IA',
         self::INTEGRATIONS_MANAGE => 'Conectar y desconectar los sistemas de la empresa',
+        self::BILLING_MANAGE => 'Contratar y cambiar el plan, y gestionar el pago',
     ];
 
     /** @return BelongsToMany<Role, $this> */
