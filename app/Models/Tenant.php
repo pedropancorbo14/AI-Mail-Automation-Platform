@@ -46,6 +46,7 @@ class Tenant extends Model
             'current_period_ends_at' => 'datetime',
             'past_due_since' => 'datetime',
             'billing_event_at' => 'datetime',
+            'onboarding_dismissed_at' => 'datetime',
         ];
     }
 

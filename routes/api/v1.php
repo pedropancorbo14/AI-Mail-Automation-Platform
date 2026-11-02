@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\KnowledgeSearchController;
 use App\Http\Controllers\Api\V1\MailConnectionController;
 use App\Http\Controllers\Api\V1\MailOAuthController;
+use App\Http\Controllers\Api\V1\OnboardingController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\ReviewHistoryController;
 use App\Http\Controllers\Api\V1\ReviewQueueController;
@@ -62,6 +63,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     // Llaman a Stripe: límite bajo.
     Route::post('/billing/checkout', [BillingController::class, 'checkout'])->middleware('throttle:10,1');
     Route::post('/billing/portal', [BillingController::class, 'portal'])->middleware('throttle:10,1');
+
+    // Primeros pasos de una empresa nueva (Fase 17).
+    Route::get('/onboarding', [OnboardingController::class, 'show']);
+    Route::post('/onboarding/dismiss', [OnboardingController::class, 'dismiss']);
     Route::patch('/tenant', [TenantController::class, 'update']);
 
     Route::apiResource('users', UserController::class);

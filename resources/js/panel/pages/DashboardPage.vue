@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { NAlert, NCard, NEmpty, NGrid, NGridItem, NRadioButton, NRadioGroup, NSkeleton, NSpace, NStatistic, NTag, NText } from 'naive-ui';
 import { ApiError } from '@/api/http';
+import OnboardingCard from '@/components/dashboard/OnboardingCard.vue';
 import { getDashboard, intentBars, type Dashboard, type DashboardPeriod } from '@/api/dashboard';
 import type { EmailStatus } from '@/api/types';
 import { formatDateTime, formatPercent, formatSeconds } from '@/utils/format';
@@ -43,6 +44,8 @@ const statuses = computed(() => statusOrder.filter((status) => (data.value?.emai
                 <NRadioButton :value="90">90 días</NRadioButton>
             </NRadioGroup>
         </NSpace>
+
+        <OnboardingCard />
 
         <NAlert v-if="error" type="error">{{ error }}</NAlert>
         <NSkeleton v-if="loading && !data" text :repeat="6" />

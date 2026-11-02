@@ -6181,7 +6181,16 @@ empezar (1155).
   otro enlace". `security:check`: alta encendida exige un correo real y
   `STRIPE_SECRET` exige `STRIPE_WEBHOOK_SECRET`. `.env.production.example`
   con `MAIL_*`. Tests `SignupTest` (10) y Vitest `SignupPage.test.ts` (4)
-- [ ] 7. Primeros pasos en el panel
+- [x] 7. **Primeros pasos.** `App\Tenancy\Onboarding::steps()` (dentro
+  del tenant, **calculados con lo que ya hay**, nada que marcar a mano):
+  buzón activo, documento listo, ajustes de la IA cambiados (auditoría
+  `automation.updated`/`tool_changed`), más de un usuario y un email ya
+  decidido; cada uno con su ruta del panel. `GET /api/v1/onboarding`
+  (`tenant.view`) y `POST /onboarding/dismiss` (`automation.manage`: la
+  oculta para toda la empresa; columna `tenants.onboarding_dismissed_at`).
+  Panel: tarjeta **`OnboardingCard`** arriba del Resumen (progreso, enlace a
+  cada paso pendiente, "Ocultar"); desaparece al completarla. Tests
+  `OnboardingTest` (4) y Vitest (121)
 - [ ] 8. Métricas, Grafana y alertas de planes
 - [ ] 9. Documentación para las empresas, README y prueba de punta a punta
 
