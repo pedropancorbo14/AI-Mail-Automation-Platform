@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Billing\PlanCatalog;
+use App\Billing\SubscriptionStatus;
 use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
@@ -28,7 +30,9 @@ use Illuminate\Validation\Rules\Password;
     {email : Email del propietario (con él entra en el panel)}
     {--owner-name= : Nombre del propietario (por defecto, el de la empresa)}
     {--slug= : Identificador de la empresa (por defecto, a partir del nombre)}
-    {--generate-password : Generar una contraseña aleatoria en vez de pedirla}')]
+    {--generate-password : Generar una contraseña aleatoria en vez de pedirla}
+    {--plan= : Plan (trial, starter, business, enterprise; por defecto el de SAAS_DEFAULT_PLAN)}
+    {--trial-days= : Días de prueba si el plan es trial (por defecto SAAS_TRIAL_DAYS)}')]
 #[Description('Crea una empresa y su usuario propietario')]
 class CreateTenant extends Command
 {
@@ -47,6 +51,14 @@ class CreateTenant extends Command
             foreach ($validator->errors()->all() as $error) {
                 $this->error($error);
             }
+
+            return self::FAILURE;
+        }
+
+        $plan = PlanCatalog::find($this->option('plan') ?: config('plans.default'));
+
+        if ($plan === null) {
+            $this->error('El plan no existe. Planes: '.implode(', ', PlanCatalog::keys()).'.');
 
             return self::FAILURE;
         }
@@ -70,8 +82,14 @@ class CreateTenant extends Command
             return self::FAILURE;
         }
 
-        [$tenant, $user] = DB::transaction(function () use ($email, $slug, $password, $role) {
+        [$tenant, $user] = DB::transaction(function () use ($email, $slug, $password, $role, $plan) {
             $tenant = Tenant::create(['name' => $this->argument('name'), 'slug' => $slug]);
+            $trial = $plan->key === 'trial';
+            $tenant->assignPlan(
+                $plan,
+                $trial ? SubscriptionStatus::Trialing : SubscriptionStatus::Active,
+                $trial ? (int) ($this->option('trial-days') ?? config('plans.trial_days')) : null,
+            );
 
             $user = new User([
                 'name' => $this->option('owner-name') ?: $this->argument('name'),
@@ -85,9 +103,9 @@ class CreateTenant extends Command
             return [$tenant, $user];
         });
 
-        $audit->record('tenant.created', $tenant, $tenant->name, metadata: ['owner_email' => $email], tenantId: $tenant->id);
+        $audit->record('tenant.created', $tenant, $tenant->name, metadata: ['owner_email' => $email, 'plan' => $plan->key], tenantId: $tenant->id);
 
-        $this->info("Empresa \"{$tenant->name}\" creada (id {$tenant->id}, slug {$tenant->slug}). Propietario: {$user->email}.");
+        $this->info("Empresa \"{$tenant->name}\" creada (id {$tenant->id}, slug {$tenant->slug}, plan {$plan->name}). Propietario: {$user->email}.");
 
         if ($generated) {
             $this->warn("Contraseña (no se volverá a mostrar): {$password}");

@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Billing\PlanCatalog;
+use App\Billing\SubscriptionStatus;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Tools\TenantToolService;
@@ -28,6 +30,11 @@ class ClinicDemoSeeder extends Seeder
         $this->call(RolesAndPermissionsSeeder::class);
 
         $tenant = Tenant::firstOrCreate(['slug' => 'clinica-demo'], ['name' => 'Clínica Demo']);
+
+        // Empresa de demostración: sin límites de plan (Fase 17).
+        if ($tenant->plan !== 'enterprise') {
+            $tenant->assignPlan(PlanCatalog::get('enterprise'), SubscriptionStatus::Active);
+        }
 
         if (! User::where('email', 'clinica@example.com')->exists()) {
             User::factory()->for($tenant)->owner()->create(['name' => 'Clínica Demo', 'email' => 'clinica@example.com']);

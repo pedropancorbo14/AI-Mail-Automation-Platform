@@ -19,7 +19,19 @@ class TenantFactory extends Factory
             'name' => $name,
             'slug' => Str::slug($name),
             'is_active' => true,
+            // Sin límites de plan por defecto: los tests de planes lo cambian
+            // con ->onPlan(). Así un test cualquiera no choca con un límite.
+            'plan' => 'enterprise',
+            'subscription_status' => 'active',
         ];
+    }
+
+    public function onPlan(string $plan, string $status = 'active'): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'plan' => $plan,
+            'subscription_status' => $status,
+        ]);
     }
 
     public function inactive(): static

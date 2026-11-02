@@ -277,7 +277,10 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-10-31)
+## ESTADO ACTUAL (actualizado 2026-11-02)
+
+> **2026-11-02:** Fase 16 parte 1 fusionada en `main` (CI en verde). Fase 17
+> (SaaS) en curso en la rama `fase-17-saas`: ver su sección.
 
 > **2026-10-31:** Fase 16 parte 1 (producción sin servidor) hecha en la rama
 > `fase-16-produccion`: ver su sección. Las tareas 15.8–15.10 de abajo ya
@@ -6025,6 +6028,65 @@ actualizaciones automáticas; copias fuera del servidor (almacenamiento
 externo, cifradas); probar OAuth de Microsoft/Google con el dominio real;
 valorar un registro de imágenes (GHCR) si hay más de un servidor; Promtail
 → Grafana Alloy (Promtail sin soporte).
+
+### Fase 17 (SaaS): EN CURSO (desde 2026-11-02), rama `fase-17-saas`
+
+Pedido por el usuario (2026-11-02), sin gastar nada: planes, límites, uso,
+cobro (Stripe en **modo de pruebas**, probado con HTTP simulado), alta de
+empresas desde la web, primeros pasos y documentación. Misma forma de
+trabajo: un commit por tarea, tests en verde, CI comprobado tras cada push
+(rama `fase-17-saas`, nunca a `main`).
+
+**Entorno de la sesión en la nube:** dockerd a mano; PostgreSQL + pgvector
+(`CREATE EXTENSION vector, pgcrypto, uuid-ossp` en `app_testing` a mano: sin
+el script de init), Redis y GreenMail (con las mismas `GREENMAIL_OPTS` del
+compose: con otras, 9 tests de autenticación fallan) desde `mirror.gcr.io`
+con `--network host`; Pest en `mirror.gcr.io/serversideup/php:8.4-fpm-alpine`
+(la imagen `-cli-alpine` ya no está en el espejo) con
+`DB_HOST/REDIS_HOST/GREENMAIL_HOST=127.0.0.1`. Suite entera en verde al
+empezar (1155).
+
+**Decisiones tomadas:**
+- Código en **`app/Billing/`** (planes, uso, límites, facturación).
+- **Catálogo de planes en `config/plans.php`** (prueba, inicial, empresa, a
+  medida), no en una tabla: cambiar un plan es un cambio revisable en git y
+  no hace falta un panel de operador. Límites: emails con IA al mes, gasto de
+  IA al mes, buzones, usuarios, documentos (null = sin límite). Una clave de
+  plan que ya no existe aplica el de **prueba** (el más restrictivo), nunca
+  "sin límites".
+- Plan y suscripción en columnas de `tenants` (`plan`, `subscription_status`
+  trialing/active/past_due/canceled, fin de la prueba y del periodo, ids de
+  Stripe); **no asignables en masa**: los cambian la facturación o el
+  operador (`tenant:plan`). Las empresas que ya existían pasan a
+  **`enterprise` activa** (siguen como hasta ahora); las nuevas nacen en
+  prueba. La factoría de tests usa `enterprise` (un test cualquiera no choca
+  con un límite; los de planes usan `->onPlan()`) y las empresas de
+  demostración de los seeders también.
+- **Sin suscripción válida no se para la empresa, se para la IA:** los
+  correos se siguen guardando y los atiende una persona (prueba terminada,
+  cancelada, o pago fallido pasados `plans.past_due_grace_days`, 7). El panel
+  y los datos siguen accesibles.
+
+**Tareas (commit):**
+- [x] 1. **Planes y suscripción.** `config/plans.php` (`SAAS_DEFAULT_PLAN`,
+  `SAAS_TRIAL_DAYS` 14, `SAAS_PAST_DUE_GRACE_DAYS` 7, `STRIPE_PRICE_*`),
+  `App\Billing\Plan`, `PlanCatalog` (`all`, `find`, `get`, `forStripePrice`,
+  `keys`), enums `PlanLimit` y `SubscriptionStatus` (con `label()`).
+  Migración `add_plan_to_tenants`. `Tenant::currentPlan()`,
+  `subscriptionBlockReason()` y `assignPlan($plan, $status, ?$trialDays)`
+  (conserva `past_due_since` mientras dura). `tenant:create --plan
+  --trial-days` y comando nuevo **`tenant:plan <id|slug> [--plan] [--status]
+  [--trial-days]`** (auditoría `tenant.plan_changed`, tabla de límites).
+  Tests `tests/Feature/Billing/PlanTest.php` (8)
+- [ ] 2. Uso del mes por empresa (contadores) y `UsageService`
+- [ ] 3. Límites aplicados (buzones, usuarios, documentos; IA sin suscripción
+  o con la cuota del mes agotada → persona)
+- [ ] 4. API y página "Plan y uso" del panel + avisos
+- [ ] 5. Cobro con Stripe (Checkout, portal, webhook firmado e idempotente)
+- [ ] 6. Alta de empresas desde la web con verificación del email
+- [ ] 7. Primeros pasos en el panel
+- [ ] 8. Métricas, Grafana y alertas de planes
+- [ ] 9. Documentación para las empresas, README y prueba de punta a punta
 
 ### Pendientes anotados para más adelante
 

@@ -29,7 +29,7 @@ it('creates a company with its owner and a generated password', function () {
 
     $log = AuditLog::withoutGlobalScope(TenantScope::class)->where('action', 'tenant.created')->sole();
     expect($log->tenant_id)->toBe($tenant->id)
-        ->and($log->metadata)->toBe(['owner_email' => 'ana@acme.example']);
+        ->and($log->metadata)->toEqualCanonicalizing(['owner_email' => 'ana@acme.example', 'plan' => 'trial']);
 });
 
 it('asks for the password without showing it', function () {
