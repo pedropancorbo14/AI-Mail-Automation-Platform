@@ -18,6 +18,14 @@
 $price = fn (string $key) => ($value = env($key)) === null || $value === '' ? null : $value;
 
 return [
+    // Alta de empresas desde la web (/registro). Apagada por defecto: en
+    // producción hay que tener el correo de la plataforma configurado
+    // (MAIL_*) para mandar el enlace de confirmación.
+    'signup_enabled' => (bool) env('SAAS_SIGNUP_ENABLED', false),
+
+    // Horas que vale el enlace para confirmar el email.
+    'verification_hours' => (int) env('SAAS_VERIFICATION_HOURS', 24),
+
     // Plan de las empresas que se dan de alta solas (registro público).
     'default' => env('SAAS_DEFAULT_PLAN', 'trial'),
 

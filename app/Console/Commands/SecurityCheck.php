@@ -42,6 +42,9 @@ class SecurityCheck extends Command
             ['Buzones solo en servidores públicos', ! config('mail_connections.allow_private_hosts'), 'MAIL_CONNECTIONS_ALLOW_PRIVATE_HOSTS=false (anti-SSRF).'],
             ['Proxies de confianza acotados', config('app.trusted_proxies') !== '*', 'TRUSTED_PROXIES con las IPs del proxy, no "*": cualquiera podría falsear su IP.'],
             ['Tokens de API con caducidad', config('sanctum.expiration') !== null, 'SANCTUM_TOKEN_EXPIRATION en minutos.'],
+            // Fase 17: el alta desde la web manda el enlace de confirmación por email.
+            ['Alta desde la web con correo real', ! config('plans.signup_enabled') || ! in_array(config('mail.default'), ['log', 'array'], true), 'Con SAAS_SIGNUP_ENABLED=true configura MAIL_MAILER=smtp y MAIL_* (si no, nadie recibe el enlace).'],
+            ['Avisos de Stripe firmados', blank(config('services.stripe.secret')) || filled(config('services.stripe.webhook_secret')), 'Con STRIPE_SECRET pon también STRIPE_WEBHOOK_SECRET (si no, los pagos nunca activan el plan).'],
             ['Logs sin nivel debug', config('logging.channels.daily.level') !== 'debug', 'LOG_LEVEL=info o superior.'],
         ];
 

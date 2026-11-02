@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\Auth\AccountController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\Auth\SignupController;
 use App\Http\Controllers\Api\V1\AutomationController;
 use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\DashboardController;
@@ -31,6 +32,15 @@ Route::post('/auth/session', [AuthController::class, 'session'])->middleware('th
 // Vuelta del navegador desde Microsoft/Google: pública (sin nuestro token);
 // empresa y usuario salen del "state" guardado al iniciar el flujo.
 Route::get('/mail-connections/oauth/{provider}/callback', [MailOAuthController::class, 'callback'])
+    ->middleware('throttle:30,1');
+
+// Alta de empresas desde la web (Fase 17; solo con SAAS_SIGNUP_ENABLED).
+Route::get('/signup', [SignupController::class, 'show'])->middleware('throttle:30,1');
+Route::post('/signup', [SignupController::class, 'store'])->middleware('throttle:signup');
+Route::post('/auth/verify-email/resend', [SignupController::class, 'resend'])->middleware('throttle:signup');
+// El enlace del email: la firma (con caducidad) la comprueba el controlador.
+Route::get('/auth/verify-email/{user}/{hash}', [SignupController::class, 'verify'])
+    ->name('auth.verify-email')
     ->middleware('throttle:30,1');
 
 // Avisos de Stripe (Fase 17): públicos, solo valen con su firma.

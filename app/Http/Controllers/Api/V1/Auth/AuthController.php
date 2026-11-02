@@ -27,6 +27,10 @@ class AuthController extends Controller
             return $this->blocked($user, 'token');
         }
 
+        if ($user->email_verified_at === null) {
+            return $this->unverified();
+        }
+
         $token = $user->createToken($request->input('device_name') ?? 'api');
         $this->audit->record('auth.login', $user, $user->email, metadata: ['method' => 'token', 'device_name' => $token->accessToken->name], actor: $user);
 
@@ -57,12 +61,28 @@ class AuthController extends Controller
             return $this->blocked($user, 'session');
         }
 
+        if ($user->email_verified_at === null) {
+            return $this->unverified();
+        }
+
         Auth::guard('web')->login($user);
         // Nueva sesión tras autenticarse: evita la fijación de sesión.
         $request->session()->regenerate();
         $this->audit->record('auth.login', $user, $user->email, metadata: ['method' => 'session'], actor: $user);
 
         return new UserResource($user->load(['tenant', 'role.permissions']));
+    }
+
+    /**
+     * Contraseña correcta pero email sin confirmar (alta desde la web). Solo
+     * se dice tras comprobar la contraseña: no revela qué emails existen.
+     */
+    private function unverified(): JsonResponse
+    {
+        return response()->json([
+            'message' => 'Confirma tu email antes de entrar: te enviamos un enlace al darte de alta.',
+            'code' => 'email_unverified',
+        ], 403);
     }
 
     public function me(Request $request): UserResource

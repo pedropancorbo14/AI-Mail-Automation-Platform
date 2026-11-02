@@ -43,6 +43,15 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
         });
 
+        // Alta desde la web y reenvío del enlace (Fase 17): mandan emails y
+        // crean empresas; pocos por IP y hora, y por email destino.
+        RateLimiter::for('signup', function ($request) {
+            return [
+                Limit::perHour(5)->by('ip|'.$request->ip()),
+                Limit::perHour(3)->by('email|'.mb_strtolower((string) $request->input('email'))),
+            ];
+        });
+
         // Cada permiso del catálogo es una Gate: $user->can('users.create'),
         // middleware can:users.create, @can en vistas. Las policies lo usan
         // además de comprobar que el recurso es del mismo tenant.

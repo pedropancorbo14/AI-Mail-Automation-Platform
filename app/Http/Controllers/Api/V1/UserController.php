@@ -48,6 +48,8 @@ class UserController extends Controller
         $user = new User($request->safe()->only(['name', 'email', 'password']));
         $user->tenant()->associate($this->tenancy->currentOrFail());
         $user->role()->associate(Role::where('name', $request->validated('role'))->firstOrFail());
+        // Lo da de alta alguien de la empresa: no hace falta confirmar el email.
+        $user->email_verified_at = now();
         $user->save();
 
         $this->audit->record('user.created', $user, $user->name, metadata: ['email' => $user->email, 'role' => $user->role->name]);

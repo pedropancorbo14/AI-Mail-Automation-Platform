@@ -56,7 +56,9 @@ it('protects every api route with authentication and the tenant, except the publ
     // Públicas a propósito: estado, login, y la vuelta de OAuth (empresa y
     // usuario salen del "state", nunca de la petición).
     // Avisos de Stripe: solo con su firma (Fase 17).
-    $public = ['api/v1/health', 'api/v1/auth/login', 'api/v1/auth/session', 'api/v1/mail-connections/oauth/{provider}/callback', 'api/v1/webhooks/stripe'];
+    $public = ['api/v1/health', 'api/v1/auth/login', 'api/v1/auth/session', 'api/v1/mail-connections/oauth/{provider}/callback', 'api/v1/webhooks/stripe',
+        // Alta desde la web (apagada por defecto) y el enlace firmado de confirmación.
+        'api/v1/signup', 'api/v1/auth/verify-email/resend', 'api/v1/auth/verify-email/{user}/{hash}'];
 
     $unprotected = collect(Route::getRoutes()->getRoutes())
         ->filter(fn (RouteDefinition $route) => str_starts_with($route->uri(), 'api/v1/'))
@@ -73,7 +75,7 @@ it('protects every api route with authentication and the tenant, except the publ
 it('throttles the public routes that check credentials or call outside', function () {
     $route = fn (string $uri) => collect(Route::getRoutes()->getRoutes())->first(fn (RouteDefinition $r) => $r->uri() === $uri);
 
-    foreach (['api/v1/auth/login', 'api/v1/auth/session', 'api/v1/mail-connections/oauth/{provider}/callback', 'api/v1/auth/password', 'api/v1/auth/logout-other-devices', 'api/v1/mail-connections/autodetect', 'api/v1/webhooks/stripe', 'api/v1/billing/checkout'] as $uri) {
+    foreach (['api/v1/auth/login', 'api/v1/auth/session', 'api/v1/mail-connections/oauth/{provider}/callback', 'api/v1/auth/password', 'api/v1/auth/logout-other-devices', 'api/v1/mail-connections/autodetect', 'api/v1/webhooks/stripe', 'api/v1/billing/checkout', 'api/v1/signup', 'api/v1/auth/verify-email/resend', 'api/v1/auth/verify-email/{user}/{hash}'] as $uri) {
         $throttles = collect($route($uri)->gatherMiddleware())->filter(fn ($m) => is_string($m) && str_starts_with($m, 'throttle:'));
         expect($throttles->reject(fn ($m) => $m === 'throttle:api'))->not->toBeEmpty("{$uri} sin límite propio");
     }

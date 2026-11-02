@@ -98,6 +98,8 @@ class CreateTenant extends Command
             ]);
             $user->tenant()->associate($tenant);
             $user->role()->associate($role);
+            // Lo da de alta el operador: no hace falta confirmar el email.
+            $user->email_verified_at = now();
             $user->save();
 
             return [$tenant, $user];

@@ -6158,7 +6158,29 @@ empezar (1155).
   los 5 s. Variables `SAAS_*` y `STRIPE_*` en los `.env` de ejemplo.
   **Al actualizar:** `RolesAndPermissionsSeeder` (permiso nuevo). Tests
   `StripeBillingTest` (12, Stripe simulado) y Vitest (115)
-- [ ] 6. Alta de empresas desde la web con verificación del email
+- [x] 6. **Alta desde la web con confirmación del email.** Apagada por
+  defecto (`SAAS_SIGNUP_ENABLED`; sin ella `POST /signup` y el reenvío dan
+  404). `App\Tenancy\Signup\SignupService`: empresa en el plan por defecto
+  (prueba de `SAAS_TRIAL_DAYS`) con slug único + propietario **sin
+  confirmar**; auditoría `tenant.signed_up`. **Nunca revela qué emails
+  tienen cuenta:** con un email que ya existe no crea nada, responde lo
+  mismo (202) y al dueño le llega `AccountExistsMessage`; el reenvío
+  (`POST /auth/verify-email/resend`) responde siempre igual. Enlace
+  **firmado con caducidad** (`SAAS_VERIFICATION_HOURS`, 24) y atado al email
+  (`sha1`): `GET /auth/verify-email/{user}/{hash}` → vuelve al panel con
+  `?verified=1|invalid` (no inicia sesión); auditoría `auth.email_verified`.
+  **Sin email confirmado no se entra** (token y panel: 403 `code:
+  email_unverified`, solo tras comprobar la contraseña). Los usuarios
+  creados por un propietario o el operador nacen confirmados y una migración
+  confirma los que ya existían. Trampa para robots (campo `website`),
+  limitador `signup` (5/h por IP y 3/h por email), `GET /signup`
+  (`enabled`, `trial_days`). Correos en texto
+  (`resources/views/emails/`). Panel: página **`SignupPage`** (`/registro`,
+  pública), enlace "Pruébalo gratis" en la entrada si el alta está
+  encendida, aviso de email confirmado o enlace caducado y botón "Enviarme
+  otro enlace". `security:check`: alta encendida exige un correo real y
+  `STRIPE_SECRET` exige `STRIPE_WEBHOOK_SECRET`. `.env.production.example`
+  con `MAIL_*`. Tests `SignupTest` (10) y Vitest `SignupPage.test.ts` (4)
 - [ ] 7. Primeros pasos en el panel
 - [ ] 8. Métricas, Grafana y alertas de planes
 - [ ] 9. Documentación para las empresas, README y prueba de punta a punta

@@ -9,6 +9,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Iniciar sesión', public: true },
     },
     {
+        path: '/registro',
+        name: 'signup',
+        component: () => import('@/pages/SignupPage.vue'),
+        meta: { title: 'Crear cuenta', public: true },
+    },
+    {
         // Todo lo que requiere sesión va dentro de la estructura del panel.
         path: '/',
         component: () => import('@/layouts/AppLayout.vue'),
@@ -133,7 +139,7 @@ export function installAuthGuard(router: Router): void {
         }
 
         if (to.meta.public) {
-            return auth.isAuthenticated && to.name === 'login' ? safeRedirect(to.query.redirect) : true;
+            return auth.isAuthenticated && (to.name === 'login' || to.name === 'signup') ? safeRedirect(to.query.redirect) : true;
         }
 
         if (!auth.isAuthenticated) {
