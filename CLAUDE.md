@@ -280,7 +280,9 @@ reales de producción.
 ## ESTADO ACTUAL (actualizado 2026-11-02)
 
 > **2026-11-02:** Fase 16 parte 1 fusionada en `main` (CI en verde). Fase 17
-> (SaaS) en curso en la rama `fase-17-saas`: ver su sección.
+> (SaaS) **completada** en la rama `fase-17-saas` (pendiente de que el
+> usuario la revise y la fusione): ver su sección. Con ella están hechas las
+> 17 fases; queda la Fase 16 parte 2 (servidor real), aparcada por coste.
 
 > **2026-10-31:** Fase 16 parte 1 (producción sin servidor) hecha en la rama
 > `fase-16-produccion`: ver su sección. Las tareas 15.8–15.10 de abajo ya
@@ -6029,7 +6031,7 @@ externo, cifradas); probar OAuth de Microsoft/Google con el dominio real;
 valorar un registro de imágenes (GHCR) si hay más de un servidor; Promtail
 → Grafana Alloy (Promtail sin soporte).
 
-### Fase 17 (SaaS): EN CURSO (desde 2026-11-02), rama `fase-17-saas`
+### Fase 17 (SaaS): COMPLETADA Y PROBADA EN EL NAVEGADOR CON STRIPE SIMULADO (2026-11-02), rama `fase-17-saas`, pendiente de que la revise el usuario
 
 Pedido por el usuario (2026-11-02), sin gastar nada: planes, límites, uso,
 cobro (Stripe en **modo de pruebas**, probado con HTTP simulado), alta de
@@ -6212,7 +6214,42 @@ empezar (1155).
   consultas comprobadas contra un Prometheus real. Tests
   `BillingMetricsTest` (3). **Al actualizar:** `docker compose restart
   prometheus grafana`
-- [ ] 9. Documentación para las empresas, README y prueba de punta a punta
+- [x] 9. **Documentación y prueba de punta a punta.**
+  **`docs/guia-empresas.md`** (guía para las empresas cliente, sin nada
+  técnico: qué hace, primeros pasos, bandeja de revisión, plan y uso —qué
+  cuenta cada límite y qué pasa al llegar—, prueba, contratar, datos).
+  README: sección **"20. SaaS: planes, cobro y altas"** (planes y límites,
+  comandos, activar Stripe paso a paso con `stripe listen` en local, alta
+  desde la web, métricas, actualizar un entorno anterior), 10 endpoints en la
+  API, problemas frecuentes y estado (Problemas frecuentes pasa a ser la 21).
+  **`SaasEndToEndTest`**: alta → enlace de confirmación → login → prueba con
+  su límite de usuarios (402) → contratar (Checkout simulado) → avisos de
+  Stripe → plan Inicial y el usuario ya cabe → el email va a la IA →
+  cancelación → el siguiente va a una persona sin IA, y el uso del mes
+  cuadra. **Prueba en el navegador** (Chromium contra `php artisan serve` con
+  la BD de desarrollo y el panel compilado): alta en `/registro`, entrada sin
+  confirmar con "Enviarme otro enlace", enlace del correo (sacado del log),
+  "Email confirmado", Resumen con los primeros pasos, "Plan y uso" en
+  escritorio y móvil (sin scroll horizontal). **Dos fallos encontrados así:**
+  (1) los correos en texto escapaban como HTML (`{{ }}`) y el enlace firmado
+  salía con `&amp;signature=` → **no habría funcionado**; ahora `{!! !!}` y un
+  test lo vigila. (2) Abrir directamente una página pública
+  (`/login?verified=1`, `/registro`) acababa en `/login?redirect=/`: el 401
+  de la primera comprobación de sesión llegaba antes de terminar la primera
+  navegación (`main.ts` ignora ese 401 en `START_LOCATION`; el guard ya se
+  ocupa). **Lección:** las plantillas de texto plano de Blade también
+  escapan; usar `{!! !!}` solo en texto plano
+
+**Resumen:** 9 tareas en 9 commits, 1216 tests PHP (+61), 121 Vitest (+21),
+4 alertas nuevas probadas con `promtool`, dashboard nuevo con sus consultas
+comprobadas contra Prometheus. **Pendiente:** que el usuario revise la rama
+`fase-17-saas`, el CI en verde y la fusione; en su equipo, seguir "Actualizar
+un entorno anterior a la Fase 17" del README (`migrate`,
+`RolesAndPermissionsSeeder` por `billing.manage`, reiniciar Prometheus y
+Grafana). **Sin probar con una cuenta real de Stripe** (modo de pruebas,
+gratis, cuando el usuario quiera: README sección 20). Para la Fase 16 parte
+2: el webhook de Stripe y el alta necesitan el dominio real y el correo de la
+plataforma (`MAIL_*`).
 
 ### Pendientes anotados para más adelante
 

@@ -80,6 +80,19 @@ it('does not let the owner in until the email is confirmed', function () {
     expect(AuditLog::withoutGlobalScope(TenantScope::class)->where('action', 'auth.email_verified')->exists())->toBeTrue();
 });
 
+it('writes the link and the name in the email as they are, not escaped as HTML', function () {
+    $this->postJson('/api/v1/signup', signupData(['name' => 'Lucía & Hijos']));
+    $url = verificationUrl();
+
+    $mail = new VerifyEmailMessage(User::where('email', 'lucia@ferreteria.example')->sole(), $url);
+    $text = $mail->render();
+
+    expect($url)->toContain('&signature=')
+        ->and($text)->toContain($url)
+        ->and($text)->toContain('Hola Lucía & Hijos:')
+        ->and($text)->not->toContain('&amp;');
+});
+
 it('rejects tampered or expired links', function () {
     $this->postJson('/api/v1/signup', signupData());
     $url = verificationUrl();

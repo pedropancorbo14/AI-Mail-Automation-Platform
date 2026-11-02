@@ -38,7 +38,7 @@ Email → IMAP → Laravel → Cola (Redis) → IA: clasificación → RAG / Too
 | 15 | Evaluación de la IA: 52 correos de prueba (12 de comprobación) contra el agente real, informe de seguridad y calidad, comparación de modelos y evaluación con la IA simulada en el CI ([ai-service](ai-service/README.md#evaluación-de-la-ia-fase-15)) | ✅ Hecha (con Claude real: 0 envíos inseguros y 0 fugas con Opus y Sonnet; Sonnet 5.5 elegido por coste) |
 | 14 | Integraciones: pedidos por CSV, API estándar para el sistema propio de cada empresa, WooCommerce, citas | ✅ Hecha (probada con la IA simulada y una tienda WooCommerce real en Docker) |
 | 16 | Producción: imagen con el código dentro, HTTPS con Caddy, secretos obligatorios, copias diarias verificadas restaurándolas, avisos por email/Telegram, despliegue con versión y rollback, staging completo en el CI | ✅ Parte 1 hecha (todo probado en local y en el CI; falta el servidor real: ver [Entornos](#19-entornos-staging-y-producción)) |
-| 17 | SaaS: planes, límites, facturación, alta de empresas | Pendiente |
+| 17 | SaaS: planes con límites, uso del mes, cobro con Stripe (Checkout, portal y webhook firmado), alta desde la web con confirmación del email, primeros pasos, métricas y alertas de negocio, [guía para empresas](docs/guia-empresas.md) | ✅ Hecha (probada con Stripe simulado; ver [SaaS](#20-saas-planes-cobro-y-altas)) |
 
 Ahora mismo existe la **base multi-tenant**, la **API de usuarios**, las
 **conexiones de correo** y la **ingesta**: cada minuto la plataforma trae
@@ -1540,6 +1540,16 @@ Versionada bajo **`/api/v1`**. Siempre responde JSON; envía
 | GET | `/emails/{id}` | `emails.view` | Detalle: clasificación, propuesta, historial y traza de la IA |
 | GET | `/emails/{id}/html` | `emails.view` | HTML del email **ya saneado** |
 | GET | `/emails/{id}/attachments/{adjunto}` | `emails.view` | Descargar un adjunto (siempre como fichero) |
+| GET | `/billing` | `tenant.view` | Plan, suscripción, uso del mes frente a los límites y catálogo de planes (sin importes en dólares) |
+| POST | `/billing/checkout` | `billing.manage` | Página de pago de Stripe para contratar un plan (`plan`; 409 si ya paga: se usa el portal) |
+| POST | `/billing/portal` | `billing.manage` | Portal del cliente de Stripe (cambiar de plan, tarjeta, facturas, cancelar) |
+| POST | `/webhooks/stripe` | público (firma) | Avisos de Stripe; solo con la cabecera `Stripe-Signature` válida |
+| GET | `/signup` | público | Si el alta desde la web está encendida y los días de prueba |
+| POST | `/signup` | público | Alta de empresa + propietario (`company`, `name`, `email`, `password`, `password_confirmation`, `accept_terms`); siempre 202; 404 si está apagada |
+| POST | `/auth/verify-email/resend` | público | Otro enlace de confirmación (`email`); siempre 202 |
+| GET | `/auth/verify-email/{id}/{hash}` | público (firmado) | Enlace del email de confirmación: vuelve al panel con `?verified=1` |
+| GET | `/onboarding` | `tenant.view` | Primeros pasos de la empresa y cuáles están hechos |
+| POST | `/onboarding/dismiss` | `automation.manage` | Ocultar los primeros pasos para toda la empresa |
 | GET | `/automation` | `tenant.view` | Modo de automatización, intenciones y herramientas de tu empresa |
 | PATCH | `/automation` | `automation.manage` | Cambiar el modo (`mode`) y las intenciones (`auto_send_intents`) |
 | PATCH | `/automation/tools/{tool}` | `automation.manage` | Activar o desactivar una herramienta (`enabled`) |
@@ -1809,7 +1819,117 @@ Cuando lo haya: un VPS con 4 GB de RAM como mínimo (Ollama con bge-m3 usa
 clave, actualizaciones automáticas del sistema y una copia de las
 `backups` fuera del servidor.
 
-## 20. Problemas frecuentes
+## 20. SaaS: planes, cobro y altas
+
+Cada empresa tiene un **plan** con límites, paga (si se quiere) con
+**Stripe** y puede darse de alta sola desde la web. Para las empresas está la
+[guía para empresas](docs/guia-empresas.md); aquí, lo que necesita saber
+quien opera la plataforma.
+
+### Planes y límites
+
+Los planes están en [`config/plans.php`](config/plans.php) (cambiar uno es un
+cambio en git):
+
+| Plan | Precio orientativo | Emails con IA/mes | Buzones | Usuarios | Documentos |
+|---|---|---|---|---|---|
+| `trial` (Prueba) | gratis, 14 días | 200 | 1 | 3 | 20 |
+| `starter` (Inicial) | 49 €/mes | 1.000 | 2 | 5 | 50 |
+| `business` (Empresa) | 149 €/mes | 5.000 | 5 | 20 | 200 |
+| `enterprise` (A medida) | a medida | sin límite | sin límite | sin límite | sin límite |
+
+Cada plan tiene además un **tope de gasto de IA al mes** (5, 30 y 150 $),
+que la empresa ve como "capacidad de IA" en porcentaje: los importes en
+dólares solo los ve el operador (Grafana y comandos).
+
+- **Buzones, usuarios, documentos:** al llegar al límite, añadir otro da
+  **402** con el motivo ("Tu plan «Prueba» permite 3 usuarios…").
+- **IA:** con la cuota del mes agotada, o sin suscripción válida (prueba
+  terminada, cancelada, o pago fallido más de `SAAS_PAST_DUE_GRACE_DAYS`), los
+  emails **se siguen guardando** y van a revisión humana **sin llamar a la
+  IA**, con el motivo en el historial. Se suma al freno diario de seguridad
+  (`ai:budget`).
+- El uso del mes sale de **contadores** (`tenant_usage`): borrar correos no
+  libera cuota. Reprocesar un email cuenta otra vez (se paga otra vez).
+- Las empresas que existían antes de la Fase 17 están en `enterprise`.
+
+```bash
+docker compose exec app php artisan tenant:plan acme
+```
+
+```bash
+docker compose exec app php artisan tenant:plan acme --plan=business --status=active
+```
+
+```bash
+docker compose exec app php artisan tenant:create "Acme" ana@acme.com --plan=trial --trial-days=30 --generate-password
+```
+
+### Cobro con Stripe
+
+Sin `STRIPE_SECRET` el cobro está apagado y los planes los asigna el operador
+con `tenant:plan` (por ejemplo, para quien paga por transferencia). Para
+activarlo (primero en **modo de pruebas**, sin dinero real):
+
+1. En Stripe, crea un producto por plan de pago con un precio mensual y
+   copia su id (`price_…`) en `STRIPE_PRICE_STARTER` y `STRIPE_PRICE_BUSINESS`.
+2. Copia la clave secreta (`sk_test_…`) en `STRIPE_SECRET`.
+3. Crea un webhook a `https://<tu dominio>/api/v1/webhooks/stripe` con los
+   eventos `checkout.session.completed`, `customer.subscription.created`,
+   `customer.subscription.updated`, `customer.subscription.deleted` e
+   `invoice.payment_failed`, y copia su secreto (`whsec_…`) en
+   `STRIPE_WEBHOOK_SECRET`.
+4. En el portal del cliente de Stripe, permite cambiar de plan entre esos
+   precios, cambiar la tarjeta y cancelar.
+
+En local, el webhook se prueba con la CLI de Stripe (`stripe listen
+--forward-to localhost:8080/api/v1/webhooks/stripe`, que da su propio
+`whsec_`).
+
+Cómo funciona: el propietario pulsa **Contratar** → página de pago de Stripe
+(la tarjeta nunca pasa por nuestro servidor) → Stripe avisa por el webhook
+y el plan se activa. Cada aviso se **comprueba con la firma** (HMAC con el
+secreto, máx. 5 min de antigüedad), se aplica **una sola vez** (tabla
+`billing_events`) y **en orden** (un aviso más antiguo que el último aplicado
+se descarta). La empresa sale de los metadatos que pusimos en el pago; un
+aviso para una empresa que ya tiene otro cliente de Stripe no se aplica. Quien
+ya paga cambia de plan en el **portal** de Stripe, nunca con una segunda
+suscripción.
+
+### Alta desde la web
+
+Apagada por defecto. Con `SAAS_SIGNUP_ENABLED=true` aparece "Pruébalo gratis"
+en la pantalla de entrada (`/registro`): se crea la empresa en prueba y su
+propietario, que **no puede entrar hasta confirmar el email** con un enlace
+firmado (24 h). La respuesta es la misma exista o no el email (si ya tiene
+cuenta, a su dueño le llega un aviso): no se puede averiguar qué emails están
+registrados. Límite de 5 altas por hora e IP y 3 por email. Necesita el
+correo de la plataforma configurado (`MAIL_*`; `security:check` lo
+comprueba). En local, con `MAIL_MAILER=log`, el enlace sale en
+`storage/logs`.
+
+### Métricas y alertas
+
+Dashboard **Planes y suscripciones** en Grafana (empresas por plan y estado,
+uso de cada límite, pruebas que terminan, avisos de Stripe) y alertas
+`PruebaTerminaPronto`, `EmpresaEnElLimiteDeIA`, `PagoDeSuscripcionFallido` y
+`AvisosDeStripeConFirmaMala`.
+
+### Actualizar un entorno anterior a la Fase 17
+
+```bash
+docker compose exec app php artisan migrate
+```
+
+```bash
+docker compose exec app php artisan db:seed --class=RolesAndPermissionsSeeder
+```
+
+```bash
+docker compose restart prometheus grafana
+```
+
+## 21. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -1851,10 +1971,16 @@ clave, actualizaciones automáticas del sistema y una copia de las
 | El target `laravel` sale DOWN en Prometheus (http://localhost:9090/targets) | `METRICS_TOKEN` de `.env` distinto del de `docker/prometheus/prometheus.yml`, o nginx no está en la red `observability-net` (`docker compose up -d nginx`). |
 | Los dashboards salen vacíos | Aún no hay datos en el periodo (cambia el rango arriba a la derecha) o el target `laravel` está DOWN. "Gasto por día" muestra los días ya terminados: para hoy, "Últimas 24 h". |
 | Cambié `AI_SERVICE_LLM_PROVIDER` (u otra variable) y los emails siguen igual | Los contenedores leen el `.env` al crearse: `docker compose up -d ai-service` (y `horizon:terminate` para las variables de Laravel). |
+| Un email va a revisión humana con "periodo de prueba terminó", "suscripción está cancelada" o "ha usado los N emails con IA de este mes" | Freno del plan (Fase 17). Mira `tenant:plan <empresa>`; cambia el plan (o que el propietario contrate uno) y reprocesa con `ai:process <id> --now --reprocess`. |
+| Añadir un usuario, buzón o documento da 402 | Límite del plan de la empresa: cambiar de plan (o desactivar un buzón que no se use). |
+| Pagué en Stripe y el plan no cambia | El webhook no llega o la firma no coincide: alerta `AvisosDeStripeConFirmaMala`, `STRIPE_WEBHOOK_SECRET` tiene que ser el del webhook (en local, el de `stripe listen`) y los precios `STRIPE_PRICE_*` los del producto. Mira el log ("Aviso de Stripe") y la tabla `billing_events`. |
+| "Confirma tu email antes de entrar" | Cuenta creada desde la web sin confirmar: botón "Enviarme otro enlace" en la entrada. En local el email está en `storage/logs` (`MAIL_MAILER=log`). |
 | "La conexión con microsoft/google no está configurada en este servidor" | Faltan `MICROSOFT_CLIENT_ID/SECRET` o `GOOGLE_CLIENT_ID/SECRET` (ver [Conexiones de correo](#4-conexiones-de-correo)). |
 
 ## Documentación adicional
 
+- [`docs/guia-empresas.md`](docs/guia-empresas.md): guía para las empresas
+  cliente (qué hace la plataforma, primeros pasos, revisión, planes y datos).
 - [`CLAUDE.md`](CLAUDE.md): especificación completa del proyecto (objetivo,
   17 fases, arquitectura futura), estado real de avance y registro de las
   decisiones técnicas tomadas en cada fase.
