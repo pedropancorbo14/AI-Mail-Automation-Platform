@@ -277,7 +277,13 @@ reales de producción.
 
 ---
 
-## ESTADO ACTUAL (actualizado 2026-11-02)
+## ESTADO ACTUAL (actualizado 2026-11-04)
+
+> **2026-11-04:** el repositorio pasó a público. GitGuardian avisó de la
+> `APP_KEY` fija de `.env.testing` (solo de tests, no protege datos reales):
+> ahora va vacía y el CI la genera (`key:generate --env=testing`); en Docker
+> los tests usan la del `.env`. La antigua queda en el historial, sin uso.
+> Nunca poner claves reales en ficheros versionados.
 
 > **2026-11-02:** Fase 16 parte 1 fusionada en `main` (CI en verde). Fase 17
 > (SaaS) **completada** en la rama `fase-17-saas` (pendiente de que el
